@@ -8,10 +8,12 @@ RUN go build -o qcs-server ./cmd/server
 RUN go build -o qcs-migrate ./cmd/migrate
 
 FROM alpine:3.19
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates wget
 WORKDIR /app
 COPY --from=builder /app/qcs-server /app/qcs-migrate ./
 COPY --from=builder /app/web /app/web
+COPY --from=builder /app/sql/migrations /app/sql/migrations
 ENV PORT=8080
+WORKDIR /app
 EXPOSE 8080
 CMD ["./qcs-server"]

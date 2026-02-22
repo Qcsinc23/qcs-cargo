@@ -26,7 +26,7 @@ Produces:
 | `RESEND_API_KEY` | Resend API key for transactional email (magic link, contact form) |
 | `STRIPE_SECRET_KEY` | Stripe secret key for payments |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
-| `APP_URL` | Public base URL of the app (e.g. `https://app.qcs-cargo.com`) |
+| `APP_URL` | Public base URL of the app (production: `https://qcs-cargo.com`) |
 | `FROM_EMAIL` | Sender address for outgoing email |
 | `UPLOAD_DIR` | Directory for uploaded files (default: `./uploads`) |
 | `ALLOWED_ORIGINS` | Optional. Comma-separated CORS origins; empty = allow all (dev only) |
@@ -48,7 +48,7 @@ Run after deployment or when schema changes:
 ## Production
 
 - **HTTPS**: Serve behind a reverse proxy (e.g. nginx, Caddy) with TLS. Do not expose the Go server directly on the internet.
-- **CORS**: Set `ALLOWED_ORIGINS` to your frontend origin(s), e.g. `https://app.qcs-cargo.com`. Leave empty only for local development.
+- **CORS**: Set `ALLOWED_ORIGINS` to your site origin(s), e.g. `https://qcs-cargo.com`. Leave empty only for local development.
 - **JWT**: Use a long, random `JWT_SECRET` and keep it out of version control.
 
 ### Optional: systemd unit
@@ -82,3 +82,7 @@ docker run -d --name qcs-cargo \
 ```
 
 Replace `your-registry/qcs-cargo:latest` with your built image; ensure migrations have been run (e.g. via an init container or pre-deploy step).
+
+## Production at qcs-cargo.com (Traefik)
+
+The server uses **Traefik** (Docker) for HTTPS and routing. See **scripts/deploy-production.md** for step-by-step deploy: clone repo to `/opt/qcs-cargo`, build with `docker-compose.prod.yml`, run migrations, stop old app (`/root/qcs-cargo-v2`), start new stack. Traefik routes `Host(qcs-cargo.com)` and `Host(www.qcs-cargo.com)` to the new container (port 8080).
