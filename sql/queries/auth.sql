@@ -28,3 +28,19 @@ FROM magic_links WHERE token_hash = ? AND used = 0 AND expires_at > ?;
 
 -- name: MarkMagicLinkUsed :exec
 UPDATE magic_links SET used = 1 WHERE id = ?;
+
+-- name: CreatePasswordReset :one
+INSERT INTO password_resets (id, user_id, token_hash, used, expires_at, created_at)
+VALUES (?, ?, ?, 0, ?, ?)
+RETURNING id, user_id, token_hash, used, expires_at, created_at;
+
+-- name: GetPasswordResetByTokenHash :one
+SELECT id, user_id, token_hash, used, expires_at, created_at
+FROM password_resets WHERE token_hash = ? AND used = 0 AND expires_at > ?;
+
+-- name: MarkPasswordResetUsed :exec
+UPDATE password_resets SET used = 1 WHERE id = ?;
+
+-- name: UpdateUserPassword :exec
+UPDATE users SET updated_at = ? WHERE id = ?;
+

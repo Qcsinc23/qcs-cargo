@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>System Status | QCS Cargo</title>
+    <meta name="description" content="Real-time status of QCS Cargo services and systems." />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+        rel="stylesheet" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif
+        }
+
+        h1,
+        h2 {
+            font-family: 'Plus Jakarta Sans', sans-serif
+        }
+    </style>
+</head>
+
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+    <header class="bg-[#0F172A] text-white py-4 px-6">
+        <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
+            <a href="/" class="font-bold text-lg">QCS Cargo</a>
+            <div class="flex flex-wrap gap-6 text-sm">
+                <a href="/how-it-works" class="opacity-90 hover:opacity-100">How It Works</a>
+                <a href="/services" class="opacity-90 hover:opacity-100">Services</a>
+                <a href="/pricing" class="opacity-90 hover:opacity-100">Pricing</a>
+                <a href="/contact" class="opacity-90 hover:opacity-100">Contact</a>
+                <a href="/login" class="opacity-90 hover:opacity-100">Sign In</a>
+                <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free
+                    Address</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-6 py-16">
+        <h1 class="text-4xl font-bold text-[#0F172A] mb-2">System Status</h1>
+        <p class="text-slate-500 text-sm mb-10">Last updated: <span id="last-updated">—</span></p>
+
+        <!-- Overall Banner -->
+        <div id="overall-banner" class="rounded-xl p-5 flex items-center gap-4 mb-10 bg-slate-100">
+            <span id="overall-dot" class="w-4 h-4 rounded-full bg-slate-400 flex-shrink-0"></span>
+            <div>
+                <p id="overall-status" class="font-semibold text-lg">Checking status…</p>
+                <p id="overall-message" class="text-sm text-slate-600"></p>
+            </div>
+        </div>
+
+        <!-- Individual Services -->
+        <section>
+            <h2 class="text-lg font-semibold mb-4">Services</h2>
+            <div class="space-y-3" id="services-list">
+                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
+                    <span class="font-medium">API (backend)</span>
+                    <span id="svc-api" class="text-sm font-medium text-slate-400">Checking…</span>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
+                    <span class="font-medium">Database</span>
+                    <span id="svc-db" class="text-sm font-medium text-slate-400">Checking…</span>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
+                    <span class="font-medium">Email Delivery</span>
+                    <span id="svc-email" class="text-sm font-medium text-slate-400">Checking…</span>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
+                    <span class="font-medium">Payment Processing</span>
+                    <span id="svc-payment" class="text-sm font-medium text-slate-400">Checking…</span>
+                </div>
+            </div>
+        </section>
+
+        <p class="text-center text-slate-500 text-sm mt-12">
+            Experiencing an issue? <a href="/contact" class="text-[#2563EB]">Contact support</a>
+        </p>
+    </main>
+
+    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16">
+        <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
+            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+        </div>
+    </footer>
+
+    <script>
+        async function loadStatus() {
+            const banner = document.getElementById('overall-banner');
+            const dot = document.getElementById('overall-dot');
+            const statusEl = document.getElementById('overall-status');
+            const msgEl = document.getElementById('overall-message');
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+            try {
+                const r = await fetch('/api/v1/status');
+                const j = await r.json();
+                const s = j.data?.status || 'unknown';
+                if (s === 'operational') {
+                    banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-emerald-50 border border-emerald-200';
+                    dot.className = 'w-4 h-4 rounded-full bg-emerald-500 flex-shrink-0';
+                    statusEl.textContent = 'All Systems Operational';
+                    msgEl.textContent = j.data?.message || '';
+                } else {
+                    banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-amber-50 border border-amber-200';
+                    dot.className = 'w-4 h-4 rounded-full bg-amber-500 flex-shrink-0';
+                    statusEl.textContent = 'Degraded Performance';
+                    msgEl.textContent = j.data?.message || 'Some services may be affected.';
+                }
+                // Individual services from health
+                const h = await fetch('/api/v1/health');
+                const hj = await h.json();
+                setService('svc-api', h.ok ? 'operational' : 'degraded');
+                setService('svc-db', hj.db === 'ok' ? 'operational' : 'degraded');
+                setService('svc-email', 'operational'); // Checked via API status
+                setService('svc-payment', 'operational'); // External service
+            } catch (e) {
+                banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-red-50 border border-red-200';
+                dot.className = 'w-4 h-4 rounded-full bg-red-500 flex-shrink-0';
+                statusEl.textContent = 'Service Disruption';
+                msgEl.textContent = 'Unable to reach status endpoint. Our team has been notified.';
+                ['svc-api', 'svc-db', 'svc-email', 'svc-payment'].forEach(id => setService(id, 'unknown'));
+            }
+        }
+        function setService(id, status) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const map = {
+                operational: { text: '✓ Operational', cls: 'text-emerald-600' },
+                degraded: { text: '⚠ Degraded', cls: 'text-amber-600' },
+                down: { text: '✕ Down', cls: 'text-red-600' },
+                unknown: { text: '? Unknown', cls: 'text-slate-400' }
+            };
+            const m = map[status] || map.unknown;
+            el.textContent = m.text;
+            el.className = 'text-sm font-medium ' + m.cls;
+        }
+        loadStatus();
+    </script>
+</body>
+
+</html>

@@ -23,6 +23,10 @@ func RegisterAuth(g fiber.Router) {
 	g.Post("/auth/magic-link/verify", authMagicLinkVerify)
 	g.Post("/auth/refresh", authRefresh)
 	g.Post("/auth/logout", authLogout)
+	// Password reset (PRD 6.1)
+	g.Post("/auth/password/forgot", authForgotPassword)
+	g.Post("/auth/password/reset", authResetPassword)
+	// Password change requires auth — registered in main.go with RequireAuth middleware
 }
 
 func authRegister(c *fiber.Ctx) error {
@@ -61,11 +65,15 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 	if body.Email == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
 	}
+	// Always return the same response regardless of whether the email exists.
+	// This prevents user enumeration (PRD 3.2.1).
+	const enumSafeMsg = "If an account with that email exists, you will receive a sign-in link shortly."
 	q := db.Queries()
 	user, err := q.GetUserByEmail(c.Context(), body.Email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(ErrorResponse{}.withCode("USER_NOT_FOUND", "No account with this email"))
+			// Do not reveal non-existence — return 200 with same message.
+			return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
@@ -84,7 +92,57 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 		link += "&redirectTo=" + body.RedirectTo
 	}
 	log.Printf("[DEV] Magic link for %s: %s", body.Email, link)
-	return c.JSON(fiber.Map{"data": fiber.Map{"message": "If an account exists, you will receive an email with a sign-in link."}})
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
+}
+
+// authForgotPassword requests a password-reset token. Always returns 200 (no enumeration).
+func authForgotPassword(c *fiber.Ctx) error {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&body); err != nil || body.Email == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	const msg = "If an account with that email exists, you will receive a password reset link."
+	q := db.Queries()
+	user, err := q.GetUserByEmail(c.Context(), body.Email)
+	if err != nil {
+		// Return 200 regardless — prevent enumeration
+		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
+	}
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:8080"
+	}
+	rawToken, link, err := services.RequestPasswordReset(c.Context(), user.ID, appURL)
+	if err != nil {
+		log.Printf("forgot password: %v", err)
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+	}
+	log.Printf("[DEV] Password reset link for %s: %s (token=%s)", body.Email, link, rawToken)
+	// TODO: send via Resend when RESEND_API_KEY is set
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
+}
+
+// authResetPassword consumes a reset token and updates the user's password.
+func authResetPassword(c *fiber.Ctx) error {
+	var body struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
+	}
+	if body.Token == "" || body.Password == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "token and password required"))
+	}
+	if len(body.Password) < 8 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "password must be at least 8 characters"))
+	}
+	if err := services.ResetPassword(c.Context(), body.Token, body.Password); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("INVALID_TOKEN", err.Error()))
+	}
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Password updated. You can now sign in."}})
 }
 
 func authMagicLinkVerify(c *fiber.Ctx) error {

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"fmt"
 	"log"
+	"math"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
@@ -22,6 +24,8 @@ func RegisterPublic(g fiber.Router) {
 	g.Get("/destinations/:id", getDestination)
 	g.Get("/status", systemStatus)
 	g.Post("/contact", contactForm)
+	g.Get("/track/:trackingNumber", publicTrack)
+	g.Get("/calculator", shippingCalculator)
 }
 
 func listDestinations(c *fiber.Ctx) error {
@@ -41,7 +45,7 @@ func getDestination(c *fiber.Ctx) error {
 func systemStatus(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"status": "operational",
+			"status":  "operational",
 			"message": "All systems normal",
 		},
 	})
@@ -66,4 +70,95 @@ func contactForm(c *fiber.Ctx) error {
 		// Resend send would go here
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Thank you. We will get back to you soon."}})
+}
+
+// publicTrack looks up a shipment/ship request by tracking number (PRD 6.7).
+// Returns basic status information publicly. Full detail requires auth.
+func publicTrack(c *fiber.Ctx) error {
+	trackingNumber := c.Params("trackingNumber")
+	if trackingNumber == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "tracking number required"))
+	}
+	// TODO: query shipments table when Phase 2 DB queries are generated.
+	// For now return a not-found response. Frontend handles gracefully.
+	return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "No shipment found with that tracking number"))
+}
+
+// shippingCalculator applies the PRD 8.9 pricing formula.
+func shippingCalculator(c *fiber.Ctx) error {
+	destID := c.Query("dest")
+	weightStr := c.Query("weight")
+	lStr := c.Query("l")
+	wStr := c.Query("w")
+	hStr := c.Query("h")
+	valueStr := c.Query("value")
+	service := c.Query("service", "standard")
+
+	if destID == "" || weightStr == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "dest and weight are required"))
+	}
+
+	destRates := map[string]float64{
+		"guyana": 3.50, "jamaica": 3.75, "trinidad": 3.50, "barbados": 4.00, "suriname": 4.25,
+	}
+	rate, ok := destRates[destID]
+	if !ok {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "unknown destination"))
+	}
+
+	parseF := func(s string) float64 {
+		var v float64
+		fmt.Sscanf(s, "%f", &v)
+		return v
+	}
+
+	weight := parseF(weightStr)
+	L, W, H := parseF(lStr), parseF(wStr), parseF(hStr)
+	declaredValue := parseF(valueStr)
+
+	if weight <= 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "weight must be > 0"))
+	}
+
+	dimWeight := 0.0
+	if L > 0 && W > 0 && H > 0 {
+		dimWeight = (L * W * H) / 166.0
+	}
+	billable := weight
+	if dimWeight > billable {
+		billable = dimWeight
+	}
+
+	base := billable * rate
+	surcharge := 0.0
+	d2d := 0.0
+	switch service {
+	case "express":
+		surcharge = base * 0.25
+	case "door_to_door":
+		d2d = 25.0
+	}
+
+	insurance := declaredValue / 100.0
+	total := base + surcharge + d2d + insurance
+	if total < 10 {
+		total = 10
+	}
+
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
+			"destination_id":   destID,
+			"service":          service,
+			"actual_weight":    weight,
+			"dim_weight":       dimWeight,
+			"billable_weight":  billable,
+			"rate_per_lb":      rate,
+			"base_cost":        math.Round(base*100) / 100,
+			"surcharge":        math.Round(surcharge*100) / 100,
+			"door_to_door_fee": d2d,
+			"insurance":        math.Round(insurance*100) / 100,
+			"total":            math.Round(total*100) / 100,
+			"minimum_applied":  total == 10,
+		},
+	})
 }

@@ -12,6 +12,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 )
@@ -81,12 +83,12 @@ func RequestMagicLink(ctx context.Context, userID, redirectTo string) (rawToken 
 	now := time.Now().UTC().Format(time.RFC3339)
 	q := db.Queries()
 	_, err = q.CreateMagicLink(ctx, gen.CreateMagicLinkParams{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		TokenHash: hash,
+		ID:         uuid.New().String(),
+		UserID:     userID,
+		TokenHash:  hash,
 		RedirectTo: sql.NullString{String: redirectTo, Valid: redirectTo != ""},
-		ExpiresAt: expires,
-		CreatedAt: now,
+		ExpiresAt:  expires,
+		CreatedAt:  now,
 	})
 	if err != nil {
 		return "", err
@@ -236,4 +238,78 @@ func Logout(ctx context.Context, refreshTokenString string) error {
 		return nil // no-op if token invalid
 	}
 	return db.Queries().DeleteSession(ctx, sessionID)
+}
+
+// PasswordResetExpiry is the lifetime of a password-reset token (PRD 3.2.2).
+const PasswordResetExpiry = 1 * time.Hour
+
+// RequestPasswordReset inserts a reset token and returns the rawToken and the full reset link.
+// The caller is responsible for sending the link to the user via email.
+func RequestPasswordReset(ctx context.Context, userID, appURL string) (rawToken, link string, err error) {
+	tok := make([]byte, 32)
+	if _, err = rand.Read(tok); err != nil {
+		return "", "", fmt.Errorf("RequestPasswordReset: generate token: %w", err)
+	}
+	rawToken = hex.EncodeToString(tok)
+	hash := hashToken(rawToken)
+	now := time.Now().UTC().Format(time.RFC3339)
+	expires := time.Now().Add(PasswordResetExpiry).UTC().Format(time.RFC3339)
+
+	sqlDB := db.DB()
+	_, err = sqlDB.ExecContext(ctx,
+		`INSERT INTO password_resets (id, user_id, token_hash, used, expires_at, created_at)
+		 VALUES (?, ?, ?, 0, ?, ?)`,
+		uuid.New().String(), userID, hash, expires, now,
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("RequestPasswordReset: insert: %w", err)
+	}
+	link = appURL + "/reset-password?token=" + rawToken
+	return rawToken, link, nil
+}
+
+// ResetPassword validates the reset token and updates the user's password.
+// Uses bcrypt at cost 12 per PRD 13.5.
+func ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	hash := hashToken(rawToken)
+	now := time.Now().UTC().Format(time.RFC3339)
+	sqlDB := db.DB()
+
+	row := sqlDB.QueryRowContext(ctx,
+		`SELECT id, user_id FROM password_resets WHERE token_hash = ? AND used = 0 AND expires_at > ?`,
+		hash, now,
+	)
+	var resetID, userID string
+	if err := row.Scan(&resetID, &userID); err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("invalid or expired reset link")
+		}
+		return fmt.Errorf("ResetPassword: lookup: %w", err)
+	}
+
+	// Hash the new password
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return fmt.Errorf("ResetPassword: bcrypt: %w", err)
+	}
+
+	// Update the user's password and mark token used — in a transaction
+	tx, err := sqlDB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ResetPassword: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`,
+		string(hashed), now, userID,
+	); err != nil {
+		return fmt.Errorf("ResetPassword: update user: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE password_resets SET used = 1 WHERE id = ?`, resetID,
+	); err != nil {
+		return fmt.Errorf("ResetPassword: mark used: %w", err)
+	}
+	return tx.Commit()
 }
