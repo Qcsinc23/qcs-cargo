@@ -148,6 +148,8 @@ func main() {
 		c.Set("Content-Type", "application/wasm")
 		return c.SendFile("./web/app.wasm", false)
 	})
+	// Serve /web/* (images, etc.) from disk so frontend placeholders at /web/images/... resolve
+	app.Static("/web", "./web")
 	// Static and SPA fallback from embed (do not serve HTML for unknown API paths)
 	app.Get("/*", func(c *fiber.Ctx) error {
 		path := c.Params("*")

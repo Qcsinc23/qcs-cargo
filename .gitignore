@@ -1,6 +1,6 @@
 # Binaries
 qcs-server
-server
+/server
 qcs-migrate
 *.exe
 *.dll
