@@ -1,14 +1,12 @@
-// Minimal service worker: cache-first for key static assets and shell.
-const CACHE = 'qcs-cargo-v1';
+// Minimal service worker: cache-first for public shell assets only.
+const CACHE = 'qcs-cargo-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/app.wasm',
   '/wasm_exec.js',
   '/login',
-  '/login.html',
-  '/dashboard',
-  '/dashboard/index.html'
+  '/login.html'
 ];
 
 self.addEventListener('install', (e) => {
@@ -26,6 +24,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (u.origin !== location.origin || u.pathname.startsWith('/api/')) return;
+  if (
+    u.pathname.startsWith('/dashboard') ||
+    u.pathname.startsWith('/admin') ||
+    u.pathname.startsWith('/warehouse') ||
+    u.pathname.startsWith('/verify')
+  ) {
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => cached || fetch(e.request).then((r) => {
       const clone = r.clone();

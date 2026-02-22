@@ -29,6 +29,26 @@
       const redirectTo = params.get('redirectTo') || '/dashboard';
       const status = document.getElementById('status');
 
+      function withCacheBust(url) {
+        return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+      }
+
+      async function clearLegacyCaches() {
+        try {
+          if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((reg) => reg.unregister()));
+          }
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            const target = keys.filter((k) => k.indexOf('qcs-cargo-') === 0);
+            await Promise.all(target.map((k) => caches.delete(k)));
+          }
+        } catch (_) {
+          // Ignore cache cleanup errors; continue sign-in redirect.
+        }
+      }
+
       if (!token) {
         status.textContent = 'Missing token. Please use the link from your email.';
         return;
@@ -44,8 +64,15 @@
         .then((j) => {
           if (j.data && j.data.access_token) {
             status.textContent = 'Success. Redirecting...';
-            localStorage.setItem('qcs_access_token', j.data.access_token);
-            window.location.href = redirectTo;
+            try {
+              localStorage.setItem('qcs_access_token', j.data.access_token);
+            } catch (_) {
+              status.textContent = 'Could not save sign-in state. Please disable private mode and try again.';
+              return;
+            }
+            clearLegacyCaches().finally(() => {
+              window.location.href = withCacheBust(redirectTo);
+            });
           } else {
             status.textContent = j.error?.message || 'Invalid or expired link.';
           }
