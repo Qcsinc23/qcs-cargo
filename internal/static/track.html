@@ -51,6 +51,7 @@
         </div>
     </nav>
     <main class="max-w-xl mx-auto px-6 py-16">
+        <img src="/web/images/heroes/hero-track.png" alt="Package with a location pin and dotted path line" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
         <h1 class="text-4xl font-bold text-[#0F172A] mb-4">Track Your Shipment</h1>
         <p class="text-slate-600 mb-8">Enter your QCS tracking number (e.g. QCS-2026-001234) or booking confirmation
             code.</p>
@@ -106,6 +107,7 @@
                 if (!r.ok) {
                     result.innerHTML = `
             <div class="bg-amber-50 border border-amber-200 rounded-xl p-6">
+              <img src="/web/images/track/track-empty.png" alt="No packages being tracked - Friendly magnifying glass" class="max-w-[400px] h-auto mx-auto mb-4">
               <h3 class="font-semibold text-amber-800 mb-1">Shipment Not Found</h3>
               <p class="text-amber-700 text-sm">No record found for <span class="mono font-medium">${escHtml(number)}</span>. Check your tracking number and try again, or <a href="/contact" class="underline">contact support</a>.</p>
             </div>`;
