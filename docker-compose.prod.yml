@@ -34,6 +34,7 @@ services:
       - dokploy-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
       - "traefik.http.routers.qcs-cargo-http.rule=Host(`qcs-cargo.com`) || Host(`www.qcs-cargo.com`)"
       - "traefik.http.routers.qcs-cargo-http.entrypoints=web"
       - "traefik.http.routers.qcs-cargo-http.middlewares=qcs-cargo-https-redirect"
