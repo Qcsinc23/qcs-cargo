@@ -73,6 +73,9 @@ func adminDashboard(c *fiber.Ctx) error {
 	})
 }
 
+// adminStorageReport is reserved for admin reports UI.
+//
+//nolint:unused
 func adminStorageReport(c *fiber.Ctx) error {
 	row, err := db.Queries().AdminStorageReport(c.Context())
 	if err != nil {
@@ -91,6 +94,9 @@ func adminStorageReport(c *fiber.Ctx) error {
 	})
 }
 
+// toFloat64 is used by admin report helpers.
+//
+//nolint:unused
 func toFloat64(v interface{}) (float64, bool) {
 	if v == nil {
 		return 0, true
@@ -107,6 +113,9 @@ func toFloat64(v interface{}) (float64, bool) {
 	}
 }
 
+// adminReportsRevenue is reserved for admin reports UI.
+//
+//nolint:unused
 func adminReportsRevenue(c *fiber.Ctx) error {
 	from := c.Query("from", "")
 	to := c.Query("to", "")
@@ -123,6 +132,9 @@ func adminReportsRevenue(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": fiber.Map{"revenue": revenue, "from": from, "to": to}})
 }
 
+// adminReportsShipments is reserved for admin reports UI.
+//
+//nolint:unused
 func adminReportsShipments(c *fiber.Ctx) error {
 	from := c.Query("from", "")
 	to := c.Query("to", "")
@@ -138,6 +150,9 @@ func adminReportsShipments(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": fiber.Map{"count": count, "from": from, "to": to}})
 }
 
+// adminReportsCustomers is reserved for admin reports UI.
+//
+//nolint:unused
 func adminReportsCustomers(c *fiber.Ctx) error {
 	count, err := db.Queries().AdminCustomersCount(c.Context())
 	if err != nil {
@@ -380,7 +395,7 @@ func adminServiceRequestUpdate(c *fiber.Ctx) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	completedBy := sql.NullString{}
 	completedAt := sql.NullString{}
-	status := sr.Status
+	var status string
 	switch body.Action {
 	case "complete":
 		status = "completed"
@@ -438,7 +453,7 @@ func adminUnmatchedPackageUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load package"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	status := body.Action
+	var status string
 	matchedUserID := sql.NullString{}
 	resolutionNotes := sql.NullString{}
 	if body.UserID != nil && *body.UserID != "" {

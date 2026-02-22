@@ -4,69 +4,95 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>How It Works | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <meta name="description" content="Step-by-step process for receiving and shipping your US packages with QCS Cargo." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <header class="bg-[#0F172A] text-white py-4 px-6">
-    <nav class="max-w-6xl mx-auto flex justify-between items-center">
-      <a href="/" class="font-bold text-lg">QCS Cargo</a>
-      <div class="flex gap-6">
-        <a href="/how-it-works" class="opacity-90">How It Works</a>
-        <a href="/about" class="opacity-90">About</a>
-        <a href="/contact" class="opacity-90">Contact</a>
-        <a href="/login" class="opacity-90">Sign In</a>
-        <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free Address</a>
-      </div>
-    </nav>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link active" href="/how-it-works">How It Works</a>
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/destinations">Destinations</a>
+        <a class="nav-link" href="/faq">FAQ</a>
+        <a class="nav-link" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
   </header>
-  <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-    <div class="max-w-6xl mx-auto">
-      <ol class="flex items-center gap-2 text-sm text-slate-600">
-        <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-        <li aria-hidden="true">/</li>
-        <li class="text-[#0F172A] font-medium" aria-current="page">How It Works</li>
-      </ol>
-    </div>
-  </nav>
-  <main class="max-w-4xl mx-auto px-6 py-16">
-    <img src="/web/images/heroes/hero-how-it-works.png" alt="Visual timeline of the shipping journey to the Caribbean" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
-    <h1 class="text-4xl font-bold text-[#0F172A] mb-8">How QCS Cargo Works</h1>
-    <div class="space-y-12">
-      <section>
-        <img src="/web/images/steps/step-get-address.png" alt="Mailbox or locker conveying Get Your Address" class="w-full max-w-[480px] h-auto mx-auto drop-shadow-md mb-4">
-        <h2 class="text-2xl font-semibold text-[#2563EB] mb-4">1. Get Your Address</h2>
-        <p class="text-slate-600">Sign up in 60 seconds and receive your unique US mailing address with a suite code. Use it at any US online store.</p>
-      </section>
-      <section>
-        <img src="/web/images/steps/step-shop-anywhere.png" alt="Laptop or phone showing shopping bags" class="w-full max-w-[480px] h-auto mx-auto drop-shadow-md mb-4">
-        <h2 class="text-2xl font-semibold text-[#2563EB] mb-4">2. Shop Anywhere</h2>
-        <p class="text-slate-600">Shop at Amazon, eBay, Walmart, or any US retailer. Ship your orders to your QCS Cargo address in New Jersey.</p>
-      </section>
-      <section>
-        <img src="/web/images/steps/step-receive-store.png" alt="Warehouse shelf with packages, camera, and scale" class="w-full max-w-[480px] h-auto mx-auto drop-shadow-md mb-4">
-        <h2 class="text-2xl font-semibold text-[#2563EB] mb-4">3. We Receive & Store</h2>
-        <p class="text-slate-600">We receive your packages, photograph and weigh each one, and store them for 30 days free. You get a photo and details in your locker.</p>
-      </section>
-      <section>
-        <img src="/web/images/steps/step-ship-ready.png" alt="Airplane carrying a package towards Caribbean islands" class="w-full max-w-[480px] h-auto mx-auto drop-shadow-md mb-4">
-        <h2 class="text-2xl font-semibold text-[#2563EB] mb-4">4. Ship When Ready</h2>
-        <p class="text-slate-600">Choose which packages to ship, add customs details, pay, and we forward to Guyana, Jamaica, Trinidad & Tobago, Barbados, or Suriname.</p>
-      </section>
-    </div>
-    <div class="mt-12 p-6 bg-white rounded-xl border border-slate-200">
-      <h3 class="font-semibold text-lg mb-4">Quick questions</h3>
-      <p class="text-slate-600"><strong>Is sign up free?</strong> Yes. You get your address and 30 days free storage.</p>
-      <p class="text-slate-600 mt-2"><strong>How long can I store?</strong> 30 days free, then a small daily fee. We’ll remind you before expiry.</p>
-      <p class="text-slate-600 mt-2"><strong>What stores work?</strong> Any US store that ships to a US address.</p>
-    </div>
-    <p class="mt-12"><a href="/register" class="bg-[#F97316] text-white px-6 py-3 rounded-lg font-medium inline-block">Get Your Free US Address</a></p>
+
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">How It Works</span></div>
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">4-Step Flow</p>
+        <h1>From US checkout to Caribbean delivery, without guesswork.</h1>
+        <p class="lead">Use your personal suite at checkout, monitor every intake event, then ship consolidated packages on your schedule.</p>
+        <div class="actions">
+          <a class="btn btn-accent" href="/register">Start in 60 Seconds</a>
+          <a class="btn btn-light" href="/shipping-calculator">Estimate Cost</a>
+        </div>
+      </div>
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/public/hero-services.svg" alt="Workflow cards representing each shipping step" />
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-1">
+      <div class="timeline">
+        <article class="timeline-step">
+          <h3>Step 1: Create your account and get your suite code</h3>
+          <p>Your suite code links all incoming packages directly to your locker.</p>
+          <img class="thumb" src="/web/images/public/step-address.svg" alt="Address assignment step" />
+        </article>
+        <article class="timeline-step">
+          <h3>Step 2: Shop any US store</h3>
+          <p>Use your QCS address at checkout exactly as provided in your account.</p>
+          <img class="thumb" src="/web/images/public/step-shop.svg" alt="US shopping step" />
+        </article>
+        <article class="timeline-step">
+          <h3>Step 3: We receive, inspect, and store</h3>
+          <p>Each package is weighed and photographed. Storage is free for the first 30 days.</p>
+          <img class="thumb" src="/web/images/public/step-warehouse.svg" alt="Warehouse intake step" />
+        </article>
+        <article class="timeline-step">
+          <h3>Step 4: Create shipment and dispatch</h3>
+          <p>Select packages, complete declaration details, pay securely, and track your shipment.</p>
+          <img class="thumb" src="/web/images/public/step-ship.svg" alt="Ship request step" />
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-2">
+      <div class="section-head">
+        <h2>Common questions</h2>
+      </div>
+      <div class="grid-3">
+        <article class="card"><h3>Is sign-up free?</h3><p>Yes. You only pay once you are ready to ship.</p></article>
+        <article class="card"><h3>What stores are supported?</h3><p>Any US store that can deliver to a US address.</p></article>
+        <article class="card"><h3>How long is storage free?</h3><p>30 days free, then daily storage fees apply.</p></article>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <a class="btn btn-primary" href="/faq">Read Full FAQ</a>
+      </div>
+    </section>
   </main>
-  <footer class="bg-[#0F172A] text-white py-8 px-6 mt-16">
-    <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
+
+  <footer class="footer">
+    <div class="shell">
       <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-      <p class="mt-2"><a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy" class="underline">Privacy</a></p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
     </div>
   </footer>
 </body>

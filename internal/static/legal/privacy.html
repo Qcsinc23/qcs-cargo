@@ -1,107 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Privacy Policy | QCS Cargo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-
-        h2 {
-            margin-top: 2rem;
-            font-size: 1.25rem;
-            font-weight: 700
-        }
-
-        p,
-        ul {
-            margin-top: .75rem;
-            color: #475569;
-            font-size: .9rem;
-            line-height: 1.75
-        }
-
-        li {
-            margin-left: 1.5rem;
-            list-style: disc
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy | QCS Cargo</title>
+  <meta name="description" content="How QCS Cargo collects, uses, and protects customer data." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Legal navigation">
+        <a class="nav-link" href="/legal/terms">Terms</a>
+        <a class="nav-link active" href="/legal/privacy">Privacy</a>
+        <a class="nav-link" href="/legal/shipping-policy">Shipping Policy</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg text-sm font-medium">Get Started</a>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li><a href="/legal/terms" class="text-[#2563EB] hover:underline">Legal</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Privacy</li>
-            </ol>
-        </div>
-    </nav>
-    <main class="max-w-3xl mx-auto px-6 py-16">
-        <p class="text-sm text-slate-400 mb-2">Last updated: February 21, 2026</p>
-        <h1 class="text-4xl font-bold mb-6">Privacy Policy</h1>
-        <p>Quiet Craft Solutions Inc. ("QCS Cargo") respects your privacy. This policy explains what data we collect,
-            how we use it, and your rights.</p>
-        <h2>1. Data We Collect</h2>
-        <ul>
-            <li>Account info: name, email, phone</li>
-            <li>Shipping addresses and recipient details</li>
-            <li>Package data: weight, dimensions, photos, tracking numbers</li>
-            <li>Payment data processed via Stripe — we never store card numbers</li>
-            <li>Usage data: login times, browser type, IP address</li>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Privacy</span></div>
+    <section class="section section-card reveal">
+      <p class="eyebrow">Legal</p>
+      <h1 class="page-title" style="font-size:2.2rem;">Privacy Policy</h1>
+      <p class="text-small" style="margin-top:6px;">Last updated: February 21, 2026</p>
+
+      <div class="card" style="margin-top:16px;">
+        <p>Quiet Craft Solutions Inc. ("QCS Cargo") respects your privacy. This policy explains what data we collect, how we use it, and your rights.</p>
+
+        <h3 style="margin-top:14px;">1. Data We Collect</h3>
+        <ul class="inline-list">
+          <li>Account profile details: name, email, and phone</li>
+          <li>Shipping and recipient address data</li>
+          <li>Package metadata: weights, dimensions, images, and tracking references</li>
+          <li>Payment events via Stripe (card numbers are not stored by QCS)</li>
+          <li>Security and usage signals: IP, login events, and browser metadata</li>
         </ul>
-        <h2>2. How We Use Your Data</h2>
-        <ul>
-            <li>To operate our shipping and forwarding services</li>
-            <li>To send shipping notifications and storage alerts</li>
-            <li>To process payments and generate invoices</li>
-            <li>To comply with customs and export regulations</li>
-            <li>To detect and prevent fraud</li>
+
+        <h3 style="margin-top:14px;">2. How We Use Data</h3>
+        <ul class="inline-list">
+          <li>Operate shipment intake, storage, and dispatch workflows</li>
+          <li>Send notifications for arrivals, storage, and shipment updates</li>
+          <li>Process billing and generate invoices</li>
+          <li>Comply with customs, export, and anti-fraud requirements</li>
         </ul>
-        <h2>3. Data Sharing</h2>
-        <p>We share minimal data with: shipping carriers, Stripe (payments), Resend (email), and customs authorities as
-            legally required. We do not sell your data.</p>
-        <h2>4. Data Retention</h2>
-        <p>Account data kept while active. Shipment records kept 7 years for compliance. Request deletion of
-            non-compliance data anytime.</p>
-        <h2>5. Your Rights</h2>
-        <ul>
-            <li>Access: request a copy of your data</li>
-            <li>Correction: update inaccurate profile information</li>
-            <li>Deletion: request account deletion (subject to legal retention)</li>
-            <li>Portability: export shipment history as CSV</li>
+
+        <h3 style="margin-top:14px;">3. Data Sharing</h3>
+        <p>We share only required data with carriers, payment processors, email providers, and customs authorities. We do not sell personal data.</p>
+
+        <h3 style="margin-top:14px;">4. Retention</h3>
+        <p>Account data is retained while active. Shipment records may be retained up to 7 years for legal and tax compliance.</p>
+
+        <h3 style="margin-top:14px;">5. Your Rights</h3>
+        <ul class="inline-list">
+          <li>Request access to your stored data</li>
+          <li>Request correction of inaccurate data</li>
+          <li>Request deletion, subject to legal retention obligations</li>
+          <li>Request export of shipment history</li>
         </ul>
-        <h2>6. Cookies &amp; Security</h2>
-        <p>Essential cookies only (httpOnly, secure) for authentication. No advertising cookies. HTTPS everywhere,
-            bcrypt password hashing, JWT session tokens.</p>
-        <h2>7. Contact</h2>
-        <p>Privacy questions: <a href="/contact" class="text-[#2563EB]">Contact Us</a></p>
-    </main>
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16 text-center text-slate-300 text-sm">
-        <p>QCS Cargo · <a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/shipping-policy"
-                class="underline">Shipping Policy</a></p>
-    </footer>
+
+        <h3 style="margin-top:14px;">6. Security and Cookies</h3>
+        <p>We use secure cookies for authentication and maintain encrypted transport, access controls, and standard account security protections.</p>
+
+        <h3 style="margin-top:14px;">7. Contact</h3>
+        <p>For privacy questions, <a href="/contact">contact us</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
 </body>
-
 </html>

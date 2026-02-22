@@ -1,102 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Terms of Service | QCS Cargo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-
-        h2 {
-            margin-top: 2rem;
-            font-size: 1.25rem;
-            font-weight: 700
-        }
-
-        p,
-        ul {
-            margin-top: .75rem;
-            color: #475569;
-            font-size: .9rem;
-            line-height: 1.75
-        }
-
-        li {
-            margin-left: 1.5rem;
-            list-style: disc
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terms of Service | QCS Cargo</title>
+  <meta name="description" content="Terms governing use of QCS Cargo services." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Legal navigation">
+        <a class="nav-link active" href="/legal/terms">Terms</a>
+        <a class="nav-link" href="/legal/privacy">Privacy</a>
+        <a class="nav-link" href="/legal/shipping-policy">Shipping Policy</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg text-sm font-medium">Get Started</a>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li><a href="/legal/terms" class="text-[#2563EB] hover:underline">Legal</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Terms</li>
-            </ol>
-        </div>
-    </nav>
-    <main class="max-w-3xl mx-auto px-6 py-16">
-        <p class="text-sm text-slate-400 mb-2">Last updated: February 21, 2026</p>
-        <h1 class="text-4xl font-bold mb-6">Terms of Service</h1>
-        <p>These Terms govern your use of QCS Cargo services operated by Quiet Craft Solutions Inc. ("QCS"). By creating
-            an account you agree to these terms.</p>
-        <h2>1. Services</h2>
-        <p>QCS provides parcel forwarding and air freight services between the United States and Caribbean destinations.
-            We receive packages at our NJ warehouse, store them per our storage policy, and ship upon request.</p>
-        <h2>2. Account Registration</h2>
-        <p>You must provide accurate information. Your suite code (QCS-XXXXXX) is personal and must be included in every
-            shipment. You are responsible for all activity under your account.</p>
-        <h2>3. Prohibited Items</h2>
-        <p>You agree not to ship any <a href="/prohibited-items" class="text-[#2563EB]">prohibited items</a>. We reserve
-            the right to inspect, hold, and dispose of prohibited items at your expense.</p>
-        <h2>4. Storage Policy</h2>
-        <p>30 days free from arrival. After: $1.50/package/day. Maximum 90 days before mandatory disposal with advance
-            notice.</p>
-        <h2>5. Shipping &amp; Pricing</h2>
-        <p>Rates based on billable weight (max of actual or dimensional). Minimum $10/shipment. Customs clearance $35.
-            All prices in USD.</p>
-        <h2>6. Liability</h2>
-        <p>QCS is not liable for customs delays, damage to undeclared fragile items, loss exceeding declared value, or
-            detention due to prohibited items. Maximum liability limited to declared value.</p>
-        <h2>7. Insurance</h2>
-        <p>Optional: declared_value ÷ 100 USD per shipment. Claims within 14 days of expected delivery.</p>
-        <h2>8. Customs</h2>
-        <p>You are responsible for accurate customs declarations. False declarations violate law and may result in
-            fines.</p>
-        <h2>9. Account Termination</h2>
-        <p>We may suspend/terminate accounts violating these terms. Packages held 14 days for retrieval before disposal.
-        </p>
-        <h2>10. Governing Law</h2>
-        <p>Governed by New Jersey law. Disputes resolved by binding arbitration in Hudson County, NJ.</p>
-        <p class="mt-8">Questions? <a href="/contact" class="text-[#2563EB]">Contact us</a></p>
-    </main>
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16 text-center text-slate-300 text-sm">
-        <p>QCS Cargo · <a href="/legal/privacy" class="underline">Privacy</a> · <a href="/legal/shipping-policy"
-                class="underline">Shipping Policy</a></p>
-    </footer>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Terms</span></div>
+    <section class="section section-card reveal">
+      <p class="eyebrow">Legal</p>
+      <h1 class="page-title" style="font-size:2.2rem;">Terms of Service</h1>
+      <p class="text-small" style="margin-top:6px;">Last updated: February 21, 2026</p>
+
+      <div class="card" style="margin-top:16px;">
+        <p>These Terms govern your use of QCS Cargo services operated by Quiet Craft Solutions Inc. ("QCS"). By creating an account, you agree to these terms.</p>
+
+        <h3 style="margin-top:14px;">1. Services</h3>
+        <p>QCS provides parcel forwarding and air freight services between the United States and Caribbean destinations. We receive packages at our NJ warehouse, store them per policy, and ship upon request.</p>
+
+        <h3 style="margin-top:14px;">2. Account Registration</h3>
+        <p>You must provide accurate information. Your suite code is personal and must be included in every shipment. You are responsible for activity under your account.</p>
+
+        <h3 style="margin-top:14px;">3. Prohibited Items</h3>
+        <p>You agree not to ship any <a href="/prohibited-items">prohibited items</a>. We may inspect, hold, and dispose of prohibited items at your expense.</p>
+
+        <h3 style="margin-top:14px;">4. Storage Policy</h3>
+        <p>30 days free from arrival. After that: $1.50 per package per day. Maximum 90 days before mandatory disposal with notice.</p>
+
+        <h3 style="margin-top:14px;">5. Shipping & Pricing</h3>
+        <p>Rates are based on billable weight (higher of actual or dimensional). Minimum $10 per shipment. Customs clearance is $35. All prices are in USD.</p>
+
+        <h3 style="margin-top:14px;">6. Liability</h3>
+        <p>QCS is not liable for customs delays, undeclared fragile damage, loss exceeding declared value, or detention due to prohibited items. Maximum liability is limited to declared value.</p>
+
+        <h3 style="margin-top:14px;">7. Insurance</h3>
+        <p>Optional insurance rate: declared value / 100 USD per shipment. Claims must be filed within 14 days of expected delivery.</p>
+
+        <h3 style="margin-top:14px;">8. Customs</h3>
+        <p>You are responsible for accurate customs declarations. False declarations may result in fines and legal penalties.</p>
+
+        <h3 style="margin-top:14px;">9. Account Termination</h3>
+        <p>We may suspend or terminate accounts that violate these terms. Held packages may be retained for 14 days for retrieval before disposal.</p>
+
+        <h3 style="margin-top:14px;">10. Governing Law</h3>
+        <p>These terms are governed by New Jersey law. Disputes are resolved by binding arbitration in Hudson County, NJ.</p>
+
+        <p style="margin-top:14px;">Questions? <a href="/contact">Contact us</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
 </body>
-
 </html>

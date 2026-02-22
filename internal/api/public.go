@@ -137,7 +137,7 @@ func shippingCalculator(c *fiber.Ctx) error {
 
 	parseF := func(s string) float64 {
 		var v float64
-		fmt.Sscanf(s, "%f", &v)
+		_, _ = fmt.Sscanf(s, "%f", &v)
 		return v
 	}
 

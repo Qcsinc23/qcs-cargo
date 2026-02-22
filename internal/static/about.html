@@ -3,46 +3,96 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>About Us | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <title>About QCS Cargo</title>
+  <meta name="description" content="Learn about QCS Cargo and our mission to simplify shipping from the US to the Caribbean." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <header class="bg-[#0F172A] text-white py-4 px-6">
-    <nav class="max-w-6xl mx-auto flex justify-between items-center">
-      <a href="/" class="font-bold text-lg">QCS Cargo</a>
-      <div class="flex gap-6">
-        <a href="/how-it-works">How It Works</a>
-        <a href="/about">About</a>
-        <a href="/contact">Contact</a>
-        <a href="/login">Sign In</a>
-        <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free Address</a>
-      </div>
-    </nav>
-  </header>
-  <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-    <div class="max-w-6xl mx-auto">
-      <ol class="flex items-center gap-2 text-sm text-slate-600">
-        <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-        <li aria-hidden="true">/</li>
-        <li class="text-[#0F172A] font-medium" aria-current="page">About</li>
-      </ol>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/how-it-works">How It Works</a>
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/destinations">Destinations</a>
+        <a class="nav-link" href="/faq">FAQ</a>
+        <a class="nav-link active" href="/about">About</a>
+        <a class="nav-link" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
     </div>
-  </nav>
-  <main class="max-w-4xl mx-auto px-6 py-16">
-    <img src="/web/images/heroes/hero-about.png" alt="Warehouse staff organizing packages" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
-    <h1 class="text-4xl font-bold text-[#0F172A] mb-8">About QCS Cargo</h1>
-    <p class="text-lg text-slate-600 mb-6">QCS Cargo (Quiet Craft Solutions Cargo) connects the United States to the Caribbean with parcel forwarding and white-glove air freight. We give you a personal US address so you can shop any US store; we receive, store, and forward your packages to Guyana, Jamaica, Trinidad & Tobago, Barbados, and Suriname.</p>
-    <p class="text-slate-600 mb-6">TSA licensed and fully insured. Based in Kearny, New Jersey.</p>
-    <img src="/web/images/about/about-mission.png" alt="Globe with US and Caribbean highlighted" class="w-full max-w-[600px] h-auto mx-auto rounded-xl shadow-md mb-8">
-    <img src="/web/images/about/about-team.png" alt="Diverse people working together" class="w-full max-w-[800px] h-auto mx-auto rounded-xl shadow-md mb-8">
-    <p><a href="/contact" class="text-[#2563EB] font-medium">Contact us</a></p>
+  </header>
+
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">About</span></div>
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">Who We Are</p>
+        <h1>A practical shipping partner connecting the US and Caribbean.</h1>
+        <p class="lead">QCS Cargo helps individuals and businesses buy from US stores and deliver to Caribbean destinations with reliable logistics, clear rates, and responsive support.</p>
+        <div class="pill-row">
+          <span class="pill">TSA Licensed</span>
+          <span class="pill">Fully Insured</span>
+          <span class="pill">Based in New Jersey</span>
+        </div>
+      </div>
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/public/hero-about.svg" alt="QCS Cargo operations and support illustration" />
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-1">
+      <div class="section-head">
+        <h2>What customers rely on us for</h2>
+      </div>
+      <div class="grid-3">
+        <article class="card">
+          <h3>Operational consistency</h3>
+          <p>Structured intake, weight verification, and clear shipment status updates.</p>
+        </article>
+        <article class="card">
+          <h3>Transparent pricing</h3>
+          <p>No monthly membership cost. You pay for shipping and selected services only.</p>
+        </article>
+        <article class="card">
+          <h3>Support that responds</h3>
+          <p>Direct help by phone, email, or WhatsApp during business hours.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-2">
+      <div class="grid-2">
+        <article class="card">
+          <h3>Mission</h3>
+          <p>Make international forwarding simple, predictable, and trustworthy for every shipment.</p>
+        </article>
+        <article class="card">
+          <h3>Coverage</h3>
+          <p>Guyana, Jamaica, Trinidad & Tobago, Barbados, and Suriname with a clear delivery workflow.</p>
+        </article>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <a class="btn btn-primary" href="/contact">Talk to Our Team</a>
+        <a class="btn btn-light" href="/how-it-works">See the Process</a>
+      </div>
+    </section>
   </main>
-  <footer class="bg-[#0F172A] text-white py-8 px-6 mt-16">
-    <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
+
+  <footer class="footer">
+    <div class="shell">
       <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-      <p class="mt-2"><a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy" class="underline">Privacy</a></p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
     </div>
   </footer>
 </body>

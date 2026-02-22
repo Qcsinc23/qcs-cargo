@@ -15,7 +15,8 @@
 2. Create `.env` from `.env.example` and set production values:
    - `JWT_SECRET` — long random string (e.g. `openssl rand -base64 32`)
    - `APP_URL=https://qcs-cargo.com`
-   - `RESEND_API_KEY`, `FROM_EMAIL`, `STRIPE_*` as needed
+   - `RESEND_API_KEY` — required for magic-link and contact-form emails ([resend.com](https://resend.com) API key). Verify the sending domain in Resend and set `FROM_EMAIL` (e.g. `noreply@qcs-cargo.com`).
+   - `STRIPE_*` as needed
 
 ## Deploy steps
 
@@ -51,10 +52,16 @@
    - https://qcs-cargo.com/api/v1/health → `{"status":"ok",...}`
    - https://qcs-cargo.com/ → home page
 
+## Traefik file provider (this server)
+
+On this host, Traefik also loads a **file** config at `/etc/dokploy/traefik/dynamic/qcs-cargo.yml` that routes `qcs-cargo.com` / `www.qcs-cargo.com` to the service. That file was updated to point to `http://qcs_cargo:8080` (replacing the old `qcs_web:3000`). If you deploy to a fresh server with Dokploy/Traefik, either add a similar file or rely only on the Docker labels in `docker-compose.prod.yml` (and ensure no conflicting file exists).
+
 ## Rollback
 
 To revert to the old app:
 ```bash
  cd /opt/qcs-cargo && docker compose -f docker-compose.prod.yml down
+ # Restore Traefik file so it points to v2 again:
+ sudo cp /etc/dokploy/traefik/dynamic/qcs-cargo.yml.bak /etc/dokploy/traefik/dynamic/qcs-cargo.yml
  cd /root/qcs-cargo-v2 && docker compose -f docker-compose.prod.yml up -d
 ```

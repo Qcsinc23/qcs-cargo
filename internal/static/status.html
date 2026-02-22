@@ -1,150 +1,111 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>System Status | QCS Cargo</title>
-    <meta name="description" content="Real-time status of QCS Cargo services and systems." />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>System Status | QCS Cargo</title>
+  <meta name="description" content="Real-time status for QCS Cargo systems." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/track">Track</a>
+        <a class="nav-link" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <div class="flex flex-wrap gap-6 text-sm">
-                <a href="/how-it-works" class="opacity-90 hover:opacity-100">How It Works</a>
-                <a href="/services" class="opacity-90 hover:opacity-100">Services</a>
-                <a href="/pricing" class="opacity-90 hover:opacity-100">Pricing</a>
-                <a href="/contact" class="opacity-90 hover:opacity-100">Contact</a>
-                <a href="/login" class="opacity-90 hover:opacity-100">Sign In</a>
-                <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free
-                    Address</a>
-            </div>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Status</li>
-            </ol>
-        </div>
-    </nav>
-    <main class="max-w-2xl mx-auto px-6 py-16">
-        <h1 class="text-4xl font-bold text-[#0F172A] mb-2">System Status</h1>
-        <p class="text-slate-500 text-sm mb-10">Last updated: <span id="last-updated">—</span></p>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Status</span></div>
+    <section class="section section-card reveal">
+      <div class="section-head">
+        <h1 class="page-title">System status</h1>
+        <p>Last updated: <span id="last-updated" class="text-mono">--</span></p>
+      </div>
+      <article id="overall-banner" class="notice notice-info">
+        <p id="overall-status"><strong>Checking status...</strong></p>
+        <p id="overall-message">Please wait.</p>
+      </article>
+      <div class="grid-2" id="services-list" style="margin-top:14px;">
+        <article class="card"><h3>API</h3><p id="svc-api" class="status-line"><span class="dot unk"></span>Checking...</p></article>
+        <article class="card"><h3>Database</h3><p id="svc-db" class="status-line"><span class="dot unk"></span>Checking...</p></article>
+        <article class="card"><h3>Email Delivery</h3><p id="svc-email" class="status-line"><span class="dot unk"></span>Checking...</p></article>
+        <article class="card"><h3>Payment Processing</h3><p id="svc-payment" class="status-line"><span class="dot unk"></span>Checking...</p></article>
+      </div>
+    </section>
+  </main>
 
-        <!-- Overall Banner -->
-        <div id="overall-banner" class="rounded-xl p-5 flex items-center gap-4 mb-10 bg-slate-100">
-            <span id="overall-dot" class="w-4 h-4 rounded-full bg-slate-400 flex-shrink-0"></span>
-            <div>
-                <p id="overall-status" class="font-semibold text-lg">Checking status…</p>
-                <p id="overall-message" class="text-sm text-slate-600"></p>
-            </div>
-        </div>
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
 
-        <!-- Individual Services -->
-        <section>
-            <h2 class="text-lg font-semibold mb-4">Services</h2>
-            <div class="space-y-3" id="services-list">
-                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
-                    <span class="font-medium">API (backend)</span>
-                    <span id="svc-api" class="text-sm font-medium text-slate-400">Checking…</span>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
-                    <span class="font-medium">Database</span>
-                    <span id="svc-db" class="text-sm font-medium text-slate-400">Checking…</span>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
-                    <span class="font-medium">Email Delivery</span>
-                    <span id="svc-email" class="text-sm font-medium text-slate-400">Checking…</span>
-                </div>
-                <div class="bg-white border border-slate-200 rounded-xl px-6 py-4 flex justify-between items-center">
-                    <span class="font-medium">Payment Processing</span>
-                    <span id="svc-payment" class="text-sm font-medium text-slate-400">Checking…</span>
-                </div>
-            </div>
-        </section>
+  <script>
+    async function loadStatus() {
+      const banner = document.getElementById('overall-banner');
+      const statusEl = document.getElementById('overall-status');
+      const msgEl = document.getElementById('overall-message');
+      document.getElementById('last-updated').textContent = new Date().toLocaleString();
+      try {
+        const r = await fetch('/api/v1/status');
+        const j = await r.json();
+        const s = j.data?.status || 'unknown';
 
-        <p class="text-center text-slate-500 text-sm mt-12">
-            Experiencing an issue? <a href="/contact" class="text-[#2563EB]">Contact support</a>
-        </p>
-    </main>
-
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16">
-        <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
-            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-        </div>
-    </footer>
-
-    <script>
-        async function loadStatus() {
-            const banner = document.getElementById('overall-banner');
-            const dot = document.getElementById('overall-dot');
-            const statusEl = document.getElementById('overall-status');
-            const msgEl = document.getElementById('overall-message');
-            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
-            try {
-                const r = await fetch('/api/v1/status');
-                const j = await r.json();
-                const s = j.data?.status || 'unknown';
-                if (s === 'operational') {
-                    banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-emerald-50 border border-emerald-200';
-                    dot.className = 'w-4 h-4 rounded-full bg-emerald-500 flex-shrink-0';
-                    statusEl.textContent = 'All Systems Operational';
-                    msgEl.textContent = j.data?.message || '';
-                } else {
-                    banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-amber-50 border border-amber-200';
-                    dot.className = 'w-4 h-4 rounded-full bg-amber-500 flex-shrink-0';
-                    statusEl.textContent = 'Degraded Performance';
-                    msgEl.textContent = j.data?.message || 'Some services may be affected.';
-                }
-                // Individual services from health
-                const h = await fetch('/api/v1/health');
-                const hj = await h.json();
-                setService('svc-api', h.ok ? 'operational' : 'degraded');
-                setService('svc-db', hj.db === 'ok' ? 'operational' : 'degraded');
-                setService('svc-email', 'operational'); // Checked via API status
-                setService('svc-payment', 'operational'); // External service
-            } catch (e) {
-                banner.className = 'rounded-xl p-5 flex items-center gap-4 mb-10 bg-red-50 border border-red-200';
-                dot.className = 'w-4 h-4 rounded-full bg-red-500 flex-shrink-0';
-                statusEl.textContent = 'Service Disruption';
-                msgEl.textContent = 'Unable to reach status endpoint. Our team has been notified.';
-                ['svc-api', 'svc-db', 'svc-email', 'svc-payment'].forEach(id => setService(id, 'unknown'));
-            }
+        if (s === 'operational') {
+          banner.className = 'notice notice-info';
+          statusEl.innerHTML = '<strong>All systems operational</strong>';
+          msgEl.textContent = j.data?.message || 'No active incidents.';
+        } else {
+          banner.className = 'notice notice-warn';
+          statusEl.innerHTML = '<strong>Degraded performance</strong>';
+          msgEl.textContent = j.data?.message || 'Some services may be affected.';
         }
-        function setService(id, status) {
-            const el = document.getElementById(id);
-            if (!el) return;
-            const map = {
-                operational: { text: '✓ Operational', cls: 'text-emerald-600' },
-                degraded: { text: '⚠ Degraded', cls: 'text-amber-600' },
-                down: { text: '✕ Down', cls: 'text-red-600' },
-                unknown: { text: '? Unknown', cls: 'text-slate-400' }
-            };
-            const m = map[status] || map.unknown;
-            el.textContent = m.text;
-            el.className = 'text-sm font-medium ' + m.cls;
-        }
-        loadStatus();
-    </script>
+
+        const h = await fetch('/api/v1/health');
+        const hj = await h.json();
+        setService('svc-api', h.ok ? 'operational' : 'degraded');
+        setService('svc-db', hj.db === 'ok' ? 'operational' : 'degraded');
+        setService('svc-email', 'operational');
+        setService('svc-payment', 'operational');
+      } catch (e) {
+        banner.className = 'notice notice-danger';
+        statusEl.innerHTML = '<strong>Service disruption</strong>';
+        msgEl.textContent = 'Unable to reach status endpoints. Please try again shortly.';
+        ['svc-api', 'svc-db', 'svc-email', 'svc-payment'].forEach((id) => setService(id, 'unknown'));
+      }
+    }
+
+    function setService(id, status) {
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      const map = {
+        operational: ['ok', 'Operational'],
+        degraded: ['warn', 'Degraded'],
+        down: ['err', 'Down'],
+        unknown: ['unk', 'Unknown'],
+      };
+      const entry = map[status] || map.unknown;
+      el.innerHTML = '<span class="dot ' + entry[0] + '"></span>' + entry[1];
+    }
+
+    loadStatus();
+  </script>
 </body>
-
 </html>

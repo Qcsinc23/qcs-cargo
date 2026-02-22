@@ -1,195 +1,170 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shipping Calculator | QCS Cargo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shipping Calculator | QCS Cargo</title>
+  <meta name="description" content="Estimate shipping cost with destination, weight, dimensions, and service level." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/destinations">Destinations</a>
+        <a class="nav-link" href="/track">Track</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <div class="flex flex-wrap gap-6 text-sm">
-                <a href="/services" class="opacity-90 hover:opacity-100">Services</a>
-                <a href="/pricing" class="opacity-90 hover:opacity-100">Pricing</a>
-                <a href="/login" class="opacity-90 hover:opacity-100">Sign In</a>
-                <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free
-                    Address</a>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Shipping Calculator</span></div>
+
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">Cost Estimate</p>
+        <h1>Estimate your shipping total before checkout.</h1>
+        <p class="lead">Enter weight, destination, and dimensions to preview billable weight and estimated cost.</p>
+      </div>
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/public/hero-calculator.svg" alt="Calculator and shipping estimate interface" />
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-1">
+      <div class="grid-2">
+        <form id="calc-form" class="card" onsubmit="return false;">
+          <div class="form-field">
+            <label for="dest">Destination</label>
+            <select id="dest" required>
+              <option value="">Select destination...</option>
+              <option value="guyana">Guyana - $3.50/lb</option>
+              <option value="jamaica">Jamaica - $3.75/lb</option>
+              <option value="trinidad">Trinidad & Tobago - $3.50/lb</option>
+              <option value="barbados">Barbados - $4.00/lb</option>
+              <option value="suriname">Suriname - $4.25/lb</option>
+            </select>
+          </div>
+
+          <div class="form-field" style="margin-top:10px;">
+            <label>Service level</label>
+            <div class="radio-grid">
+              <label><input type="radio" name="service" value="standard" checked />Standard</label>
+              <label><input type="radio" name="service" value="express" />Express</label>
+              <label><input type="radio" name="service" value="door_to_door" />Door-to-Door</label>
             </div>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Shipping Calculator</li>
-            </ol>
-        </div>
-    </nav>
-    <main class="max-w-5xl mx-auto px-6 py-16">
-        <img src="/web/images/heroes/hero-calculator.png" alt="Scale, ruler, and calculator arranged together" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
-        <h1 class="text-4xl font-bold mb-4">Shipping Calculator</h1>
-        <p class="text-slate-600 mb-10">Get an instant estimate before you ship.</p>
-        <div class="grid md:grid-cols-2 gap-8">
-            <div class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                <h2 class="text-xl font-bold mb-6">Package Details</h2>
-                <form id="calc-form" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Destination</label>
-                        <select id="dest"
-                            class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">Select destination…</option>
-                            <option value="guyana">🇬🇾 Guyana — $3.50/lb</option>
-                            <option value="jamaica">🇯🇲 Jamaica — $3.75/lb</option>
-                            <option value="trinidad">🇹🇹 Trinidad & Tobago — $3.50/lb</option>
-                            <option value="barbados">🇧🇧 Barbados — $4.00/lb</option>
-                            <option value="suriname">🇸🇷 Suriname — $4.25/lb</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Service Type</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <label
-                                class="border rounded-lg p-3 text-center cursor-pointer text-sm has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                                <input type="radio" name="service" value="standard" class="sr-only" checked>Standard
-                            </label>
-                            <label
-                                class="border rounded-lg p-3 text-center cursor-pointer text-sm has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                                <input type="radio" name="service" value="express" class="sr-only">Express
-                            </label>
-                            <label
-                                class="border rounded-lg p-3 text-center cursor-pointer text-sm has-[:checked]:border-blue-500 has-[:checked]:bg-blue-50">
-                                <input type="radio" name="service" value="door_to_door" class="sr-only">Door-to-Door
-                            </label>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Actual Weight (lbs)</label>
-                        <input id="weight" type="number" min="0.1" max="500" step="0.1" placeholder="0.0"
-                            class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div class="grid grid-cols-3 gap-3">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Length (in)</label>
-                            <input id="len" type="number" min="1" max="100" step="0.1" placeholder="0"
-                                class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Width (in)</label>
-                            <input id="wid" type="number" min="1" max="100" step="0.1" placeholder="0"
-                                class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-700 mb-1">Height (in)</label>
-                            <input id="hgt" type="number" min="1" max="100" step="0.1" placeholder="0"
-                                class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-1">Declared Value (USD,
-                            optional)</label>
-                        <input id="value" type="number" min="0" step="1" placeholder="0"
-                            class="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <input id="insurance" type="checkbox" class="rounded border-slate-300">
-                        <label for="insurance" class="text-sm text-slate-700">Add insurance (declared value /
-                            100)</label>
-                    </div>
-                    <button type="button" onclick="calculate()"
-                        class="w-full bg-[#2563EB] text-white h-11 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                        Calculate
-                    </button>
-                </form>
+          </div>
+
+          <div class="form-grid" style="margin-top:10px;">
+            <div class="form-field">
+              <label for="weight">Weight (lbs)</label>
+              <input id="weight" type="number" min="0.1" step="0.1" required />
             </div>
-            <div>
-                <div id="result" class="hidden bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-                    <h2 class="text-xl font-bold mb-6">Cost Estimate</h2>
-                    <div class="space-y-3 text-sm" id="breakdown"></div>
-                    <div class="border-t border-slate-200 mt-4 pt-4 flex justify-between font-bold text-lg">
-                        <span>Estimated Total</span>
-                        <span id="total" class="text-[#2563EB]"></span>
-                    </div>
-                    <p class="text-xs text-slate-400 mt-3">Final weight confirmed at our warehouse. Minimum charge: $10.
-                        Customs clearance ($35) billed separately.</p>
-                    <a href="/register"
-                        class="mt-4 block text-center bg-[#F97316] text-white h-10 rounded-lg font-medium flex items-center justify-center hover:bg-orange-600 transition-colors">Get
-                        Started — It's Free</a>
-                </div>
-                <div id="placeholder"
-                    class="bg-slate-50 border border-slate-200 rounded-xl p-8 text-center text-slate-400">
-                    <svg class="w-12 h-12 mx-auto mb-3 text-slate-300" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                            d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                    </svg>
-                    <p>Fill in the form to see your estimate</p>
-                </div>
+            <div class="form-field">
+              <label for="value">Declared value (USD)</label>
+              <input id="value" type="number" min="0" step="1" />
             </div>
+          </div>
+
+          <div class="form-grid" style="margin-top:10px;">
+            <div class="form-field"><label for="len">Length (in)</label><input id="len" type="number" min="0" step="0.1" /></div>
+            <div class="form-field"><label for="wid">Width (in)</label><input id="wid" type="number" min="0" step="0.1" /></div>
+            <div class="form-field"><label for="hgt">Height (in)</label><input id="hgt" type="number" min="0" step="0.1" /></div>
+          </div>
+
+          <div class="form-field" style="margin-top:10px;">
+            <label><input id="insurance" type="checkbox" style="width:auto; min-height:auto; margin-right:8px;" />Add insurance (declared value / 100)</label>
+          </div>
+
+          <button type="button" class="btn btn-primary" onclick="calculate()" style="margin-top:12px; width:100%;">Calculate</button>
+        </form>
+
+        <div class="card">
+          <h2 style="font-size:1.2rem; margin-bottom:10px;">Estimate result</h2>
+          <div id="placeholder" class="text-small">Fill in the form and run the estimate.</div>
+          <div id="result" style="display:none;">
+            <div id="breakdown" class="text-small" style="display:grid; gap:8px;"></div>
+            <div style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px; display:flex; justify-content:space-between; font-weight:700;">
+              <span>Estimated total</span>
+              <span id="total"></span>
+            </div>
+            <p class="text-small" style="margin-top:10px;">Final charge is confirmed after intake. Customs clearance fee ($35) is separate.</p>
+            <a href="/register" class="btn btn-accent" style="margin-top:10px; width:100%;">Get Free Address</a>
+          </div>
         </div>
-    </main>
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16">
-        <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
-            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-        </div>
-    </footer>
-    <script>
-        const rates = { guyana: 3.50, jamaica: 3.75, trinidad: 3.50, barbados: 4.00, suriname: 4.25 };
-        function calculate() {
-            const dest = document.getElementById('dest').value;
-            const weight = parseFloat(document.getElementById('weight').value) || 0;
-            const L = parseFloat(document.getElementById('len').value) || 0;
-            const W = parseFloat(document.getElementById('wid').value) || 0;
-            const H = parseFloat(document.getElementById('hgt').value) || 0;
-            const val = parseFloat(document.getElementById('value').value) || 0;
-            const insure = document.getElementById('insurance').checked;
-            const svc = document.querySelector('input[name=service]:checked').value;
-            if (!dest || weight <= 0) { alert('Please select a destination and enter weight.'); return; }
-            const dimWeight = L && W && H ? (L * W * H) / 166 : 0;
-            const billable = Math.max(weight, dimWeight);
-            const rate = rates[dest];
-            let base = billable * rate;
-            let surcharge = 0;
-            let d2d = 0;
-            if (svc === 'express') surcharge = base * 0.25;
-            if (svc === 'door_to_door') d2d = 25;
-            const insurance = insure ? val / 100 : 0;
-            let total = base + surcharge + d2d + insurance;
-            total = Math.max(total, 10);
-            document.getElementById('result').classList.remove('hidden');
-            document.getElementById('placeholder').classList.add('hidden');
-            document.getElementById('total').textContent = '$' + total.toFixed(2);
-            const rows = [
-                ['Actual weight', weight.toFixed(1) + ' lbs'],
-                dimWeight > 0 ? ['Dimensional weight', dimWeight.toFixed(1) + ' lbs'] : null,
-                ['Billable weight', billable.toFixed(1) + ' lbs'],
-                ['Base cost', '$' + base.toFixed(2)],
-                surcharge > 0 ? ['Express surcharge (+25%)', '$' + surcharge.toFixed(2)] : null,
-                d2d > 0 ? ['Door-to-door fee', '$' + d2d.toFixed(2)] : null,
-                insurance > 0 ? ['Insurance', '$' + insurance.toFixed(2)] : null,
-            ].filter(Boolean);
-            document.getElementById('breakdown').innerHTML = rows.map(([k, v]) =>
-                `<div class="flex justify-between text-slate-600"><span>${k}</span><span class="font-medium">${v}</span></div>`
-            ).join('');
-        }
-    </script>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    const rates = { guyana: 3.50, jamaica: 3.75, trinidad: 3.50, barbados: 4.00, suriname: 4.25 };
+
+    function calculate() {
+      const dest = document.getElementById('dest').value;
+      const weight = parseFloat(document.getElementById('weight').value) || 0;
+      const L = parseFloat(document.getElementById('len').value) || 0;
+      const W = parseFloat(document.getElementById('wid').value) || 0;
+      const H = parseFloat(document.getElementById('hgt').value) || 0;
+      const val = parseFloat(document.getElementById('value').value) || 0;
+      const insure = document.getElementById('insurance').checked;
+      const svc = document.querySelector('input[name=service]:checked').value;
+
+      if (!dest || weight <= 0) {
+        alert('Please select a destination and enter weight.');
+        return;
+      }
+
+      const dimWeight = L && W && H ? (L * W * H) / 166 : 0;
+      const billable = Math.max(weight, dimWeight);
+      const rate = rates[dest];
+      let base = billable * rate;
+      let surcharge = 0;
+      let d2d = 0;
+
+      if (svc === 'express') surcharge = base * 0.25;
+      if (svc === 'door_to_door') d2d = 25;
+
+      const insurance = insure ? val / 100 : 0;
+      let total = base + surcharge + d2d + insurance;
+      total = Math.max(total, 10);
+
+      const rows = [
+        ['Actual weight', weight.toFixed(1) + ' lbs'],
+        dimWeight > 0 ? ['Dimensional weight', dimWeight.toFixed(1) + ' lbs'] : null,
+        ['Billable weight', billable.toFixed(1) + ' lbs'],
+        ['Base cost', '$' + base.toFixed(2)],
+        surcharge > 0 ? ['Express surcharge (+25%)', '$' + surcharge.toFixed(2)] : null,
+        d2d > 0 ? ['Door-to-door fee', '$' + d2d.toFixed(2)] : null,
+        insurance > 0 ? ['Insurance', '$' + insurance.toFixed(2)] : null,
+      ].filter(Boolean);
+
+      document.getElementById('placeholder').style.display = 'none';
+      document.getElementById('result').style.display = 'block';
+      document.getElementById('total').textContent = '$' + total.toFixed(2);
+      document.getElementById('breakdown').innerHTML = rows
+        .map(([k, v]) => `<div style="display:flex; justify-content:space-between;"><span>${k}</span><strong>${v}</strong></div>`)
+        .join('');
+    }
+  </script>
 </body>
-
 </html>

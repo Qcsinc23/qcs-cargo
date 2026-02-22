@@ -1,111 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Shipping to Jamaica | QCS Cargo</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2,
-        h3 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shipping to Jamaica | QCS Cargo</title>
+  <meta name="description" content="Shipping rates and service details for Jamaica with QCS Cargo." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/destinations">All Destinations</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/track">Track</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <div class="flex flex-wrap gap-6 text-sm">
-                <a href="/destinations" class="opacity-90">All Destinations</a>
-                <a href="/pricing" class="opacity-90">Pricing</a>
-                <a href="/login" class="opacity-90">Sign In</a>
-                <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get Free
-                    Address</a>
-            </div>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li><a href="/destinations" class="text-[#2563EB] hover:underline">Destinations</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Jamaica</li>
-            </ol>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><a href="/destinations">Destinations</a><span>/</span><span class="current">Jamaica</span></div>
+
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">Destination Route</p>
+        <h1>Shipping to Jamaica</h1>
+        <p class="lead">Reliable weekly movement with customs-ready workflow and optional door-to-door delivery.</p>
+        <div class="pill-row">
+          <span class="pill">Standard: $3.75/lb</span>
+          <span class="pill">Express: $4.69/lb</span>
+          <span class="pill">Transit: 3-5 days</span>
         </div>
-    </nav>
-    <main class="max-w-4xl mx-auto px-6 py-16">
-        <a href="/destinations" class="text-[#2563EB] text-sm mb-6 inline-block">← All Destinations</a>
-        <img src="/web/images/destinations/dest-jamaica.png" alt="Blue Mountains or Jamaican theme" class="w-full max-w-[400px] h-auto rounded-xl shadow-md mb-6">
-        <div class="flex items-center gap-4 mb-6">
-            <span class="text-5xl">🇯🇲</span>
-            <div>
-                <h1 class="text-4xl font-bold">Jamaica</h1>
-                <p class="text-slate-500">Kingston, Montego Bay &amp; nationwide</p>
-            </div>
-        </div>
-        <div class="grid md:grid-cols-3 gap-6 mb-10">
-            <div class="bg-white rounded-xl border p-5 text-center shadow-sm">
-                <p class="text-3xl font-bold text-[#2563EB]">$3.75</p>
-                <p class="text-sm text-slate-500 mt-1">per lb (standard)</p>
-            </div>
-            <div class="bg-white rounded-xl border p-5 text-center shadow-sm">
-                <p class="text-3xl font-bold text-slate-800">3–5</p>
-                <p class="text-sm text-slate-500 mt-1">business days</p>
-            </div>
-            <div class="bg-white rounded-xl border p-5 text-center shadow-sm">
-                <p class="text-3xl font-bold text-emerald-600">✓</p>
-                <p class="text-sm text-slate-500 mt-1">door-to-door available</p>
-            </div>
-        </div>
-        <div class="grid md:grid-cols-2 gap-6 mb-10">
-            <div class="bg-white rounded-xl border p-6 shadow-sm">
-                <h2 class="font-bold text-lg mb-3">Service Options</h2>
-                <ul class="space-y-2 text-sm text-slate-700">
-                    <li class="flex justify-between"><span>Standard Air</span><span
-                            class="font-semibold text-[#2563EB]">$3.75/lb</span></li>
-                    <li class="flex justify-between"><span>Express Air (+25%)</span><span
-                            class="font-semibold">$4.69/lb</span></li>
-                    <li class="flex justify-between"><span>Door-to-Door</span><span class="font-semibold">+$25
-                            flat</span></li>
-                    <li class="flex justify-between"><span>Customs clearance</span><span
-                            class="font-semibold">$35/shipment</span></li>
-                </ul>
-            </div>
-            <div class="bg-white rounded-xl border p-6 shadow-sm">
-                <h2 class="font-bold text-lg mb-3">What's Included</h2>
-                <ul class="space-y-2 text-sm text-slate-600">
-                    <li>✓ Free arrival photo at our warehouse</li>
-                    <li>✓ Real-time tracking updates</li>
-                    <li>✓ Customs documentation handled</li>
-                    <li>✓ 30 days free storage</li>
-                    <li>✓ Package consolidation available</li>
-                </ul>
-            </div>
-        </div>
-        <div class="text-center">
-            <a href="/register"
-                class="bg-[#F97316] text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-orange-600 transition-colors">Start
-                Shipping to Jamaica</a>
-            <p class="mt-3 text-slate-500 text-sm">Free sign-up · No monthly fees · Pay only when you ship</p>
-        </div>
-    </main>
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16 text-center text-slate-300 text-sm">
-        <p>QCS Cargo · <a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy"
-                class="underline">Privacy</a></p>
-    </footer>
+      </div>
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/destinations/dest-jamaica.png" alt="Jamaica destination artwork" />
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-1">
+      <div class="grid-3">
+        <article class="card"><h3>Standard rate</h3><p>$3.75 per pound, billed by billable weight.</p></article>
+        <article class="card"><h3>Express rate</h3><p>$4.69 per pound for priority shipment handling.</p></article>
+        <article class="card"><h3>Transit estimate</h3><p>3-5 days on standard service.</p></article>
+      </div>
+    </section>
+
+    <section class="section section-card reveal delay-2">
+      <div class="grid-2">
+        <article class="card">
+          <h3>What is included</h3>
+          <ul class="inline-list">
+            <li>Package intake photo</li>
+            <li>Customs declaration workflow</li>
+            <li>Shipment tracking updates</li>
+            <li>30 days free storage</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Common add-ons</h3>
+          <ul class="inline-list">
+            <li>Door-to-door delivery: +Jamaica5</li>
+            <li>Customs clearance fee: $3.755</li>
+            <li>Inspection and repackaging services</li>
+          </ul>
+        </article>
+      </div>
+      <div class="actions" style="margin-top:14px;">
+        <a class="btn btn-accent" href="/register">Start Shipping to Jamaica</a>
+        <a class="btn btn-light" href="/shipping-calculator">Estimate Shipment</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
 </body>
-
 </html>

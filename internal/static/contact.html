@@ -3,89 +3,122 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Contact Us | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <title>Contact | QCS Cargo</title>
+  <meta name="description" content="Contact QCS Cargo sales or support." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <header class="bg-[#0F172A] text-white py-4 px-6">
-    <nav class="max-w-6xl mx-auto flex justify-between items-center">
-      <a href="/" class="font-bold text-lg">QCS Cargo</a>
-      <div class="flex gap-6">
-        <a href="/how-it-works">How It Works</a>
-        <a href="/about">About</a>
-        <a href="/contact">Contact</a>
-        <a href="/login">Sign In</a>
-        <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free Address</a>
-      </div>
-    </nav>
-  </header>
-  <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-    <div class="max-w-6xl mx-auto">
-      <ol class="flex items-center gap-2 text-sm text-slate-600">
-        <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-        <li aria-hidden="true">/</li>
-        <li class="text-[#0F172A] font-medium" aria-current="page">Contact</li>
-      </ol>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/how-it-works">How It Works</a>
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/destinations">Destinations</a>
+        <a class="nav-link" href="/faq">FAQ</a>
+        <a class="nav-link active" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
     </div>
-  </nav>
-  <main class="max-w-2xl mx-auto px-6 py-16">
-    <img src="/web/images/heroes/hero-contact.png" alt="Chat bubble, envelope, and phone arranged together" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
-    <h1 class="text-4xl font-bold text-[#0F172A] mb-8">Contact Us</h1>
-    <p class="text-slate-600 mb-8">Sales: <a href="mailto:sales@qcs-cargo.com" class="text-[#2563EB]">sales@qcs-cargo.com</a> · Support: <a href="mailto:support@qcs-cargo.com" class="text-[#2563EB]">support@qcs-cargo.com</a><br>Phone: 201-249-0929 · WhatsApp: +1-201-249-0929</p>
-    <p class="text-slate-600 mb-8">35 Obrien St, E12, Kearny, NJ 07032<br>Mon–Fri 9AM–6PM, Sat 9AM–2PM, Sun closed</p>
-    <form id="contact-form" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Name *</label>
-        <input type="text" name="name" required class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+  </header>
+
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Contact</span></div>
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">Support & Sales</p>
+        <h1>Reach a real team member quickly.</h1>
+        <p class="lead">Use the form below and we will respond as soon as possible during support hours.</p>
+        <div class="pill-row" style="margin-top:12px;">
+          <span class="pill">Sales: sales@qcs-cargo.com</span>
+          <span class="pill">Support: support@qcs-cargo.com</span>
+          <span class="pill">Phone/WhatsApp: +1-201-249-0929</span>
+        </div>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Email *</label>
-        <input type="email" name="email" required class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/public/hero-contact.svg" alt="Contact form and support confirmation illustration" />
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
-        <input type="text" name="subject" class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+    </section>
+
+    <section class="section section-card reveal delay-1">
+      <div class="grid-2">
+        <article class="card">
+          <h3>Office</h3>
+          <p>35 Obrien St, E12, Kearny, NJ 07032</p>
+          <p style="margin-top:8px;">Mon-Fri: 9AM-6PM<br />Sat: 9AM-2PM<br />Sun: Closed</p>
+        </article>
+        <form id="contact-form" class="card" aria-label="Contact form">
+          <div class="form-field">
+            <label for="name">Name *</label>
+            <input id="name" name="name" type="text" required />
+          </div>
+          <div class="form-field" style="margin-top:10px;">
+            <label for="email">Email *</label>
+            <input id="email" name="email" type="email" required />
+          </div>
+          <div class="form-field" style="margin-top:10px;">
+            <label for="subject">Subject</label>
+            <input id="subject" name="subject" type="text" />
+          </div>
+          <div class="form-field" style="margin-top:10px;">
+            <label for="message">Message *</label>
+            <textarea id="message" name="message" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary" style="margin-top:12px; width:100%;">Send Message</button>
+          <p id="form-status" class="text-small" style="margin-top:10px; display:none;"></p>
+        </form>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Message *</label>
-        <textarea name="message" required rows="4" class="w-full rounded-lg border border-slate-200 px-3 py-2"></textarea>
-      </div>
-      <button type="submit" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium h-10">Send</button>
-    </form>
-    <p id="form-status" class="mt-4 text-sm hidden"></p>
-    <img src="/web/images/contact/contact-map.png" alt="Stylized map pin on street grid" class="w-full max-w-[600px] h-auto mx-auto mt-8 rounded-xl shadow-md">
+    </section>
   </main>
-  <footer class="bg-[#0F172A] text-white py-8 px-6 mt-16">
-    <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
+
+  <footer class="footer">
+    <div class="shell">
       <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-      <p class="mt-2"><a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy" class="underline">Privacy</a></p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
     </div>
   </footer>
+
   <script>
     document.getElementById('contact-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
       const status = document.getElementById('form-status');
-      status.classList.remove('hidden');
+      status.style.display = 'block';
+      status.style.color = '#576a83';
+      status.textContent = 'Sending...';
       try {
         const r = await fetch('/api/v1/contact', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: fd.get('name'), email: fd.get('email'), message: fd.get('message'), subject: fd.get('subject') || '' })
+          body: JSON.stringify({
+            name: fd.get('name'),
+            email: fd.get('email'),
+            subject: fd.get('subject') || '',
+            message: fd.get('message'),
+          }),
         });
         const j = await r.json();
         if (r.ok) {
-          status.textContent = j.data?.message || 'Sent.';
-          status.className = 'mt-4 text-sm text-green-600';
+          status.style.color = '#0f766e';
+          status.textContent = j.data?.message || 'Thank you. We will get back to you soon.';
+          e.target.reset();
         } else {
-          status.textContent = (j.error && j.error.message) ? j.error.message : 'Something went wrong.';
-          status.className = 'mt-4 text-sm text-red-600';
+          status.style.color = '#b91c1c';
+          status.textContent = (j.error && j.error.message) ? j.error.message : 'Something went wrong. Please try again.';
         }
       } catch (err) {
-        status.textContent = 'Network error.';
-        status.className = 'mt-4 text-sm text-red-600';
+        status.style.color = '#b91c1c';
+        status.textContent = 'Network error. Please try again.';
       }
     });
   </script>

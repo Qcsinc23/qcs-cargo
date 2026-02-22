@@ -32,9 +32,10 @@ ci: lint test-unit test-integration smoke
 lint:
 	golangci-lint run ./cmd/... ./internal/...
 
-# Copy Go's WASM loader and build frontend to web/
+# Copy Go's WASM loader, sync frontend images to web/images, and build frontend to web/
 wasm:
 	cp "$$(go env GOROOT)/misc/wasm/wasm_exec.js" web/
+	@mkdir -p web/images && cp -R frontend/static/images/* web/images/ 2>/dev/null || true
 	GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
 
 # Generate sqlc code (requires sqlc: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest)

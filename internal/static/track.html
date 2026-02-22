@@ -1,155 +1,125 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Track Shipment | QCS Cargo</title>
-    <meta name="description" content="Track your QCS Cargo shipment status in real time." />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@400&display=swap"
-        rel="stylesheet" />
-    <style>
-        body {
-            font-family: 'Inter', sans-serif
-        }
-
-        h1,
-        h2 {
-            font-family: 'Plus Jakarta Sans', sans-serif
-        }
-
-        .mono {
-            font-family: 'JetBrains Mono', monospace
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Track Shipment | QCS Cargo</title>
+  <meta name="description" content="Track QCS Cargo shipments by tracking number." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/how-it-works">How It Works</a>
+        <a class="nav-link" href="/services">Services</a>
+        <a class="nav-link" href="/pricing">Pricing</a>
+        <a class="nav-link" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+        <a class="btn btn-accent" href="/register">Get Free Address</a>
+      </nav>
+    </div>
+  </header>
 
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-    <header class="bg-[#0F172A] text-white py-4 px-6">
-        <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
-            <a href="/" class="font-bold text-lg">QCS Cargo</a>
-            <div class="flex flex-wrap gap-6 text-sm">
-                <a href="/how-it-works" class="opacity-90 hover:opacity-100">How It Works</a>
-                <a href="/services" class="opacity-90 hover:opacity-100">Services</a>
-                <a href="/pricing" class="opacity-90 hover:opacity-100">Pricing</a>
-                <a href="/contact" class="opacity-90 hover:opacity-100">Contact</a>
-                <a href="/login" class="opacity-90 hover:opacity-100">Sign In</a>
-                <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free
-                    Address</a>
-            </div>
-        </nav>
-    </header>
-    <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-        <div class="max-w-6xl mx-auto">
-            <ol class="flex items-center gap-2 text-sm text-slate-600">
-                <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-                <li aria-hidden="true">/</li>
-                <li class="text-[#0F172A] font-medium" aria-current="page">Track</li>
-            </ol>
-        </div>
-    </nav>
-    <main class="max-w-xl mx-auto px-6 py-16">
-        <img src="/web/images/heroes/hero-track.png" alt="Package with a location pin and dotted path line" class="w-full h-auto object-cover rounded-xl shadow-lg mb-8">
-        <h1 class="text-4xl font-bold text-[#0F172A] mb-4">Track Your Shipment</h1>
-        <p class="text-slate-600 mb-8">Enter your QCS tracking number (e.g. QCS-2026-001234) or booking confirmation
-            code.</p>
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Track</span></div>
 
-        <form id="track-form" class="flex gap-3 mb-8">
-            <input id="track-input" type="text" placeholder="QCS-2026-001234" required
-                class="flex-1 h-11 rounded-lg border border-slate-200 px-4 text-sm mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit"
-                class="bg-[#2563EB] text-white px-6 rounded-lg font-medium h-11 hover:bg-blue-700 transition-colors">Track</button>
+    <section class="hero reveal">
+      <div class="reveal delay-1">
+        <p class="eyebrow">Shipment Tracking</p>
+        <h1>Check shipment status in seconds.</h1>
+        <p class="lead">Enter your QCS tracking number, ship request code, or booking reference.</p>
+        <form id="track-form" class="actions" style="margin-top:14px;">
+          <input id="track-input" class="text-mono" type="text" placeholder="QCS-2026-001234" required style="min-width:280px;" />
+          <button type="submit" class="btn btn-primary">Track</button>
         </form>
+      </div>
+      <div class="hero-media reveal delay-2">
+        <img src="/web/images/public/hero-track.svg" alt="Tracking route and status nodes illustration" />
+      </div>
+    </section>
 
-        <div id="result" class="hidden"></div>
+    <section class="section section-card reveal delay-1">
+      <div id="result"></div>
+      <p class="text-small" style="margin-top:12px;">For full shipment history and account-level notifications, <a href="/login">sign in</a>.</p>
+    </section>
+  </main>
 
-        <div class="mt-12 text-slate-500 text-sm">
-            <p class="mb-2">You can also track using:</p>
-            <ul class="list-disc pl-5 space-y-1">
-                <li>Ship Request code (e.g. SR-B4K9M2X7)</li>
-                <li>Booking confirmation code</li>
-                <li>Your carrier's tracking number</li>
-            </ul>
-            <p class="mt-4">Sign in to <a href="/login" class="text-[#2563EB]">your dashboard</a> for full tracking
-                history and notifications.</p>
-        </div>
-    </main>
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
 
-    <footer class="bg-[#0F172A] text-white py-6 px-6 mt-16">
-        <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
-            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
-        </div>
-    </footer>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const input = document.getElementById('track-input');
+    const result = document.getElementById('result');
 
-    <script>
-        // Pre-populate from ?q= query param
-        const params = new URLSearchParams(location.search);
-        if (params.get('q')) {
-            document.getElementById('track-input').value = params.get('q');
-            doTrack(params.get('q'));
-        }
+    if (params.get('q')) {
+      input.value = params.get('q');
+      doTrack(params.get('q'));
+    }
 
-        document.getElementById('track-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            doTrack(document.getElementById('track-input').value.trim());
-        });
+    document.getElementById('track-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      doTrack(input.value.trim());
+    });
 
-        async function doTrack(number) {
-            if (!number) return;
-            const result = document.getElementById('result');
-            result.className = '';
-            result.innerHTML = '<div class="text-center py-6 text-slate-400">Looking up shipment…</div>';
-            try {
-                const r = await fetch('/api/v1/track/' + encodeURIComponent(number));
-                const j = await r.json();
-                if (!r.ok) {
-                    result.innerHTML = `
-            <div class="bg-amber-50 border border-amber-200 rounded-xl p-6">
-              <img src="/web/images/track/track-empty.png" alt="No packages being tracked - Friendly magnifying glass" class="max-w-[400px] h-auto mx-auto mb-4">
-              <h3 class="font-semibold text-amber-800 mb-1">Shipment Not Found</h3>
-              <p class="text-amber-700 text-sm">No record found for <span class="mono font-medium">${escHtml(number)}</span>. Check your tracking number and try again, or <a href="/contact" class="underline">contact support</a>.</p>
+    async function doTrack(number) {
+      if (!number) return;
+      result.innerHTML = '<div class="notice notice-info">Looking up shipment...</div>';
+      try {
+        const r = await fetch('/api/v1/track/' + encodeURIComponent(number));
+        const j = await r.json();
+        if (!r.ok) {
+          result.innerHTML = `
+            <div class="notice notice-warn">
+              <p><strong>Shipment not found.</strong> No match for <span class="text-mono">${escHtml(number)}</span>. Check the code or <a href="/contact">contact support</a>.</p>
             </div>`;
-                    return;
-                }
-                const d = j.data;
-                const statusColors = {
-                    delivered: 'bg-emerald-100 text-emerald-800',
-                    in_transit: 'bg-blue-100 text-blue-800',
-                    processing: 'bg-purple-100 text-purple-800',
-                    pending: 'bg-amber-100 text-amber-800',
-                    cancelled: 'bg-slate-100 text-slate-600',
-                    exception: 'bg-red-100 text-red-800',
-                };
-                const statusLabel = {
-                    delivered: 'Delivered', in_transit: 'In Transit', processing: 'Processing',
-                    pending: 'Pending', cancelled: 'Cancelled', exception: 'Exception',
-                };
-                const cls = statusColors[d.status] || 'bg-slate-100 text-slate-700';
-                const label = statusLabel[d.status] || d.status;
-                result.innerHTML = `
-          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-            <div class="flex justify-between items-start mb-4">
-              <div>
-                <p class="mono text-sm text-slate-500 mb-1">${escHtml(d.tracking_number || number)}</p>
-                <span class="inline-block px-3 py-1 rounded-full text-xs font-semibold ${cls}">${label}</span>
-              </div>
-              <p class="text-sm text-slate-400">${d.estimated_delivery ? 'Est. arrival: ' + d.estimated_delivery : ''}</p>
-            </div>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              ${d.destination_id ? `<div><span class="text-slate-500">Destination</span><p class="font-medium capitalize">${escHtml(d.destination_id)}</p></div>` : ''}
-              ${d.carrier ? `<div><span class="text-slate-500">Carrier</span><p class="font-medium">${escHtml(d.carrier)}</p></div>` : ''}
-              ${d.total_weight ? `<div><span class="text-slate-500">Weight</span><p class="font-medium">${d.total_weight} lbs</p></div>` : ''}
-              ${d.package_count ? `<div><span class="text-slate-500">Packages</span><p class="font-medium">${d.package_count}</p></div>` : ''}
-            </div>
-          </div>`;
-            } catch (e) {
-                result.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700 text-sm">Network error. Please try again.</div>';
-            }
+          return;
         }
-        function escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
-    </script>
-</body>
 
+        const d = j.data || {};
+        const statusMap = {
+          delivered: ['Delivered', 'ok'],
+          in_transit: ['In Transit', 'ok'],
+          processing: ['Processing', 'warn'],
+          pending: ['Pending', 'warn'],
+          cancelled: ['Cancelled', 'err'],
+          exception: ['Exception', 'err'],
+        };
+        const entry = statusMap[d.status] || [d.status || 'Unknown', 'unk'];
+        result.innerHTML = `
+          <article class="card">
+            <p class="text-small text-mono">${escHtml(d.tracking_number || number)}</p>
+            <div class="status-line" style="margin:8px 0 12px;"><span class="dot ${entry[1]}"></span><strong>${entry[0]}</strong></div>
+            <div class="grid-2">
+              ${d.destination_id ? `<div><p class="text-small">Destination</p><p>${escHtml(d.destination_id)}</p></div>` : ''}
+              ${d.carrier ? `<div><p class="text-small">Carrier</p><p>${escHtml(d.carrier)}</p></div>` : ''}
+              ${d.total_weight ? `<div><p class="text-small">Weight</p><p>${d.total_weight} lbs</p></div>` : ''}
+              ${d.package_count ? `<div><p class="text-small">Packages</p><p>${d.package_count}</p></div>` : ''}
+              ${d.estimated_delivery ? `<div><p class="text-small">Estimated delivery</p><p>${escHtml(d.estimated_delivery)}</p></div>` : ''}
+            </div>
+          </article>`;
+      } catch (e) {
+        result.innerHTML = '<div class="notice notice-danger"><p>Network error. Please try again.</p></div>';
+      }
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+  </script>
+</body>
 </html>

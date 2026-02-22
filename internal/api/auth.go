@@ -120,11 +120,11 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 	}
 	if os.Getenv("RESEND_API_KEY") != "" {
 		if err := services.SendMagicLink(body.Email, link); err != nil {
-			log.Printf("magic link email send: %v", err)
+			log.Printf("[Resend] magic link email send failed for %s: %v", body.Email, err)
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[DEV] Magic link for %s: %s", body.Email, link)
+		log.Printf("[Resend] not configured — magic link not sent. For %s use link (valid 10 min): %s", body.Email, link)
 	}
 	data := fiber.Map{"message": enumSafeMsg}
 	// In local dev, expose link on login page so you don't need to check server logs

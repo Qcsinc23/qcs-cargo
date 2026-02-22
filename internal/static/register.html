@@ -4,55 +4,70 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign Up | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <meta name="description" content="Create your free QCS Cargo account and get your US shipping address." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
 </head>
-<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <header class="bg-[#0F172A] text-white py-4 px-6">
-    <nav class="max-w-6xl mx-auto flex justify-between items-center">
-      <a href="/" class="font-bold text-lg">QCS Cargo</a>
-      <div class="flex gap-6">
-        <a href="/how-it-works">How It Works</a>
-        <a href="/about">About</a>
-        <a href="/contact">Contact</a>
-        <a href="/login">Sign In</a>
-      </div>
-    </nav>
-  </header>
-  <nav aria-label="Breadcrumb" class="bg-white border-b border-slate-200 py-2 px-6">
-    <div class="max-w-6xl mx-auto">
-      <ol class="flex items-center gap-2 text-sm text-slate-600">
-        <li><a href="/" class="text-[#2563EB] hover:underline">Home</a></li>
-        <li aria-hidden="true">/</li>
-        <li class="text-[#0F172A] font-medium" aria-current="page">Sign Up</li>
-      </ol>
+<body>
+  <a href="#main" class="skip-link">Skip to main content</a>
+  <header class="site-header">
+    <div class="nav-shell">
+      <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a class="nav-link" href="/how-it-works">How It Works</a>
+        <a class="nav-link" href="/about">About</a>
+        <a class="nav-link" href="/contact">Contact</a>
+        <a class="nav-link" href="/login">Sign In</a>
+      </nav>
     </div>
-  </nav>
-  <main class="max-w-md mx-auto px-6 py-16">
-    <h1 class="text-3xl font-bold text-[#0F172A] mb-8">Get Your Free US Address</h1>
-    <p class="text-slate-600 mb-6">Sign up in 60 seconds. We’ll give you a unique suite code and US mailing address.</p>
-    <form id="register-form" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Name</label>
-        <input type="text" name="name" required class="w-full h-10 rounded-lg border border-slate-200 px-3" placeholder="Your name" />
+  </header>
+
+  <main class="page" id="main">
+    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Sign Up</span></div>
+    <section class="section section-card reveal" style="max-width:560px; margin:0 auto;">
+      <div class="section-head">
+        <h1 class="page-title" style="font-size:2rem;">Get your free US shipping address</h1>
+        <p>Create your account and receive your suite code in under a minute.</p>
       </div>
-      <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Email</label>
-        <input type="email" name="email" required class="w-full h-10 rounded-lg border border-slate-200 px-3" placeholder="you@example.com" />
-      </div>
-      <button type="submit" class="w-full bg-[#F97316] text-white py-2 rounded-lg font-medium h-10">Create account</button>
-    </form>
-    <p id="form-status" class="mt-4 text-sm hidden"></p>
-    <p class="mt-6 text-slate-600">Already have an account? <a href="/login" class="text-[#2563EB] font-medium">Sign in</a></p>
+      <form id="register-form" class="card" style="padding:18px;">
+        <div class="form-field">
+          <label for="name">Name</label>
+          <input id="name" type="text" name="name" required placeholder="Your name" />
+        </div>
+        <div class="form-field" style="margin-top:10px;">
+          <label for="email">Email</label>
+          <input id="email" type="email" name="email" required placeholder="you@example.com" />
+        </div>
+        <button type="submit" class="btn btn-accent" style="width:100%; margin-top:12px;">Create Account</button>
+      </form>
+      <p id="form-status" class="text-small" style="margin-top:10px; display:none;"></p>
+      <p class="text-small" style="margin-top:12px;">Already registered? <a href="/login">Sign in</a>.</p>
+    </section>
   </main>
+
+  <footer class="footer">
+    <div class="shell">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p>
+        <a href="/legal/terms">Terms</a>
+        <a href="/legal/privacy">Privacy</a>
+        <a href="/legal/shipping-policy">Shipping Policy</a>
+      </p>
+    </div>
+  </footer>
+
   <script>
     document.getElementById('register-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = e.target.name.value;
       const email = e.target.email.value;
       const status = document.getElementById('form-status');
-      status.classList.remove('hidden');
+      status.style.display = 'block';
+      status.style.color = '#576a83';
+      status.textContent = 'Creating account...';
+
       try {
         const r = await fetch('/api/v1/auth/register', {
           method: 'POST',
@@ -61,14 +76,17 @@
         });
         const j = await r.json();
         if (r.ok) {
-          status.textContent = 'Account created! Your suite code: ' + (j.data?.suite_code || '—') + '. Check your email or sign in with a magic link.';
-          status.className = 'mt-4 text-sm text-green-600';
+          status.style.color = '#0f766e';
+          status.textContent = 'Account created. Your suite code: ' + (j.data?.suite_code || '-') + '. Check your email for sign-in.';
           e.target.reset();
         } else {
+          status.style.color = '#b91c1c';
           status.textContent = j.error?.message || 'Sign up failed.';
-          status.className = 'mt-4 text-sm text-red-600';
         }
-      } catch (err) { status.textContent = 'Network error.'; status.className = 'mt-4 text-sm text-red-600'; }
+      } catch (err) {
+        status.style.color = '#b91c1c';
+        status.textContent = 'Network error. Please try again.';
+      }
     });
   </script>
 </body>
