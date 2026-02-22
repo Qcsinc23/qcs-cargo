@@ -3,8 +3,6 @@ const CACHE = 'qcs-cargo-v2';
 const ASSETS = [
   '/',
   '/index.html',
-  '/app.wasm',
-  '/wasm_exec.js',
   '/login',
   '/login.html'
 ];
