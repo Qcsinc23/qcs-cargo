@@ -1,5 +1,5 @@
 # QCS Cargo — PRD 13.1 build commands
-.PHONY: build run migrate test lint wasm deps
+.PHONY: build run migrate test lint wasm deps smoke
 
 deps:
 	go mod download
@@ -29,3 +29,13 @@ wasm:
 # Generate sqlc code (requires sqlc: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest)
 sqlc:
 	go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate
+
+# Smoke test: build, migrate test DB, start server, hit key endpoints
+smoke:
+	chmod +x scripts/smoke-test.sh
+	./scripts/smoke-test.sh
+
+# Verify Stripe config (app API + optional CLI). Start server first with STRIPE_SECRET_KEY set.
+stripe-verify:
+	chmod +x scripts/stripe-verify.sh
+	./scripts/stripe-verify.sh

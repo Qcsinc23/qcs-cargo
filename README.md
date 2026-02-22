@@ -49,7 +49,24 @@ This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.
 |----------|-------------|
 | `DATABASE_URL` | SQLite path or Postgres URL (default: `file:qcs.db?_journal_mode=WAL`) |
 | `PORT` | Server port (default: 8080) |
+| `APP_URL` | Base URL for magic links, cookies (production: `https://qcs-cargo.com`) |
 | `MIGRATIONS_DIR` | Migration directory for migrate binary (default: `sql/migrations`) |
+| `STRIPE_SECRET_KEY` | Stripe secret key (sk_live_/sk_test_) for PaymentIntents |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (pk_live_/pk_test_) for pay page |
+
+See `.env.example` for a full list.
+
+## Production (qcs-cargo.com)
+
+- Set `APP_URL=https://qcs-cargo.com` and use HTTPS.
+- In **Stripe Dashboard**: add `https://qcs-cargo.com` to allowed redirect/checkout domains if required.
+- Verify Stripe: run `make stripe-verify` (with server running and keys set).
+
+## Stripe CLI configuration
+
+- A **.env** file (gitignored) can hold `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, and `STRIPE_WEBHOOK_SECRET`. The server loads it on startup via godotenv.
+- To configure Stripe via CLI: `stripe config --list`, `stripe webhook_endpoints list --live`, or create a webhook with `stripe webhook_endpoints create --url=https://qcs-cargo.com/api/webhooks/stripe ... --live` (use a secret key; the create response includes the signing secret for `STRIPE_WEBHOOK_SECRET`).
+- The Stripe CLI can use your live key: `stripe config --set live_mode_api_key sk_live_...` so `stripe balance retrieve --live` and other commands work.
 
 ## Commands
 
@@ -57,6 +74,8 @@ This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.
 - `make run` — build and run server  
 - `make migrate` — run migrations  
 - `make test` — run tests  
+- `make smoke` — smoke test (build, migrate, start, curl health/destinations/auth)  
+- `make stripe-verify` — verify Stripe config (app API + optional Stripe CLI)  
 - `make wasm` — build frontend to `web/app.wasm` and copy `wasm_exec.js`  
 - `make sqlc` — regenerate sqlc code from `sql/`  
 

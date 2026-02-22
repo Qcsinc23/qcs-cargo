@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/joho/godotenv"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
@@ -16,6 +17,7 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load() // load .env if present (ignore error)
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		dbURL = "file:qcs.db?_journal_mode=WAL"
@@ -31,7 +33,32 @@ func main() {
 		if path == "" || path == "/" {
 			path = "index.html"
 		}
-		if !strings.Contains(path, ".") {
+		if path == "dashboard" || path == "dashboard/" {
+			path = "dashboard/index.html"
+		} else if strings.HasPrefix(path, "dashboard/inbox/") && len(path) > len("dashboard/inbox/") {
+			path = "dashboard/inbox-detail.html"
+		} else if strings.HasPrefix(path, "dashboard/ship-requests/") {
+			rest := path[len("dashboard/ship-requests/"):]
+			if rest != "" && !strings.Contains(rest, "/") {
+				path = "dashboard/ship-request-detail.html"
+			} else if strings.HasSuffix(rest, "/customs") || rest == "customs" {
+				path = "dashboard/customs.html"
+			} else if strings.HasSuffix(rest, "/pay") {
+				path = "dashboard/pay.html"
+			} else if strings.HasSuffix(rest, "/confirmation") {
+				path = "dashboard/confirmation.html"
+			}
+		} else if strings.HasPrefix(path, "dashboard/inbound/") && len(path) > len("dashboard/inbound/") {
+			path = "dashboard/inbound-detail.html"
+		} else if path == "dashboard/bookings/new" || path == "dashboard/bookings/new/" {
+			path = "dashboard/booking-wizard.html"
+		} else if strings.HasPrefix(path, "dashboard/bookings/") && len(path) > len("dashboard/bookings/") {
+			rest := path[len("dashboard/bookings/"):]
+			if rest != "" && !strings.Contains(rest, "/") {
+				path = "dashboard/booking-detail.html"
+			}
+		}
+		if path != "" && !strings.HasSuffix(path, ".html") && !strings.Contains(path, ".") {
 			path = path + ".html"
 		}
 		return fs.ReadFile(webRoot, path)
@@ -45,13 +72,28 @@ func main() {
 	app.Use(requestid.New())
 	app.Use(logger.New(logger.Config{Format: "${time} ${status} ${method} ${path} ${latency} ${requestid}\n"}))
 
+	// Stripe webhook (no v1, raw body for signature verification)
+	apiGroup := app.Group("/api")
+	api.RegisterStripeWebhook(apiGroup)
+
 	// API v1
 	v1 := app.Group("/api/v1")
 	api.RegisterHealth(v1)
 	api.RegisterAuth(v1)
 	api.RegisterPublic(v1)
+	api.RegisterLocker(v1)
+	api.RegisterRecipients(v1)
+	api.RegisterShipRequests(v1)
+	api.RegisterShipments(v1)
+	api.RegisterInvoices(v1)
+	api.RegisterTemplates(v1)
+	api.RegisterBookings(v1)
+	api.RegisterInboundTracking(v1)
 	v1.Get("/me", middleware.RequireAuth, api.Me)
-	// Locker, ship-requests, etc. in later phases
+	api.RegisterMe(v1)
+	api.RegisterNotifications(v1)
+	api.RegisterSessions(v1)
+	api.RegisterAccount(v1)
 
 	// Serve WASM and Go runtime (from disk so dev can build frontend separately)
 	app.Get("/wasm_exec.js", func(c *fiber.Ctx) error {

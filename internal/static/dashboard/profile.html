@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/profile'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '<a href="/dashboard/shipments" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Shipments</a>' +
+          '<a href="/dashboard/invoices" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Invoices</a>' +
+          '<a href="/dashboard/templates" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Templates</a>' +
+          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg ' + (active === 'profile' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Profile</a>' +
+          '<a href="/dashboard/settings" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Settings</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        let main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Profile</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-6">Profile</h1>' +
+          '<form id="profile-form" class="bg-white rounded-xl border border-slate-200 p-6 max-w-lg">' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">Name</label>' +
+          '<input type="text" name="name" value="' + (user.name || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">Email</label>' +
+          '<input type="email" value="' + (user.email || '').replace(/"/g, '&quot;') + '" disabled class="w-full border border-slate-200 rounded-lg px-3 py-2 mb-4 bg-slate-50 text-slate-500" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>' +
+          '<input type="text" name="phone" value="' + (user.phone || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">Address (street)</label>' +
+          '<input type="text" name="address_street" value="' + (user.address_street || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">City</label>' +
+          '<input type="text" name="address_city" value="' + (user.address_city || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">State</label>' +
+          '<input type="text" name="address_state" value="' + (user.address_state || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">ZIP</label>' +
+          '<input type="text" name="address_zip" value="' + (user.address_zip || '').replace(/"/g, '&quot;') + '" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-4" />' +
+          '<p class="text-slate-500 text-sm mb-4">Suite: ' + (user.suite_code || '—') + '</p>' +
+          '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Save changes</button>' +
+          '<p id="profile-msg" class="mt-3 text-sm text-emerald-600 hidden">Profile updated.</p>' +
+          '</form></main></div>';
+        document.getElementById('app').innerHTML = sidebar(user, 'profile') + main;
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        document.getElementById('profile-form').onsubmit = function(e) {
+          e.preventDefault();
+          const fd = new FormData(this);
+          const body = {};
+          ['name','phone','address_street','address_city','address_state','address_zip'].forEach(k => { const v = fd.get(k); if (v != null) body[k] = v; });
+          fetch('/api/v1/me', { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+            .then(r => r.ok ? r.json() : null).then(() => {
+              document.getElementById('profile-msg').classList.remove('hidden');
+              setTimeout(() => document.getElementById('profile-msg').classList.add('hidden'), 3000);
+            });
+        };
+      });
+    })();
+  </script>
+</body>
+</html>

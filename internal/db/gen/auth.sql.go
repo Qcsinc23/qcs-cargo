@@ -47,6 +47,40 @@ func (q *Queries) CreateMagicLink(ctx context.Context, arg CreateMagicLinkParams
 	return i, err
 }
 
+const createPasswordReset = `-- name: CreatePasswordReset :one
+INSERT INTO password_resets (id, user_id, token_hash, used, expires_at, created_at)
+VALUES (?, ?, ?, 0, ?, ?)
+RETURNING id, user_id, token_hash, used, expires_at, created_at
+`
+
+type CreatePasswordResetParams struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	TokenHash string `json:"token_hash"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordResetParams) (PasswordReset, error) {
+	row := q.db.QueryRowContext(ctx, createPasswordReset,
+		arg.ID,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+	)
+	var i PasswordReset
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.Used,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createSession = `-- name: CreateSession :one
 INSERT INTO sessions (id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -144,6 +178,29 @@ func (q *Queries) DeleteSession(ctx context.Context, id string) error {
 	return err
 }
 
+const deleteSessionsByUser = `-- name: DeleteSessionsByUser :exec
+DELETE FROM sessions WHERE user_id = ?
+`
+
+func (q *Queries) DeleteSessionsByUser(ctx context.Context, userID string) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionsByUser, userID)
+	return err
+}
+
+const deleteSessionsByUserExcept = `-- name: DeleteSessionsByUserExcept :exec
+DELETE FROM sessions WHERE user_id = ? AND id != ?
+`
+
+type DeleteSessionsByUserExceptParams struct {
+	UserID string `json:"user_id"`
+	ID     string `json:"id"`
+}
+
+func (q *Queries) DeleteSessionsByUserExcept(ctx context.Context, arg DeleteSessionsByUserExceptParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSessionsByUserExcept, arg.UserID, arg.ID)
+	return err
+}
+
 const getMagicLinkByTokenHash = `-- name: GetMagicLinkByTokenHash :one
 SELECT id, user_id, token_hash, redirect_to, used, expires_at, created_at
 FROM magic_links WHERE token_hash = ? AND used = 0 AND expires_at > ?
@@ -162,6 +219,30 @@ func (q *Queries) GetMagicLinkByTokenHash(ctx context.Context, arg GetMagicLinkB
 		&i.UserID,
 		&i.TokenHash,
 		&i.RedirectTo,
+		&i.Used,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getPasswordResetByTokenHash = `-- name: GetPasswordResetByTokenHash :one
+SELECT id, user_id, token_hash, used, expires_at, created_at
+FROM password_resets WHERE token_hash = ? AND used = 0 AND expires_at > ?
+`
+
+type GetPasswordResetByTokenHashParams struct {
+	TokenHash string `json:"token_hash"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (q *Queries) GetPasswordResetByTokenHash(ctx context.Context, arg GetPasswordResetByTokenHashParams) (PasswordReset, error) {
+	row := q.db.QueryRowContext(ctx, getPasswordResetByTokenHash, arg.TokenHash, arg.ExpiresAt)
+	var i PasswordReset
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
 		&i.Used,
 		&i.ExpiresAt,
 		&i.CreatedAt,
@@ -194,11 +275,84 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 	return i, err
 }
 
+const listSessionsByUser = `-- name: ListSessionsByUser :many
+SELECT id, user_id, ip_address, user_agent, expires_at, created_at
+FROM sessions
+WHERE user_id = ? AND expires_at > ?
+`
+
+type ListSessionsByUserParams struct {
+	UserID    string `json:"user_id"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+type ListSessionsByUserRow struct {
+	ID        string         `json:"id"`
+	UserID    string         `json:"user_id"`
+	IpAddress sql.NullString `json:"ip_address"`
+	UserAgent sql.NullString `json:"user_agent"`
+	ExpiresAt string         `json:"expires_at"`
+	CreatedAt string         `json:"created_at"`
+}
+
+func (q *Queries) ListSessionsByUser(ctx context.Context, arg ListSessionsByUserParams) ([]ListSessionsByUserRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSessionsByUser, arg.UserID, arg.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSessionsByUserRow
+	for rows.Next() {
+		var i ListSessionsByUserRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.IpAddress,
+			&i.UserAgent,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :exec
 UPDATE magic_links SET used = 1 WHERE id = ?
 `
 
 func (q *Queries) MarkMagicLinkUsed(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markMagicLinkUsed, id)
+	return err
+}
+
+const markPasswordResetUsed = `-- name: MarkPasswordResetUsed :exec
+UPDATE password_resets SET used = 1 WHERE id = ?
+`
+
+func (q *Queries) MarkPasswordResetUsed(ctx context.Context, id string) error {
+	_, err := q.db.ExecContext(ctx, markPasswordResetUsed, id)
+	return err
+}
+
+const updateUserPassword = `-- name: UpdateUserPassword :exec
+UPDATE users SET updated_at = ? WHERE id = ?
+`
+
+type UpdateUserPasswordParams struct {
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPasswordParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserPassword, arg.UpdatedAt, arg.ID)
 	return err
 }

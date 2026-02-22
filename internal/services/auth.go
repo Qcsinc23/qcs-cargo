@@ -313,3 +313,31 @@ func ResetPassword(ctx context.Context, rawToken, newPassword string) error {
 	}
 	return tx.Commit()
 }
+
+// ChangePassword updates the authenticated user's password (PRD 6.1 PATCH /auth/password/change).
+// If the user has an existing password, currentPassword must match; otherwise currentPassword can be empty.
+func ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error {
+	if len(newPassword) < 8 {
+		return fmt.Errorf("password must be at least 8 characters")
+	}
+	var existingHash sql.NullString
+	err := db.DB().QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&existingHash)
+	if err != nil {
+		return err
+	}
+	if existingHash.Valid && existingHash.String != "" {
+		if currentPassword == "" {
+			return fmt.Errorf("current password required")
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(existingHash.String), []byte(currentPassword)); err != nil {
+			return fmt.Errorf("current password is incorrect")
+		}
+	}
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), 12)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = db.DB().ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, string(hashed), now, userID)
+	return err
+}

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>New Booking | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/bookings/new'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/bookings" class="block py-2 px-3 rounded-lg ' + (active === 'bookings' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Bookings</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      const steps = ['Date & time', 'Package description', 'Special instructions', 'Review', 'Confirm'];
+      let state = { step: 1, date: '', timeSlot: '', packageDescription: '', specialInstructions: '', destinationId: 'guyana', serviceType: 'drop_off', subtotal: 0, discount: 0, insurance: 0, total: 0, user: null, slots: [] };
+
+      function formatDate(d) {
+        const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+        return y + '-' + m + '-' + day;
+      }
+
+      function renderStep() {
+        const s = state.step;
+        let content = '';
+        if (s === 1) {
+          const today = formatDate(new Date());
+          content = '<div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-1">Date</label>' +
+            '<input type="date" id="wizard-date" class="w-full border border-slate-300 rounded-lg px-3 py-2" min="' + today + '" value="' + (state.date || '') + '"></div>' +
+            '<div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-1">Time slot</label>' +
+            '<div id="wizard-slots" class="flex flex-wrap gap-2">Loading…</div></div>';
+        } else if (s === 2) {
+          content = '<div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-1">Package description</label>' +
+            '<textarea id="wizard-package-desc" class="w-full border border-slate-300 rounded-lg px-3 py-2" rows="3" placeholder="e.g. 2 boxes, clothing and books">' + (state.packageDescription || '') + '</textarea></div>' +
+            '<div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-1">Destination</label>' +
+            '<select id="wizard-destination" class="w-full border border-slate-300 rounded-lg px-3 py-2"><option value="guyana"' + (state.destinationId === 'guyana' ? ' selected' : '') + '>Guyana</option><option value="jamaica"' + (state.destinationId === 'jamaica' ? ' selected' : '') + '>Jamaica</option><option value="trinidad"' + (state.destinationId === 'trinidad' ? ' selected' : '') + '>Trinidad</option><option value="barbados"' + (state.destinationId === 'barbados' ? ' selected' : '') + '>Barbados</option><option value="suriname"' + (state.destinationId === 'suriname' ? ' selected' : '') + '>Suriname</option></select></div>';
+        } else if (s === 3) {
+          content = '<div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-1">Special instructions</label>' +
+            '<textarea id="wizard-special" class="w-full border border-slate-300 rounded-lg px-3 py-2" rows="4" placeholder="Fragile, leave at door, etc.">' + (state.specialInstructions || '') + '</textarea></div>';
+        } else if (s === 4) {
+          const slotLabel = state.timeSlot === 'morning' ? 'Morning (8am–12pm)' : state.timeSlot === 'afternoon' ? 'Afternoon (12pm–4pm)' : state.timeSlot === 'evening' ? 'Evening (4pm–8pm)' : state.timeSlot;
+          content = '<div class="bg-slate-50 rounded-lg p-6 space-y-2">' +
+            '<p><span class="text-slate-500">Date:</span> ' + state.date + '</p>' +
+            '<p><span class="text-slate-500">Time:</span> ' + slotLabel + '</p>' +
+            '<p><span class="text-slate-500">Package:</span> ' + (state.packageDescription || '—') + '</p>' +
+            '<p><span class="text-slate-500">Destination:</span> ' + state.destinationId + '</p>' +
+            '<p><span class="text-slate-500">Special instructions:</span> ' + (state.specialInstructions || '—') + '</p>' +
+            '<p><span class="text-slate-500">Estimated total:</span> $' + (state.total || 0).toFixed(2) + '</p></div>';
+        } else {
+          content = '<p class="text-slate-600 mb-4">Click Confirm to create your booking.</p>' +
+            '<button type="button" id="wizard-confirm-btn" class="bg-emerald-600 text-white px-6 py-3 rounded-lg font-medium">Confirm booking</button>';
+        }
+
+        let main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/bookings" class="text-[#2563EB] hover:underline">Bookings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">New</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">New booking</h1>' +
+          '<div class="flex gap-2 mb-8"><span class="text-slate-500">Step ' + s + ' of 5:</span> ' + steps[s - 1] + '</div>' +
+          '<div class="max-w-xl bg-white rounded-xl border border-slate-200 p-6 shadow-sm">' + content + '</div>' +
+          '<div class="mt-6 flex gap-3">';
+        if (s > 1) main += '<button type="button" id="wizard-prev" class="bg-white border border-slate-200 px-6 py-2 rounded-lg font-medium">Back</button>';
+        if (s < 5) main += '<button type="button" id="wizard-next" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Next</button>';
+        main += '</div></main>';
+        return main;
+      }
+
+      function loadSlots() {
+        if (!state.date) { var el = document.getElementById('wizard-slots'); if (el) el.innerHTML = 'Select a date first'; return; }
+        fetch('/api/v1/bookings/time-slots?date=' + encodeURIComponent(state.date), auth)
+          .then(r => r.ok ? r.json() : null)
+          .then(j => {
+            const slots = (j && j.data && j.data.slots) || [];
+            state.slots = slots;
+            var el = document.getElementById('wizard-slots');
+            if (!el) return;
+            var html = '';
+            slots.forEach(function(slot) {
+              var sel = state.timeSlot === slot.id ? ' border-[#2563EB] bg-blue-50' : '';
+              html += '<button type="button" class="slot-btn border rounded-lg px-4 py-2 text-sm' + sel + '" data-slot="' + slot.id + '">' + slot.label + '</button>';
+            });
+            el.innerHTML = html || 'No slots';
+            el.querySelectorAll('.slot-btn').forEach(function(btn) {
+              btn.onclick = function() { state.timeSlot = btn.dataset.slot; loadSlots(); };
+            });
+          });
+      }
+
+      function updateWizard() {
+        var mainEl = document.getElementById('wizard-main');
+        if (!mainEl) return;
+        mainEl.outerHTML = renderStep();
+        if (state.step === 1) {
+          var dateEl = document.getElementById('wizard-date');
+          if (dateEl) {
+            dateEl.value = state.date;
+            dateEl.onchange = function() { state.date = dateEl.value; loadSlots(); };
+          }
+          loadSlots();
+        } else if (state.step === 2) {
+          var desc = document.getElementById('wizard-package-desc'); if (desc) { desc.value = state.packageDescription; desc.onchange = function() { state.packageDescription = desc.value; }; }
+          var dest = document.getElementById('wizard-destination'); if (dest) { dest.value = state.destinationId; dest.onchange = function() { state.destinationId = dest.value; }; }
+        } else if (state.step === 3) {
+          var spec = document.getElementById('wizard-special'); if (spec) { spec.value = state.specialInstructions; spec.onchange = function() { state.specialInstructions = spec.value; }; }
+        } else if (state.step === 5) {
+          var cb = document.getElementById('wizard-confirm-btn'); if (cb) cb.onclick = submitBooking;
+        }
+        var prevBtn = document.getElementById('wizard-prev');
+        if (prevBtn) prevBtn.onclick = function() { state.step--; updateWizard(); };
+        var nextBtn = document.getElementById('wizard-next');
+        if (nextBtn) nextBtn.onclick = function() {
+          if (state.step === 1) { state.date = (document.getElementById('wizard-date') || {}).value || state.date; state.timeSlot = state.timeSlot || (state.slots[0] && state.slots[0].id); }
+          if (state.step === 2) { var d = document.getElementById('wizard-package-desc'); state.packageDescription = d ? d.value : state.packageDescription; var dst = document.getElementById('wizard-destination'); state.destinationId = dst ? dst.value : state.destinationId; }
+          if (state.step === 3) { var sp = document.getElementById('wizard-special'); state.specialInstructions = sp ? sp.value : state.specialInstructions; }
+          state.step++; updateWizard();
+        };
+      }
+
+      function submitBooking() {
+        var payload = {
+          service_type: state.serviceType,
+          destination_id: state.destinationId,
+          scheduled_date: state.date,
+          time_slot: state.timeSlot,
+          special_instructions: state.specialInstructions || null,
+          subtotal: state.subtotal,
+          discount: state.discount,
+          insurance: state.insurance,
+          total: state.total
+        };
+        fetch('/api/v1/bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(payload)
+        }).then(function(r) {
+          if (r.status === 201) return r.json();
+          throw new Error('Create failed');
+        }).then(function(j) {
+          window.location.href = '/dashboard/bookings/' + (j.data && j.data.id ? j.data.id : '');
+        }).catch(function() { alert('Failed to create booking. Try again.'); });
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(function(r) { return r.ok ? r.json() : null; })
+      ]).then(function(res) {
+        var me = res[0];
+        if (!me) { window.location.href = '/login'; return; }
+        state.user = me.data;
+        document.getElementById('app').innerHTML = sidebar(state.user, 'bookings') + '<main class="flex-1 p-8" id="wizard-main"></main>';
+        document.getElementById('logout-btn').onclick = function() {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function() { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        updateWizard();
+      });
+    })();
+  </script>
+</body>
+</html>

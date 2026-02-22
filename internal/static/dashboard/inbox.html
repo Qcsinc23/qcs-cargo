@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Packages | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/inbox'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg ' + (active === 'inbox' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+      let inboxState = { list: [], sum: {}, filter: '', sortBy: 'date', selectedIds: [] };
+
+      function storageBarColor(count) {
+        if (count <= 5) return 'bg-emerald-500';
+        if (count <= 8) return 'bg-amber-500';
+        return 'bg-red-500';
+      }
+      function storageBarPercent(count) {
+        const max = 12;
+        return Math.min(100, (count / max) * 100);
+      }
+
+      function renderList(list, user) {
+        const sorted = list.slice().sort((a, b) => {
+          if (inboxState.sortBy === 'sender') {
+            const sa = (typeof a.sender_name === 'string' ? a.sender_name : (a.sender_name && a.sender_name.String)) || '';
+            const sb = (typeof b.sender_name === 'string' ? b.sender_name : (b.sender_name && b.sender_name.String)) || '';
+            return sa.localeCompare(sb);
+          }
+          return (b.arrived_at || '').localeCompare(a.arrived_at || '');
+        });
+        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-6">';
+        sorted.forEach(p => {
+          const sender = typeof p.sender_name === 'string' ? p.sender_name : (p.sender_name && p.sender_name.String) || 'Unknown';
+          const weight = typeof p.weight_lbs === 'number' ? p.weight_lbs : (p.weight_lbs && p.weight_lbs.Float64) || 0;
+          const status = p.status || 'stored';
+          const checked = inboxState.selectedIds.includes(p.id) ? ' checked' : '';
+          html += '<div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-start gap-3">' +
+            '<input type="checkbox" class="inbox-cb mt-1" data-id="' + p.id + '"' + checked + '>' +
+            '<a href="/dashboard/inbox/' + p.id + '" class="flex-1 min-w-0">' +
+            '<p class="font-medium text-[#0F172A]">' + sender + '</p>' +
+            '<p class="text-sm text-slate-500">' + weight + ' lbs · ' + status + '</p></a></div>';
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function updateInbox() {
+        const user = inboxState.user;
+        const list = inboxState.list;
+        const sum = inboxState.sum;
+        const storedCount = (sum.stored_count != null) ? sum.stored_count : list.filter(p => (p.status || '') === 'stored').length;
+        const barPct = storageBarPercent(storedCount);
+        const barColor = storageBarColor(storedCount);
+        const nextExpiry = sum.next_expiry || '';
+        const daysUntil = nextExpiry ? Math.ceil((new Date(nextExpiry) - new Date()) / (24*60*60*1000)) : null;
+        const expiringSoon = daysUntil != null && daysUntil <= 7 && daysUntil >= 0;
+        const expired = daysUntil != null && daysUntil < 0;
+        let alertBanner = '';
+        if (expired && storedCount > 0) {
+          alertBanner = '<div class="mb-6 rounded-lg border border-red-200 bg-red-100 p-4"><p class="text-red-800 font-medium">Free storage has expired for some packages. Ship or dispose to avoid fees.</p></div>';
+        } else if (expiringSoon && storedCount > 0) {
+          const d = new Date(nextExpiry);
+          const y = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+          alertBanner = '<div class="mb-6 rounded-lg border border-amber-200 bg-amber-100 p-4"><p class="text-amber-800 font-medium">Free storage expires on ' + y + '. Ship or dispose packages before then.</p></div>';
+        }
+        let main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">My Packages</li></ol></nav>' +
+          alertBanner +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">My Packages</h1>' +
+          '<p class="text-slate-600 mb-4">' + list.length + ' packages in your locker</p>' +
+          '<div class="mb-4"><p class="text-sm text-slate-500 mb-1">Storage (stored count)</p>' +
+          '<div class="h-2 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full ' + barColor + '" style="width:' + barPct + '%"></div></div></div>' +
+          '<div class="flex flex-wrap gap-2 mb-4">' +
+          '<button type="button" class="filter-btn px-4 py-2 rounded-lg ' + (inboxState.filter === '' ? 'bg-[#2563EB] text-white' : 'bg-white border border-slate-200') + '" data-filter="">All</button>' +
+          '<button type="button" class="filter-btn px-4 py-2 rounded-lg ' + (inboxState.filter === 'stored' ? 'bg-[#2563EB] text-white' : 'bg-white border border-slate-200') + '" data-filter="stored">Stored</button>' +
+          '</div>' +
+          '<div class="flex flex-wrap gap-4 mb-6 items-center">' +
+          '<a href="/dashboard/ship" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Ship My Packages</a>' +
+          '<a href="/dashboard/inbound" class="bg-white border border-slate-200 px-6 py-2 rounded-lg">Add Inbound Tracking</a>' +
+          '<label class="text-sm text-slate-600">Sort: <select id="inbox-sort" class="border border-slate-300 rounded px-2 py-1">' +
+          '<option value="date"' + (inboxState.sortBy === 'date' ? ' selected' : '') + '>Date arrived</option>' +
+          '<option value="sender"' + (inboxState.sortBy === 'sender' ? ' selected' : '') + '>Sender</option></select></label>' +
+          '</div>';
+        const filtered = inboxState.filter === 'stored' ? list.filter(p => (p.status || '') === 'stored') : list;
+        if (filtered.length === 0) {
+          main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
+            '<p class="text-slate-600 mb-4">No packages match.</p>' +
+            '<a href="/dashboard/mailbox" class="text-[#2563EB] font-medium">Copy My QCS Address</a> · ' +
+            '<a href="/how-it-works" class="text-[#2563EB] font-medium">How It Works</a></div>';
+        } else {
+          main += '<div id="inbox-list">' + renderList(filtered, user) + '</div>';
+        }
+        main += '</main>';
+        main += '<div id="ship-selected-bar" class="fixed bottom-0 left-0 right-0 bg-[#0F172A] text-white py-3 px-6 flex items-center justify-between shadow-lg hidden z-50">' +
+          '<span id="ship-selected-count">0 selected</span>' +
+          '<a href="/dashboard/ship" id="ship-selected-link" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Ship Selected</a></div>';
+        const app = document.getElementById('app');
+        const oldMain = app.querySelector('main');
+        if (oldMain) oldMain.outerHTML = main;
+        document.querySelectorAll('.filter-btn').forEach(btn => {
+          btn.onclick = () => { inboxState.filter = btn.dataset.filter; updateInbox(); };
+        });
+        document.querySelectorAll('.inbox-cb').forEach(cb => {
+          cb.onchange = () => {
+            const id = cb.dataset.id;
+            if (cb.checked) inboxState.selectedIds = [...inboxState.selectedIds, id];
+            else inboxState.selectedIds = inboxState.selectedIds.filter(x => x !== id);
+            updateShipSelectedBar();
+          };
+        });
+        const sortEl = document.getElementById('inbox-sort');
+        if (sortEl) sortEl.onchange = () => { inboxState.sortBy = sortEl.value; updateInbox(); };
+        updateShipSelectedBar();
+      }
+
+      function updateShipSelectedBar() {
+        const bar = document.getElementById('ship-selected-bar');
+        const link = document.getElementById('ship-selected-link');
+        const countEl = document.getElementById('ship-selected-count');
+        if (!bar) return;
+        const n = inboxState.selectedIds.length;
+        if (n > 0) {
+          bar.classList.remove('hidden');
+          if (countEl) countEl.textContent = n + ' selected';
+          if (link) link.href = '/dashboard/ship?packages=' + inboxState.selectedIds.join(',');
+        } else {
+          bar.classList.add('hidden');
+        }
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/locker', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/locker/summary', auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, locker, summary]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        inboxState.user = user;
+        inboxState.list = (locker && locker.data) || [];
+        inboxState.sum = (summary && summary.data) || {};
+        document.getElementById('app').innerHTML = sidebar(user, 'inbox') + '<main class="flex-1 p-8"><div id="inbox-placeholder">Loading…</div></main></div>';
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        const ph = document.getElementById('inbox-placeholder');
+        if (ph) { ph.remove(); }
+        updateInbox();
+      });
+    })();
+  </script>
+</body>
+</html>

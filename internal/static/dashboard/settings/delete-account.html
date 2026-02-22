@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delete account | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/delete-account'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Profile</a>' +
+          '<a href="/dashboard/settings" class="block py-2 px-3 rounded-lg ' + (active === 'settings' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Settings</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        const main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Delete Account</li></ol></nav>' +
+          '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Delete account</h1>' +
+          '<p class="text-slate-600 mb-6">This will mark your account for deletion. You will be signed out. This action cannot be undone.</p>' +
+          '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-red-700">Delete my account</button>' +
+          '<p id="delete-msg" class="mt-3 text-sm hidden"></p>' +
+          '</main></div>';
+        document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        document.getElementById('delete-btn').onclick = function() {
+          if (!confirm('Are you sure you want to delete your account? You will be signed out immediately.')) return;
+          this.disabled = true;
+          fetch('/api/v1/account/delete', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } })
+            .then(r => r.ok ? r.json() : null)
+            .then(() => {
+              localStorage.removeItem('qcs_access_token');
+              document.getElementById('delete-msg').textContent = 'Account deleted. Redirecting…';
+              document.getElementById('delete-msg').classList.remove('hidden');
+              setTimeout(() => { window.location.href = '/'; }, 1500);
+            })
+            .catch(() => { this.disabled = false; document.getElementById('delete-msg').textContent = 'Request failed.'; document.getElementById('delete-msg').classList.remove('hidden'); });
+        };
+      });
+    })();
+  </script>
+</body>
+</html>

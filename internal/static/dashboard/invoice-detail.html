@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login'; return; }
+      const pathParts = window.location.pathname.split('/');
+      const id = pathParts[pathParts.length - 1];
+      if (!id || id === 'invoices') { window.location.href = '/dashboard/invoices'; return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/shipments" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Shipments</a>' +
+          '<a href="/dashboard/invoices" class="block py-2 px-3 rounded-lg ' + (active === 'invoices' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Invoices</a>' +
+          '<a href="/dashboard/templates" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Templates</a>' +
+          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Profile</a>' +
+          '<a href="/dashboard/settings" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Settings</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        fetch('/api/v1/invoices/' + id, auth).then(r => r.ok ? r.json() : null).then(res => {
+          if (!res || !res.data) {
+            document.getElementById('app').innerHTML = '<div class="p-8"><p>Invoice not found.</p><a href="/dashboard/invoices" class="text-[#2563EB]">Back to list</a></div>';
+            return;
+          }
+          const inv = res.data.invoice || res.data;
+          const items = res.data.items || [];
+          const invCode = (inv.invoice_number || inv.id);
+          let main = '<main class="flex-1 p-8">' +
+            '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/invoices" class="text-[#2563EB] hover:underline">Invoices</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">' + invCode + '</li></ol></nav>' +
+            '<a href="/dashboard/invoices" class="text-[#2563EB] mb-6 inline-block">← Back to invoices</a>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-1">Invoice ' + (inv.invoice_number || inv.id) + '</h1>' +
+            '<p class="text-slate-500 mb-6">' + (inv.status || '—') + '</p>' +
+            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">' +
+            '<p><strong>Subtotal:</strong> $' + (inv.subtotal != null ? Number(inv.subtotal).toFixed(2) : '0.00') + '</p>' +
+            '<p class="mt-2"><strong>Tax:</strong> $' + (inv.tax != null ? Number(inv.tax).toFixed(2) : '0.00') + '</p>' +
+            '<p class="mt-2"><strong>Total:</strong> $' + (inv.total != null ? Number(inv.total).toFixed(2) : '0.00') + '</p>' +
+            '<p class="mt-2"><strong>Created:</strong> ' + (inv.created_at || '—') + '</p>' +
+            '</div>' +
+            '<h2 class="text-lg font-semibold text-[#0F172A] mb-2">Line items</h2>' +
+            '<ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6">';
+          items.forEach(it => {
+            main += '<li class="py-3 px-4 flex justify-between"><span>' + (it.description || '—') + '</span><span>$' + (it.total != null ? Number(it.total).toFixed(2) : '0.00') + '</span></li>';
+          });
+          main += '</ul><p class="text-slate-500 text-sm">PDF download coming soon.</p></main></div>';
+          document.getElementById('app').innerHTML = sidebar(user, 'invoices') + main;
+          document.getElementById('logout-btn').onclick = () => {
+            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          };
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

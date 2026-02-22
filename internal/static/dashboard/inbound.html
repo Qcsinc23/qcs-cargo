@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Expected Packages | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/inbound'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg ' + (active === 'inbound' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      function val(r, key) {
+        const v = r[key];
+        if (v && typeof v === 'object' && 'String' in v) return v.Valid ? v.String : '';
+        return (typeof v === 'string' || typeof v === 'number') ? String(v) : '';
+      }
+
+      function renderList(list) {
+        if (!list.length) {
+          return '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center"><p class="text-slate-600">No expected packages yet. Add a tracking number above.</p></div>';
+        }
+        let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+        list.forEach(t => {
+          const carrier = val(t, 'carrier');
+          const num = val(t, 'tracking_number');
+          const retailer = val(t, 'retailer_name');
+          const status = val(t, 'status');
+          html += '<a href="/dashboard/inbound/' + t.id + '" class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm block hover:border-[#2563EB]">' +
+            '<p class="font-medium text-[#0F172A]">' + (retailer || carrier) + '</p>' +
+            '<p class="text-sm text-slate-500">' + num + ' · ' + status + '</p></a>';
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function updateMain(user, list) {
+        const main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Expected Packages</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Expected Packages</h1>' +
+          '<p class="text-slate-600 mb-6">Track packages on their way to your locker.</p>' +
+          '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-8">' +
+          '<h2 class="text-lg font-semibold text-[#0F172A] mb-4">Add tracking</h2>' +
+          '<form id="inbound-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Carrier *</label><input type="text" id="form-carrier" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. UPS, FedEx"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Tracking number *</label><input type="text" id="form-tracking" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Tracking number"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Retailer</label><input type="text" id="form-retailer" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. Amazon"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Expected items</label><input type="text" id="form-items" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. 2 boxes"></div>' +
+          '</form>' +
+          '<button type="button" id="submit-inbound" class="mt-4 bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Add</button>' +
+          '<p id="form-msg" class="mt-2 text-sm text-slate-500 hidden"></p>' +
+          '</div>' +
+          '<div id="inbound-list">' + renderList(list) + '</div>' +
+          '</main>';
+        const app = document.getElementById('app');
+        const oldMain = app.querySelector('main');
+        if (oldMain) oldMain.outerHTML = main;
+        const form = document.getElementById('inbound-form');
+        const submitBtn = document.getElementById('submit-inbound');
+        const msgEl = document.getElementById('form-msg');
+        function showMsg(text, isErr) {
+          if (!msgEl) return;
+          msgEl.textContent = text;
+          msgEl.className = 'mt-2 text-sm ' + (isErr ? 'text-red-600' : 'text-slate-500');
+          msgEl.classList.remove('hidden');
+        }
+        if (submitBtn) {
+          submitBtn.onclick = () => {
+            const carrier = document.getElementById('form-carrier') && document.getElementById('form-carrier').value.trim();
+            const tracking = document.getElementById('form-tracking') && document.getElementById('form-tracking').value.trim();
+            if (!carrier || !tracking) { showMsg('Carrier and tracking number are required.', true); return; }
+            const retailer = document.getElementById('form-retailer') && document.getElementById('form-retailer').value.trim();
+            const items = document.getElementById('form-items') && document.getElementById('form-items').value.trim();
+            submitBtn.disabled = true;
+            fetch('/api/v1/inbound-tracking', {
+              method: 'POST',
+              ...auth,
+              body: JSON.stringify({
+                carrier: carrier,
+                tracking_number: tracking,
+                retailer_name: retailer || undefined,
+                expected_items: items || undefined
+              })
+            }).then(r => r.json()).then(d => {
+              if (d.data && d.data.id) {
+                showMsg('Tracking added.');
+                document.getElementById('form-carrier').value = '';
+                document.getElementById('form-tracking').value = '';
+                document.getElementById('form-retailer').value = '';
+                document.getElementById('form-items').value = '';
+                loadList();
+              } else {
+                showMsg((d.error && d.error.message) || 'Failed to add.', true);
+              }
+            }).catch(() => showMsg('Request failed.', true)).finally(() => { submitBtn.disabled = false; });
+          };
+        }
+      }
+
+      function loadList() {
+        fetch('/api/v1/inbound-tracking', auth).then(r => r.json()).then(d => {
+          const list = (d.data || []);
+          inboundState.list = list;
+          const user = inboundState.user;
+          const mainEl = document.querySelector('main');
+          if (mainEl && user) {
+            const listEl = document.getElementById('inbound-list');
+            if (listEl) listEl.outerHTML = renderList(list);
+          }
+        });
+      }
+
+      let inboundState = { user: null, list: [] };
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/inbound-tracking', auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, inbound]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        inboundState.user = user;
+        inboundState.list = (inbound && inbound.data) || [];
+        document.getElementById('app').innerHTML = sidebar(user, 'inbound') + '<main class="flex-1 p-8"><div id="placeholder">Loading…</div></main>';
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        document.getElementById('placeholder').remove();
+        updateMain(user, inboundState.list);
+      });
+    })();
+  </script>
+</body>
+</html>

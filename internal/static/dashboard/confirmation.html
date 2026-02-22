@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ship Request Confirmed | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname); return; }
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const idx = pathParts.indexOf('ship-requests');
+      const id = idx >= 0 && pathParts[idx + 1] && pathParts[idx + 1] !== 'confirmation' ? pathParts[idx + 1] : null;
+      if (!id) { window.location.href = '/dashboard/ship-requests'; return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/ship" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship My Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg ' + (active === 'ship-requests' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        const params = new URLSearchParams(window.location.search);
+        const redirectStatus = params.get('redirect_status');
+        function render(sr) {
+          const code = (sr && (sr.confirmation_code || sr.id)) || id;
+          const bc = '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Confirmation</li></ol></nav>';
+          const main = '<main class="flex-1 p-8">' +
+            bc +
+            '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-8 max-w-lg">' +
+            '<h1 class="text-2xl font-bold text-emerald-800 mb-2">Ship request confirmed</h1>' +
+            '<p class="text-emerald-700 mb-6">Your ship request ' + code + ' has been confirmed. We will process it shortly.</p>' +
+            '<div class="flex flex-wrap gap-3">' +
+            '<a href="/dashboard/ship-requests" class="bg-[#0F172A] text-white px-6 py-2 rounded-lg font-medium">Back to ship requests</a>' +
+            '<a href="/dashboard/ship-requests/' + id + '" class="bg-white border border-slate-300 text-slate-700 px-6 py-2 rounded-lg font-medium">View details</a>' +
+            '</div></div></main></div>';
+          document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + main;
+          document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
+        }
+        if (redirectStatus === 'succeeded') {
+          fetch('/api/v1/ship-requests/' + id + '/reconcile', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function() { return fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null); })
+            .then(function(res) { render(res && res.data ? (res.data.ship_request || res.data) : null); });
+          return;
+        }
+        fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null).then(function(res) {
+          if (!res || !res.data) {
+            document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + '<main class="flex-1 p-8"><p>Ship request not found.</p><a href="/dashboard/ship-requests" class="text-[#2563EB]">Back to list</a></main></div>';
+            document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'); });
+            return;
+          }
+          render(res.data.ship_request || res.data);
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracking Details | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login'; return; }
+      const pathParts = window.location.pathname.split('/');
+      const id = pathParts[pathParts.length - 1];
+      if (!id || id === 'inbound') { window.location.href = '/dashboard/inbound'; return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function val(r, key) {
+        const v = r[key];
+        if (v && typeof v === 'object' && 'String' in v) return v.Valid ? v.String : '—';
+        return (typeof v === 'string' || typeof v === 'number') ? String(v) : '—';
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/inbound-tracking/' + id, auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, res]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        if (!res || !res.data) {
+          document.getElementById('app').innerHTML = '<div class="p-8"><p>Tracking not found.</p><a href="/dashboard/inbound" class="text-[#2563EB]">Back to Expected Packages</a></div>';
+          return;
+        }
+        const t = res.data;
+        const user = me.data;
+        const suiteCode = user.suite_code || '—';
+        const sidebar = '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a><nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg bg-[#1E293B]">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+        const carrier = val(t, 'carrier');
+        const trackingNumber = val(t, 'tracking_number');
+        const status = val(t, 'status');
+        const lastChecked = val(t, 'last_checked_at');
+        const lockerPkgId = val(t, 'locker_package_id');
+        const retailer = val(t, 'retailer_name');
+        const expectedItems = val(t, 'expected_items');
+        let main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/inbound" class="text-[#2563EB] hover:underline">Expected Packages</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Detail</li></ol></nav>' +
+          '<a href="/dashboard/inbound" class="text-[#2563EB] mb-6 inline-block">← Back to Expected Packages</a>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">' + (retailer !== '—' ? retailer : carrier) + '</h1>' +
+          '<p class="text-slate-500 mb-6">' + trackingNumber + '</p>' +
+          '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">' +
+          '<p><strong>Carrier:</strong> ' + carrier + '</p>' +
+          '<p class="mt-2"><strong>Tracking number:</strong> ' + trackingNumber + '</p>' +
+          '<p class="mt-2"><strong>Status:</strong> ' + status + '</p>' +
+          '<p class="mt-2"><strong>Last checked:</strong> ' + lastChecked + '</p>';
+        if (lockerPkgId !== '—' && lockerPkgId) {
+          main += '<p class="mt-2"><strong>Linked package:</strong> <a href="/dashboard/inbox/' + lockerPkgId + '" class="text-[#2563EB]">' + lockerPkgId + '</a></p>';
+        }
+        if (expectedItems !== '—' && expectedItems) {
+          main += '<p class="mt-2"><strong>Expected items:</strong> ' + expectedItems + '</p>';
+        }
+        main += '</div>' +
+          '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-medium">Remove tracking</button>' +
+          '<p id="msg" class="mt-2 text-sm text-slate-500 hidden"></p>' +
+          '</main>';
+        document.getElementById('app').innerHTML = sidebar + main;
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        const msgEl = document.getElementById('msg');
+        document.getElementById('delete-btn').onclick = () => {
+          if (!confirm('Remove this tracking?')) return;
+          fetch('/api/v1/inbound-tracking/' + id, { method: 'DELETE', ...auth }).then(r => r.json()).then(d => {
+            if (d.status === 'success') {
+              window.location.href = '/dashboard/inbound';
+            } else {
+              msgEl.textContent = (d.error && d.error.message) || 'Delete failed.';
+              msgEl.className = 'mt-2 text-sm text-red-600';
+              msgEl.classList.remove('hidden');
+            }
+          }).catch(() => {
+            msgEl.textContent = 'Request failed.';
+            msgEl.className = 'mt-2 text-sm text-red-600';
+            msgEl.classList.remove('hidden');
+          });
+        };
+      });
+    })();
+  </script>
+</body>
+</html>

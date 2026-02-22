@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notification preferences | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/notifications'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Profile</a>' +
+          '<a href="/dashboard/settings" class="block py-2 px-3 rounded-lg ' + (active === 'settings' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Settings</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        fetch('/api/v1/notifications/preferences', auth).then(r => r.ok ? r.json() : null).then(res => {
+          const p = (res && res.data) || {};
+          const ch = (v) => v === true || v === 1 ? ' checked' : '';
+          let main = '<main class="flex-1 p-8">' +
+            '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Notifications</li></ol></nav>' +
+            '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-6">Notification preferences</h1>' +
+            '<form id="prefs-form" class="bg-white rounded-xl border border-slate-200 p-6 max-w-lg space-y-4">' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="email_enabled" value="1"' + ch(p.email_enabled) + ' /> Email notifications</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="sms_enabled" value="1"' + ch(p.sms_enabled) + ' /> SMS notifications</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="push_enabled" value="1"' + ch(p.push_enabled) + ' /> Push notifications</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="on_package_arrived" value="1"' + ch(p.on_package_arrived) + ' /> When package arrives</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="on_storage_expiry" value="1"' + ch(p.on_storage_expiry) + ' /> Storage expiry reminder</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="on_ship_updates" value="1"' + ch(p.on_ship_updates) + ' /> Shipment updates</label>' +
+            '<label class="flex items-center gap-2"><input type="checkbox" name="on_inbound_updates" value="1"' + ch(p.on_inbound_updates) + ' /> Inbound tracking updates</label>' +
+            '<p class="text-slate-600 text-sm pt-2">Daily digest: ' + (p.daily_digest || 'off') + '</p>' +
+            '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Save</button>' +
+            '<p id="prefs-msg" class="text-sm text-emerald-600 hidden">Saved.</p>' +
+            '</form></main></div>';
+          document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
+          document.getElementById('logout-btn').onclick = () => {
+            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          };
+          document.getElementById('prefs-form').onsubmit = function(e) {
+            e.preventDefault();
+            const body = {
+              email_enabled: this.email_enabled.checked ? 1 : 0,
+              sms_enabled: this.sms_enabled.checked ? 1 : 0,
+              push_enabled: this.push_enabled.checked ? 1 : 0,
+              on_package_arrived: this.on_package_arrived.checked ? 1 : 0,
+              on_storage_expiry: this.on_storage_expiry.checked ? 1 : 0,
+              on_ship_updates: this.on_ship_updates.checked ? 1 : 0,
+              on_inbound_updates: this.on_inbound_updates.checked ? 1 : 0
+            };
+            fetch('/api/v1/notifications/preferences', { method: 'PUT', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+              .then(r => r.ok ? r.json() : null).then(() => {
+                document.getElementById('prefs-msg').classList.remove('hidden');
+                setTimeout(() => document.getElementById('prefs-msg').classList.add('hidden'), 2000);
+              });
+          };
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -26,7 +26,35 @@ func RegisterAuth(g fiber.Router) {
 	// Password reset (PRD 6.1)
 	g.Post("/auth/password/forgot", authForgotPassword)
 	g.Post("/auth/password/reset", authResetPassword)
-	// Password change requires auth — registered in main.go with RequireAuth middleware
+	g.Patch("/auth/password/change", middleware.RequireAuth, authPasswordChange)
+}
+
+// authPasswordChange is PATCH /auth/password/change (authenticated). PRD 6.1.
+func authPasswordChange(c *fiber.Ctx) error {
+	userID := c.Locals(middleware.CtxUserID)
+	if userID == nil {
+		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Not authenticated"))
+	}
+	var body struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
+	}
+	if body.NewPassword == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "new_password required"))
+	}
+	if err := services.ChangePassword(c.Context(), userID.(string), body.CurrentPassword, body.NewPassword); err != nil {
+		if err.Error() == "current password is incorrect" || err.Error() == "current password required" {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("INVALID_PASSWORD", err.Error()))
+		}
+		if err.Error() == "password must be at least 8 characters" {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		}
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update password"))
+	}
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Password updated."}})
 }
 
 func authRegister(c *fiber.Ctx) error {
@@ -234,12 +262,34 @@ func userToMap(u gen.User) fiber.Map {
 	if u.SuiteCode.Valid {
 		suiteCode = u.SuiteCode.String
 	}
+	phone := ""
+	if u.Phone.Valid {
+		phone = u.Phone.String
+	}
+	addressStreet, addressCity, addressState, addressZip := "", "", "", ""
+	if u.AddressStreet.Valid {
+		addressStreet = u.AddressStreet.String
+	}
+	if u.AddressCity.Valid {
+		addressCity = u.AddressCity.String
+	}
+	if u.AddressState.Valid {
+		addressState = u.AddressState.String
+	}
+	if u.AddressZip.Valid {
+		addressZip = u.AddressZip.String
+	}
 	return fiber.Map{
 		"id":                u.ID,
 		"name":              u.Name,
 		"email":             u.Email,
+		"phone":             phone,
 		"role":              u.Role,
 		"suite_code":        suiteCode,
+		"address_street":    addressStreet,
+		"address_city":      addressCity,
+		"address_state":     addressState,
+		"address_zip":       addressZip,
 		"storage_plan":      u.StoragePlan,
 		"free_storage_days": u.FreeStorageDays,
 		"email_verified":    u.EmailVerified != 0,

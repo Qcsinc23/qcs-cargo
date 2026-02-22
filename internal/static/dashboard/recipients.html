@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recipients | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/recipients'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/bookings" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Bookings</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg ' + (active === 'recipients' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Recipients</a>' +
+          '<a href="/dashboard/shipments" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Shipments</a>' +
+          '<a href="/dashboard/invoices" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Invoices</a>' +
+          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Profile</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      function val(r, key) {
+        const v = r[key];
+        if (v && typeof v === 'object' && 'String' in v) return v.Valid ? v.String : '';
+        return (typeof v === 'string' || typeof v === 'number') ? String(v) : '';
+      }
+
+      function renderMain(user, list, editingId) {
+        const isEditing = editingId !== null;
+        let formHtml = '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-8">' +
+          '<h2 class="text-lg font-semibold text-[#0F172A] mb-4">' + (isEditing ? 'Edit recipient' : 'Add recipient') + '</h2>' +
+          '<form id="recipient-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
+          '<input type="hidden" id="form-id" value="' + (editingId || '') + '">' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Name *</label><input type="text" id="form-name" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Full name"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Phone</label><input type="text" id="form-phone" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Phone"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Destination *</label><input type="text" id="form-destination_id" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. guyana, jamaica"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Street *</label><input type="text" id="form-street" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Street address"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Apt / Unit</label><input type="text" id="form-apt" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Apt, suite"></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">City *</label><input type="text" id="form-city" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="City"></div>' +
+          '<div class="md:col-span-2"><label class="block text-sm font-medium text-slate-600 mb-1">Delivery instructions</label><textarea id="form-delivery_instructions" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Optional instructions"></textarea></div>' +
+          '<div class="flex items-center"><input type="checkbox" id="form-is_default" class="rounded border-slate-300"> <label for="form-is_default" class="ml-2 text-sm text-slate-600">Default recipient</label></div>' +
+          '<div class="flex gap-2">' +
+          '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">' + (isEditing ? 'Update' : 'Add') + '</button>' +
+          (isEditing ? '<button type="button" id="form-cancel" class="bg-slate-200 text-slate-700 px-6 py-2 rounded-lg font-medium">Cancel</button>' : '') +
+          '</div></form></div>';
+
+        let tableHtml = '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr class="text-left text-sm text-slate-600">' +
+          '<th class="p-4">Name</th><th class="p-4">Destination</th><th class="p-4">Address</th><th class="p-4">Default</th><th class="p-4 w-28">Actions</th></tr></thead><tbody id="recipients-tbody">';
+        (list || []).forEach(function(r) {
+          const addr = val(r, 'street') + (val(r, 'apt') ? ', ' + val(r, 'apt') : '') + ', ' + val(r, 'city');
+          tableHtml += '<tr class="border-t border-slate-100 hover:bg-slate-50">' +
+            '<td class="p-4 font-medium">' + val(r, 'name') + '</td>' +
+            '<td class="p-4">' + val(r, 'destination_id') + '</td>' +
+            '<td class="p-4 text-slate-600">' + addr + '</td>' +
+            '<td class="p-4">' + (r.is_default ? 'Yes' : '') + '</td>' +
+            '<td class="p-4"><button type="button" class="edit-btn text-[#2563EB] font-medium mr-2" data-id="' + r.id + '">Edit</button>' +
+            '<button type="button" class="delete-btn text-red-600 font-medium" data-id="' + r.id + '">Delete</button></td></tr>';
+        });
+        tableHtml += '</tbody></table></div>';
+        if (!list || list.length === 0) tableHtml = '<div class="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-600">No recipients yet. Add one above.</div>';
+
+        return '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Recipients</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Recipients</h1>' +
+          '<p class="text-slate-600 mb-6">Shipping addresses for your packages.</p>' +
+          formHtml + tableHtml + '</main></div>';
+      }
+
+      function loadRecipients() {
+        return fetch('/api/v1/recipients', auth).then(function(r) { return r.ok ? r.json() : null; }).then(function(j) { return j && j.data ? j.data : []; });
+      }
+
+      function setForm(rec) {
+        document.getElementById('form-id').value = rec ? rec.id : '';
+        document.getElementById('form-name').value = rec ? val(rec, 'name') : '';
+        document.getElementById('form-phone').value = rec ? val(rec, 'phone') : '';
+        document.getElementById('form-destination_id').value = rec ? val(rec, 'destination_id') : '';
+        document.getElementById('form-street').value = rec ? val(rec, 'street') : '';
+        document.getElementById('form-apt').value = rec ? val(rec, 'apt') : '';
+        document.getElementById('form-city').value = rec ? val(rec, 'city') : '';
+        document.getElementById('form-delivery_instructions').value = rec ? val(rec, 'delivery_instructions') : '';
+        document.getElementById('form-is_default').checked = rec ? !!rec.is_default : false;
+      }
+
+      function getFormPayload() {
+        return {
+          name: document.getElementById('form-name').value.trim(),
+          phone: document.getElementById('form-phone').value.trim(),
+          destination_id: document.getElementById('form-destination_id').value.trim(),
+          street: document.getElementById('form-street').value.trim(),
+          apt: document.getElementById('form-apt').value.trim(),
+          city: document.getElementById('form-city').value.trim(),
+          delivery_instructions: document.getElementById('form-delivery_instructions').value.trim(),
+          is_default: document.getElementById('form-is_default').checked ? 1 : 0
+        };
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(function(r) { return r.ok ? r.json() : null; }),
+        loadRecipients()
+      ]).then(function(results) {
+        const me = results[0];
+        const list = results[1];
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        const container = document.getElementById('app');
+        let editingId = null;
+
+        function render() {
+          container.innerHTML = sidebar(user, 'recipients') + renderMain(user, list, editingId);
+
+          document.getElementById('recipient-form').onsubmit = function(e) {
+            e.preventDefault();
+            const id = document.getElementById('form-id').value;
+            const payload = getFormPayload();
+            if (!payload.name || !payload.destination_id || !payload.street || !payload.city) {
+              alert('Please fill name, destination, street, and city.');
+              return;
+            }
+            if (id) {
+              fetch('/api/v1/recipients/' + id, { method: 'PATCH', ...auth, body: JSON.stringify(payload) })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                  if (j.error) { alert(j.error.message || 'Update failed'); return; }
+                  editingId = null;
+                  return loadRecipients();
+                })
+                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); render(); } });
+            } else {
+              fetch('/api/v1/recipients', { method: 'POST', ...auth, body: JSON.stringify(payload) })
+                .then(function(r) { return r.json(); })
+                .then(function(j) {
+                  if (j.error) { alert(j.error.message || 'Create failed'); return; }
+                  return loadRecipients();
+                })
+                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); setForm(null); render(); } });
+            }
+          };
+
+          var cancelBtn = document.getElementById('form-cancel');
+          if (cancelBtn) cancelBtn.onclick = function() { editingId = null; setForm(null); render(); };
+
+          document.querySelectorAll('.edit-btn').forEach(function(btn) {
+            btn.onclick = function() {
+              const id = btn.getAttribute('data-id');
+              const rec = list.find(function(r) { return r.id === id; });
+              if (rec) { editingId = id; setForm(rec); render(); }
+            };
+          });
+          document.querySelectorAll('.delete-btn').forEach(function(btn) {
+            btn.onclick = function() {
+              if (!confirm('Delete this recipient?')) return;
+              const id = btn.getAttribute('data-id');
+              fetch('/api/v1/recipients/' + id, { method: 'DELETE', ...auth })
+                .then(function(r) { return r.ok ? loadRecipients() : null; })
+                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); render(); } });
+            };
+          });
+
+          document.getElementById('logout-btn').onclick = function() {
+            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function() { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          };
+        }
+
+        render();
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Complete Payment | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <script src="https://js.stripe.com/v3/"></script>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname); return; }
+      const pathParts = window.location.pathname.split('/').filter(Boolean);
+      const idx = pathParts.indexOf('ship-requests');
+      const id = idx >= 0 && pathParts[idx + 1] && pathParts[idx + 1] !== 'pay' ? pathParts[idx + 1] : null;
+      if (!id) { window.location.href = '/dashboard/ship-requests'; return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/ship" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship My Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg ' + (active === 'ship-requests' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        Promise.all([
+          fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null),
+          fetch('/api/v1/ship-requests/' + id + '/pay', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+        ]).then(async ([srRes, payRes]) => {
+          if (!srRes || !srRes.data) {
+            document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + '<main class="flex-1 p-8"><p>Ship request not found.</p><a href="/dashboard/ship-requests" class="text-[#2563EB]">Back to list</a></main></div>';
+            document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
+            return;
+          }
+          const sr = srRes.data.ship_request || srRes.data;
+          const total = sr.total != null ? Number(sr.total).toFixed(2) : '0.00';
+          const payBc = '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests/' + id + '" class="text-[#2563EB] hover:underline">Request</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Pay</li></ol></nav>';
+          if (payRes.status === 501) {
+            document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') +
+              '<main class="flex-1 p-8">' +
+              payBc +
+              '<a href="/dashboard/ship-requests/' + id + '" class="text-[#2563EB] mb-6 inline-block">← Back to ship request</a>' +
+              '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Complete Payment</h1>' +
+              '<p class="text-slate-500 mb-6">Total: $' + total + '</p>' +
+              '<div class="bg-amber-50 border border-amber-200 rounded-xl p-6 max-w-md">' +
+              '<p class="text-amber-800 font-medium">Payment coming soon</p>' +
+              '<p class="text-amber-700 text-sm mt-2">Online payment is not configured yet. Please contact support or check back later.</p>' +
+              '<a href="/dashboard/ship-requests/' + id + '" class="inline-block mt-4 text-[#2563EB] font-medium">Back to ship request</a>' +
+              '</div></main></div>';
+            document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
+            return;
+          }
+          var payData = {};
+          try { payData = payRes.ok ? await payRes.json() : {}; } catch (_) {}
+          const clientSecret = (payData.data && payData.data.client_secret) || null;
+          if (!clientSecret) {
+            document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') +
+              '<main class="flex-1 p-8"><p>Unable to start payment.</p><a href="/dashboard/ship-requests/' + id + '" class="text-[#2563EB]">Back to ship request</a></main></div>';
+            document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'); };
+            return;
+          }
+          let main = '<main class="flex-1 p-8">' +
+            payBc +
+            '<a href="/dashboard/ship-requests/' + id + '" class="text-[#2563EB] mb-6 inline-block">← Back to ship request</a>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Complete Payment</h1>' +
+            '<p class="text-slate-500 mb-6">Total: $' + total + '</p>' +
+            '<div class="bg-white rounded-xl border border-slate-200 p-6 max-w-md">' +
+            '<div id="payment-element"></div>' +
+            '<button type="button" id="pay-btn" class="mt-4 w-full bg-[#2563EB] text-white px-6 py-3 rounded-lg font-medium">Pay with card</button>' +
+            '<p id="pay-error" class="mt-2 text-red-600 text-sm hidden"></p>' +
+            '</div></main></div>';
+          document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + main;
+          document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'); };
+
+          if (typeof Stripe === 'undefined') {
+            document.getElementById('pay-error').textContent = 'Stripe.js failed to load.';
+            document.getElementById('pay-error').classList.remove('hidden');
+            return;
+          }
+          var pk = window.STRIPE_PUBLISHABLE_KEY || '';
+          var initStripe = function() {
+            if (!pk) {
+              document.getElementById('pay-error').textContent = 'Stripe publishable key not configured. Set STRIPE_PUBLISHABLE_KEY on the server.';
+              document.getElementById('pay-error').classList.remove('hidden');
+              return;
+            }
+            var stripe = Stripe(pk);
+            var elements = stripe.elements({ clientSecret: clientSecret });
+            var paymentElement = elements.create('payment');
+            paymentElement.mount('#payment-element');
+          document.getElementById('pay-btn').onclick = function() {
+            const btn = document.getElementById('pay-btn');
+            const errEl = document.getElementById('pay-error');
+            btn.disabled = true;
+            errEl.classList.add('hidden');
+            stripe.confirmPayment({ elements, confirmParams: { return_url: window.location.origin + '/dashboard/ship-requests/' + id + '/confirmation' } })
+              .then(function(result) {
+                if (result.error) {
+                  errEl.textContent = result.error.message || 'Payment failed';
+                  errEl.classList.remove('hidden');
+                  btn.disabled = false;
+                } else if (result.paymentIntent && result.paymentIntent.status === 'succeeded') {
+                  fetch('/api/v1/ship-requests/' + id + '/reconcile', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+                    .then(function(r) { if (r.ok) window.location.href = '/dashboard/ship-requests/' + id + '/confirmation'; else btn.disabled = false; });
+                }
+              })
+              .catch(function() { btn.disabled = false; errEl.textContent = 'Payment failed'; errEl.classList.remove('hidden'); });
+          };
+          };
+          if (pk) { initStripe(); return; }
+          fetch('/api/v1/config').then(function(r) { return r.json(); }).then(function(d) {
+            if (d.data && d.data.stripe_publishable_key) pk = d.data.stripe_publishable_key;
+            initStripe();
+          }).catch(function() { initStripe(); });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

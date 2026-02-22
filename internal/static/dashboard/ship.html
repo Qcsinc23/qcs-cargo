@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ship My Packages | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/ship'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+      const params = new URLSearchParams(window.location.search);
+      const preSelected = (params.get('packages') || '').split(',').filter(Boolean);
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      let step = 1;
+      let state = { packages: [], selectedIds: [], destinations: [], destinationId: '', recipients: [], recipientId: '', serviceType: 'standard', specialInstructions: '' };
+
+      function renderStep() {
+        const s = step;
+        let content = '';
+        if (s === 1) {
+          const list = state.packages;
+          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Select packages to ship</h2>' +
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+          list.forEach(p => {
+            const sender = typeof p.sender_name === 'string' ? p.sender_name : (p.sender_name && p.sender_name.String) || 'Unknown';
+            const weight = typeof p.weight_lbs === 'number' ? p.weight_lbs : (p.weight_lbs && p.weight_lbs.Float64) || 0;
+            const checked = state.selectedIds.includes(p.id) ? ' checked' : '';
+            content += '<label class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 cursor-pointer hover:border-[#2563EB]">' +
+              '<input type="checkbox" class="pkg-cb mt-1" data-id="' + p.id + '"' + checked + '>' +
+              '<div><p class="font-medium">' + sender + '</p><p class="text-sm text-slate-500">' + weight + ' lbs</p></div></label>';
+          });
+          content += '</div>';
+        } else if (s === 2) {
+          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Choose destination</h2>' +
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+          state.destinations.forEach(d => {
+            const id = d.id || d.ID;
+            const name = d.name || d.Name || id;
+            const selected = state.destinationId === id ? ' border-[#2563EB] bg-slate-50' : '';
+            content += '<button type="button" class="dest-btn text-left border rounded-xl p-4 hover:border-[#2563EB]' + selected + '" data-id="' + id + '">' +
+              '<p class="font-medium">' + name + '</p>' +
+              (d.usd_per_lb ? '<p class="text-sm text-slate-500">$' + d.usd_per_lb + '/lb · ' + (d.transit || '') + '</p>' : '') + '</button>';
+          });
+          content += '</div>';
+        } else if (s === 3) {
+          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Choose recipient</h2>' +
+            '<p class="text-slate-600 mb-4"><a href="/dashboard/recipients" class="text-[#2563EB]">Add a recipient</a> if needed.</p>' +
+            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+          state.recipients.forEach(r => {
+            const id = r.id || r.ID;
+            const name = (r.name && (typeof r.name === 'string' ? r.name : r.name.String)) || 'Unnamed';
+            const selected = state.recipientId === id ? ' border-[#2563EB] bg-slate-50' : '';
+            content += '<button type="button" class="recip-btn text-left border rounded-xl p-4 hover:border-[#2563EB]' + selected + '" data-id="' + id + '">' +
+              '<p class="font-medium">' + name + '</p>' +
+              (r.city ? '<p class="text-sm text-slate-500">' + (typeof r.city === 'string' ? r.city : r.city.String) + '</p>' : '') + '</button>';
+          });
+          content += '</div>';
+        } else {
+          const dest = state.destinations.find(d => (d.id || d.ID) === state.destinationId);
+          const destName = dest ? (dest.name || dest.Name) : state.destinationId;
+          const recip = state.recipients.find(r => (r.id || r.ID) === state.recipientId);
+          const recipName = recip ? (recip.name && (typeof recip.name === 'string' ? recip.name : recip.name.String)) : (state.recipientId || '—');
+          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Review & submit</h2>' +
+            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">' +
+            '<p><strong>Packages:</strong> ' + state.selectedIds.length + '</p>' +
+            '<p class="mt-2"><strong>Destination:</strong> ' + destName + '</p>' +
+            '<p class="mt-2"><strong>Recipient:</strong> ' + recipName + '</p>' +
+            '<p class="mt-2"><strong>Service:</strong> ' + state.serviceType + '</p>' +
+            (state.specialInstructions ? '<p class="mt-2"><strong>Instructions:</strong> ' + state.specialInstructions + '</p>' : '') +
+            '</div>' +
+            '<div class="mb-4"><label class="block text-sm font-medium text-slate-600 mb-1">Special instructions (optional)</label>' +
+            '<textarea id="review-notes" class="w-full border border-slate-300 rounded-lg px-3 py-2" rows="2" placeholder="e.g. fragile">' + (state.specialInstructions || '') + '</textarea></div>' +
+            '<button type="button" id="submit-btn" class="bg-[#F97316] text-white px-6 py-3 rounded-lg font-medium">Submit ship request</button>' +
+            '<p id="submit-msg" class="mt-2 text-sm hidden"></p>';
+        }
+        return content;
+      }
+
+      function renderMain(user) {
+        const steps = ['Packages', 'Destination', 'Recipient', 'Review'];
+        let html = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Ship my packages</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Ship my packages</h1>' +
+          '<div class="flex gap-2 mb-6">';
+        steps.forEach((label, i) => {
+          const n = i + 1;
+          html += '<span class="px-3 py-1 rounded-full text-sm ' + (step === n ? 'bg-[#2563EB] text-white' : 'bg-slate-200 text-slate-600') + '">' + n + '. ' + label + '</span>';
+        });
+        html += '</div><div id="step-content">' + renderStep() + '</div>';
+        if (step > 1) html += '<button type="button" id="back-btn" class="mt-6 text-[#2563EB] font-medium">← Back</button>';
+        if (step < 4) html += '<button type="button" id="next-btn" class="mt-6 ml-4 bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Next →</button>';
+        html += '</main></div>';
+        return html;
+      }
+
+      function bindStep() {
+        document.querySelectorAll('.pkg-cb').forEach(cb => {
+          cb.onchange = () => {
+            const id = cb.dataset.id;
+            if (cb.checked) state.selectedIds = [...state.selectedIds, id];
+            else state.selectedIds = state.selectedIds.filter(x => x !== id);
+          };
+        });
+        document.querySelectorAll('.dest-btn').forEach(btn => {
+          btn.onclick = () => { state.destinationId = btn.dataset.id; update(); };
+        });
+        document.querySelectorAll('.recip-btn').forEach(btn => {
+          btn.onclick = () => { state.recipientId = btn.dataset.id; update(); };
+        });
+        const next = document.getElementById('next-btn');
+        if (next) next.onclick = () => { step++; update(); };
+        const back = document.getElementById('back-btn');
+        if (back) back.onclick = () => { step--; update(); };
+        const submit = document.getElementById('submit-btn');
+        if (submit) {
+          submit.onclick = () => {
+            state.specialInstructions = (document.getElementById('review-notes') || {}).value || '';
+            const msgEl = document.getElementById('submit-msg');
+            fetch('/api/v1/ship-requests', {
+              method: 'POST',
+              ...auth,
+              body: JSON.stringify({
+                destination_id: state.destinationId,
+                service_type: state.serviceType,
+                recipient_id: state.recipientId || null,
+                locker_package_ids: state.selectedIds,
+                special_instructions: state.specialInstructions || null
+              })
+            }).then(r => r.json()).then(d => {
+              if (d.status === 'success' && d.data) {
+                msgEl.textContent = 'Created: ' + (d.data.confirmation_code || d.data.id) + '.';
+                msgEl.className = 'mt-2 text-sm text-green-600';
+                msgEl.classList.remove('hidden');
+                setTimeout(() => { window.location.href = '/dashboard/ship-requests'; }, 2000);
+              } else {
+                msgEl.textContent = d.message || d.error?.message || 'Submit failed.';
+                msgEl.className = 'mt-2 text-sm text-red-600';
+                msgEl.classList.remove('hidden');
+              }
+            }).catch(() => {
+              msgEl.textContent = 'Network error.';
+              msgEl.className = 'mt-2 text-sm text-red-600';
+              msgEl.classList.remove('hidden');
+            });
+          };
+        }
+      }
+
+      function update() {
+        document.getElementById('step-content').innerHTML = renderStep();
+        const main = document.querySelector('main');
+        const nextBtn = main.querySelector('#next-btn');
+        const backBtn = main.querySelector('#back-btn');
+        if (step < 4 && !main.querySelector('#next-btn')) {
+          const wrap = main.querySelector('#step-content');
+          if (wrap && step < 4) {
+            const n = document.createElement('button');
+            n.type = 'button'; n.id = 'next-btn'; n.className = 'mt-6 bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium'; n.textContent = 'Next →';
+            n.onclick = () => { step++; update(); };
+            main.appendChild(n);
+          }
+        }
+        if (step > 1 && !main.querySelector('#back-btn')) {
+          const b = document.createElement('button');
+          b.type = 'button'; b.id = 'back-btn'; b.className = 'mt-6 text-[#2563EB] font-medium'; b.textContent = '← Back';
+          b.onclick = () => { step--; update(); };
+          main.insertBefore(b, main.querySelector('#next-btn') || main.lastChild);
+        }
+        bindStep();
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/locker', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/destinations', {}).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/recipients', auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, locker, dests, recs]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        const user = me.data;
+        state.packages = (locker && locker.data) || [];
+        state.destinations = (dests && dests.data) || [];
+        state.recipients = (recs && recs.data) || [];
+        state.selectedIds = preSelected.length ? preSelected : (state.packages.length === 1 ? [state.packages[0].id] : []);
+        document.getElementById('app').innerHTML = sidebar(user) + renderMain(user);
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+        bindStep();
+      });
+    })();
+  </script>
+</body>
+</html>

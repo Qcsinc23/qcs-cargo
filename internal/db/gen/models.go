@@ -8,6 +8,88 @@ import (
 	"database/sql"
 )
 
+type Booking struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	ServiceType           string         `json:"service_type"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ScheduledDate         string         `json:"scheduled_date"`
+	TimeSlot              string         `json:"time_slot"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	Discount              float64        `json:"discount"`
+	Insurance             float64        `json:"insurance"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+type InboundTracking struct {
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id"`
+	Carrier         string         `json:"carrier"`
+	TrackingNumber  string         `json:"tracking_number"`
+	RetailerName    sql.NullString `json:"retailer_name"`
+	ExpectedItems   sql.NullString `json:"expected_items"`
+	Status          string         `json:"status"`
+	LockerPackageID sql.NullString `json:"locker_package_id"`
+	LastCheckedAt   sql.NullString `json:"last_checked_at"`
+	CreatedAt       string         `json:"created_at"`
+}
+
+type Invoice struct {
+	ID            string         `json:"id"`
+	UserID        string         `json:"user_id"`
+	BookingID     sql.NullString `json:"booking_id"`
+	ShipRequestID sql.NullString `json:"ship_request_id"`
+	InvoiceNumber string         `json:"invoice_number"`
+	Subtotal      float64        `json:"subtotal"`
+	Tax           float64        `json:"tax"`
+	Total         float64        `json:"total"`
+	Status        string         `json:"status"`
+	DueDate       sql.NullString `json:"due_date"`
+	PaidAt        sql.NullString `json:"paid_at"`
+	Notes         sql.NullString `json:"notes"`
+	CreatedAt     string         `json:"created_at"`
+}
+
+type InvoiceItem struct {
+	ID          string  `json:"id"`
+	InvoiceID   string  `json:"invoice_id"`
+	Description string  `json:"description"`
+	Quantity    int     `json:"quantity"`
+	UnitPrice   float64 `json:"unit_price"`
+	Total       float64 `json:"total"`
+}
+
+type LockerPackage struct {
+	ID                   string          `json:"id"`
+	UserID               string          `json:"user_id"`
+	SuiteCode            string          `json:"suite_code"`
+	TrackingInbound      sql.NullString  `json:"tracking_inbound"`
+	CarrierInbound       sql.NullString  `json:"carrier_inbound"`
+	SenderName           sql.NullString  `json:"sender_name"`
+	SenderAddress        sql.NullString  `json:"sender_address"`
+	WeightLbs            sql.NullFloat64 `json:"weight_lbs"`
+	LengthIn             sql.NullFloat64 `json:"length_in"`
+	WidthIn              sql.NullFloat64 `json:"width_in"`
+	HeightIn             sql.NullFloat64 `json:"height_in"`
+	ArrivalPhotoUrl      sql.NullString  `json:"arrival_photo_url"`
+	Condition            sql.NullString  `json:"condition"`
+	StorageBay           sql.NullString  `json:"storage_bay"`
+	Status               string          `json:"status"`
+	ArrivedAt            sql.NullString  `json:"arrived_at"`
+	FreeStorageExpiresAt sql.NullString  `json:"free_storage_expires_at"`
+	DisposedAt           sql.NullString  `json:"disposed_at"`
+	CreatedAt            string          `json:"created_at"`
+	UpdatedAt            string          `json:"updated_at"`
+}
+
 type MagicLink struct {
 	ID         string         `json:"id"`
 	UserID     string         `json:"user_id"`
@@ -18,6 +100,59 @@ type MagicLink struct {
 	CreatedAt  string         `json:"created_at"`
 }
 
+type NotificationPref struct {
+	ID               string `json:"id"`
+	UserID           string `json:"user_id"`
+	EmailEnabled     int    `json:"email_enabled"`
+	SmsEnabled       int    `json:"sms_enabled"`
+	PushEnabled      int    `json:"push_enabled"`
+	OnPackageArrived int    `json:"on_package_arrived"`
+	OnStorageExpiry  int    `json:"on_storage_expiry"`
+	OnShipUpdates    int    `json:"on_ship_updates"`
+	OnInboundUpdates int    `json:"on_inbound_updates"`
+	DailyDigest      string `json:"daily_digest"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+}
+
+type PasswordReset struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	TokenHash string `json:"token_hash"`
+	Used      int    `json:"used"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+type Recipient struct {
+	ID                   string         `json:"id"`
+	UserID               string         `json:"user_id"`
+	Name                 string         `json:"name"`
+	Phone                sql.NullString `json:"phone"`
+	DestinationID        string         `json:"destination_id"`
+	Street               string         `json:"street"`
+	Apt                  sql.NullString `json:"apt"`
+	City                 string         `json:"city"`
+	DeliveryInstructions sql.NullString `json:"delivery_instructions"`
+	IsDefault            int            `json:"is_default"`
+	UseCount             int            `json:"use_count"`
+	CreatedAt            string         `json:"created_at"`
+	UpdatedAt            string         `json:"updated_at"`
+}
+
+type ServiceRequest struct {
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id"`
+	LockerPackageID string         `json:"locker_package_id"`
+	ServiceType     string         `json:"service_type"`
+	Status          string         `json:"status"`
+	Notes           sql.NullString `json:"notes"`
+	CompletedBy     sql.NullString `json:"completed_by"`
+	Price           float64        `json:"price"`
+	CreatedAt       string         `json:"created_at"`
+	CompletedAt     sql.NullString `json:"completed_at"`
+}
+
 type Session struct {
 	ID               string         `json:"id"`
 	UserID           string         `json:"user_id"`
@@ -26,6 +161,67 @@ type Session struct {
 	UserAgent        sql.NullString `json:"user_agent"`
 	ExpiresAt        string         `json:"expires_at"`
 	CreatedAt        string         `json:"created_at"`
+}
+
+type ShipRequest struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+type ShipRequestItem struct {
+	ID                     string          `json:"id"`
+	ShipRequestID          string          `json:"ship_request_id"`
+	LockerPackageID        string          `json:"locker_package_id"`
+	CustomsDescription     sql.NullString  `json:"customs_description"`
+	CustomsValue           sql.NullFloat64 `json:"customs_value"`
+	CustomsQuantity        sql.NullInt64   `json:"customs_quantity"`
+	CustomsHsCode          sql.NullString  `json:"customs_hs_code"`
+	CustomsCountryOfOrigin sql.NullString  `json:"customs_country_of_origin"`
+	CustomsWeightLbs       sql.NullFloat64 `json:"customs_weight_lbs"`
+}
+
+type Shipment struct {
+	ID                string          `json:"id"`
+	DestinationID     string          `json:"destination_id"`
+	ManifestID        sql.NullString  `json:"manifest_id"`
+	ShipRequestID     sql.NullString  `json:"ship_request_id"`
+	TrackingNumber    sql.NullString  `json:"tracking_number"`
+	Status            string          `json:"status"`
+	TotalWeight       sql.NullFloat64 `json:"total_weight"`
+	PackageCount      sql.NullInt64   `json:"package_count"`
+	Carrier           sql.NullString  `json:"carrier"`
+	EstimatedDelivery sql.NullString  `json:"estimated_delivery"`
+	ActualDelivery    sql.NullString  `json:"actual_delivery"`
+	CreatedAt         string          `json:"created_at"`
+	UpdatedAt         string          `json:"updated_at"`
+}
+
+type Template struct {
+	ID            string         `json:"id"`
+	UserID        string         `json:"user_id"`
+	Name          string         `json:"name"`
+	ServiceType   string         `json:"service_type"`
+	DestinationID string         `json:"destination_id"`
+	RecipientID   sql.NullString `json:"recipient_id"`
+	UseCount      int            `json:"use_count"`
+	CreatedAt     string         `json:"created_at"`
 }
 
 type User struct {

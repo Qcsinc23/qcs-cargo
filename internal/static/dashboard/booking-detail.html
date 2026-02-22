@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Booking | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      const path = window.location.pathname;
+      const id = path.split('/').pop();
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent(path); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+
+      function sidebar(user, active) {
+        const suiteCode = (user && user.suite_code) || '—';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
+          '<nav class="space-y-1">' +
+          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
+          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
+          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/dashboard/bookings" class="block py-2 px-3 rounded-lg ' + (active === 'bookings' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Bookings</a>' +
+          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Recipients</a>' +
+          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/bookings/' + id, auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, res]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        const b = res && res.data;
+        if (!b) { document.getElementById('app').innerHTML = sidebar(me.data, 'bookings') + '<main class="flex-1 p-8"><p class="text-red-600">Booking not found.</p><a href="/dashboard/bookings">Back to Bookings</a></main>'; return; }
+        const rec = b.recipient_id && (typeof b.recipient_id === 'string' ? b.recipient_id : b.recipient_id.String) ? (b.recipient_id.String || b.recipient_id) : '—';
+        const spec = b.special_instructions && (typeof b.special_instructions === 'string' ? b.special_instructions : b.special_instructions.String) ? (b.special_instructions.String || b.special_instructions) : '—';
+        const pay = b.payment_status && (typeof b.payment_status === 'string' ? b.payment_status : b.payment_status.String) ? (b.payment_status.String || b.payment_status) : '—';
+        const bcCode = (b.confirmation_code || b.id);
+        let main = '<main class="flex-1 p-8">' +
+          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/bookings" class="text-[#2563EB] hover:underline">Bookings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">' + bcCode + '</li></ol></nav>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Booking ' + bcCode + '</h1>' +
+          '<p class="text-slate-600 mb-6"><a href="/dashboard/bookings" class="text-[#2563EB]">← Back to Bookings</a></p>' +
+          '<div class="bg-white rounded-xl border border-slate-200 p-6 max-w-2xl">' +
+          '<table class="w-full"><tbody>' +
+          '<tr><td class="py-2 text-slate-500 w-40">Status</td><td>' + (b.status || '—') + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Scheduled date</td><td>' + (b.scheduled_date || '—') + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Time slot</td><td>' + (b.time_slot || '—') + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Destination</td><td>' + (b.destination_id || '—') + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Recipient</td><td>' + rec + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Special instructions</td><td>' + spec + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Total</td><td>$' + (b.total != null ? Number(b.total).toFixed(2) : '0.00') + '</td></tr>' +
+          '<tr><td class="py-2 text-slate-500">Payment status</td><td>' + pay + '</td></tr>' +
+          '</tbody></table></div></main>';
+        document.getElementById('app').innerHTML = sidebar(me.data, 'bookings') + main;
+        document.getElementById('logout-btn').onclick = () => {
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+        };
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/balance"
 )
 
 // Destinations per PRD 8.2
@@ -23,9 +25,36 @@ func RegisterPublic(g fiber.Router) {
 	g.Get("/destinations", listDestinations)
 	g.Get("/destinations/:id", getDestination)
 	g.Get("/status", systemStatus)
+	g.Get("/config", publicConfig)
 	g.Post("/contact", contactForm)
 	g.Get("/track/:trackingNumber", publicTrack)
 	g.Get("/calculator", shippingCalculator)
+	g.Get("/stripe/verify", stripeVerify)
+}
+
+func publicConfig(c *fiber.Ctx) error {
+	config := fiber.Map{}
+	secretKey := os.Getenv("STRIPE_SECRET_KEY")
+	pk := os.Getenv("STRIPE_PUBLISHABLE_KEY")
+	config["stripe_configured"] = secretKey != ""
+	if pk != "" {
+		config["stripe_publishable_key"] = pk
+	}
+	return c.JSON(fiber.Map{"data": config})
+}
+
+// stripeVerify calls Stripe Balance API to verify STRIPE_SECRET_KEY. Returns stripe_ok and optional error.
+func stripeVerify(c *fiber.Ctx) error {
+	secretKey := os.Getenv("STRIPE_SECRET_KEY")
+	if secretKey == "" {
+		return c.JSON(fiber.Map{"data": fiber.Map{"stripe_ok": false, "error": "STRIPE_SECRET_KEY not set"}})
+	}
+	stripe.Key = secretKey
+	_, err := balance.Get(nil)
+	if err != nil {
+		return c.JSON(fiber.Map{"data": fiber.Map{"stripe_ok": false, "error": err.Error()}})
+	}
+	return c.JSON(fiber.Map{"data": fiber.Map{"stripe_ok": true}})
 }
 
 func listDestinations(c *fiber.Ctx) error {

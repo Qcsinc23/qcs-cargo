@@ -17,6 +17,17 @@ FROM sessions WHERE id = ? AND expires_at > ?;
 -- name: DeleteSession :exec
 DELETE FROM sessions WHERE id = ?;
 
+-- name: ListSessionsByUser :many
+SELECT id, user_id, ip_address, user_agent, expires_at, created_at
+FROM sessions
+WHERE user_id = ? AND expires_at > ?;
+
+-- name: DeleteSessionsByUserExcept :exec
+DELETE FROM sessions WHERE user_id = ? AND id != ?;
+
+-- name: DeleteSessionsByUser :exec
+DELETE FROM sessions WHERE user_id = ?;
+
 -- name: CreateMagicLink :one
 INSERT INTO magic_links (id, user_id, token_hash, redirect_to, used, expires_at, created_at)
 VALUES (?, ?, ?, ?, 0, ?, ?)

@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const getUserByEmail = `-- name: GetUserByEmail :one
@@ -73,4 +74,50 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const updateUserProfile = `-- name: UpdateUserProfile :exec
+UPDATE users
+SET name = ?, phone = ?, address_street = ?, address_city = ?, address_state = ?, address_zip = ?, updated_at = ?
+WHERE id = ?
+`
+
+type UpdateUserProfileParams struct {
+	Name          string         `json:"name"`
+	Phone         sql.NullString `json:"phone"`
+	AddressStreet sql.NullString `json:"address_street"`
+	AddressCity   sql.NullString `json:"address_city"`
+	AddressState  sql.NullString `json:"address_state"`
+	AddressZip    sql.NullString `json:"address_zip"`
+	UpdatedAt     string         `json:"updated_at"`
+	ID            string         `json:"id"`
+}
+
+func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserProfile,
+		arg.Name,
+		arg.Phone,
+		arg.AddressStreet,
+		arg.AddressCity,
+		arg.AddressState,
+		arg.AddressZip,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const updateUserStatus = `-- name: UpdateUserStatus :exec
+UPDATE users SET status = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateUserStatusParams struct {
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	return err
 }

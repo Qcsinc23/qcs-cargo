@@ -1,0 +1,22 @@
+CREATE TABLE locker_packages (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    suite_code TEXT NOT NULL,
+    tracking_inbound TEXT,
+    carrier_inbound TEXT,
+    sender_name TEXT,
+    sender_address TEXT,
+    weight_lbs REAL,
+    length_in REAL,
+    width_in REAL,
+    height_in REAL,
+    arrival_photo_url TEXT,
+    condition TEXT,
+    storage_bay TEXT,
+    status TEXT NOT NULL DEFAULT 'stored',
+    arrived_at TEXT,
+    free_storage_expires_at TEXT,
+    disposed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);

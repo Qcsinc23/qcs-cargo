@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Mailbox | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/mailbox'); return; }
+      fetch('/api/v1/me', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(r => { if (!r.ok) { window.location.href = '/login'; return null; } return r.json(); })
+        .then(j => {
+          if (!j) return;
+          const user = j.data;
+          const suiteCode = user.suite_code || '—';
+          const name = user.name || 'Your Name';
+          const address = '35 Obrien St, E12\nKearny, NJ 07032';
+          const fullAddress = name + '\n35 Obrien St, E12, Suite ' + suiteCode + '\nKearny, NJ 07032';
+          const sidebar = '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+            '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a><nav class="space-y-1">' +
+            '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+            '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
+            '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg bg-[#1E293B]">My Mailbox</a>' +
+            '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
+            '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
+            '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+          const main = '<main class="flex-1 p-8">' +
+            '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">My Mailbox</li></ol></nav>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-8">My Mailbox</h1>' +
+            '<div class="bg-white rounded-xl border border-slate-200 p-8 max-w-lg">' +
+            '<p class="font-mono text-lg whitespace-pre-line mb-4">' + fullAddress.replace(/\n/g, '<br>') + '</p>' +
+            '<button type="button" id="copy-btn" class="bg-[#2563EB] text-white px-4 py-2 rounded-lg font-medium">Copy address</button>' +
+            '</div>' +
+            '<p class="mt-8 text-slate-600 text-sm">Use this address when shopping at US stores. Include your suite code (' + suiteCode + ') so we can match packages to you.</p>' +
+            '<p class="mt-4 text-slate-600 text-sm"><a href="/dashboard/inbound" class="text-[#2563EB]">Track incoming packages</a></p>' +
+            '</main></div>';
+          document.getElementById('app').innerHTML = sidebar + main;
+          document.getElementById('copy-btn').onclick = () => { navigator.clipboard.writeText(fullAddress); alert('Address copied.'); };
+          document.getElementById('logout-btn').onclick = () => {
+            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          };
+        });
+    })();
+  </script>
+</body>
+</html>
