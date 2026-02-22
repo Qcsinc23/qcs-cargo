@@ -7,7 +7,48 @@ package gen
 
 import (
 	"context"
+	"database/sql"
 )
+
+const createTemplate = `-- name: CreateTemplate :one
+INSERT INTO templates (id, user_id, name, service_type, destination_id, recipient_id, use_count, created_at)
+VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+RETURNING id, user_id, name, service_type, destination_id, recipient_id, use_count, created_at
+`
+
+type CreateTemplateParams struct {
+	ID            string         `json:"id"`
+	UserID        string         `json:"user_id"`
+	Name          string         `json:"name"`
+	ServiceType   string         `json:"service_type"`
+	DestinationID string         `json:"destination_id"`
+	RecipientID   sql.NullString `json:"recipient_id"`
+	CreatedAt     string         `json:"created_at"`
+}
+
+func (q *Queries) CreateTemplate(ctx context.Context, arg CreateTemplateParams) (Template, error) {
+	row := q.db.QueryRowContext(ctx, createTemplate,
+		arg.ID,
+		arg.UserID,
+		arg.Name,
+		arg.ServiceType,
+		arg.DestinationID,
+		arg.RecipientID,
+		arg.CreatedAt,
+	)
+	var i Template
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.ServiceType,
+		&i.DestinationID,
+		&i.RecipientID,
+		&i.UseCount,
+		&i.CreatedAt,
+	)
+	return i, err
+}
 
 const deleteTemplate = `-- name: DeleteTemplate :exec
 DELETE FROM templates WHERE id = ? AND user_id = ?
@@ -87,4 +128,31 @@ func (q *Queries) ListTemplatesByUser(ctx context.Context, userID string) ([]Tem
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateTemplate = `-- name: UpdateTemplate :exec
+UPDATE templates
+SET name = ?, service_type = ?, destination_id = ?, recipient_id = ?
+WHERE id = ? AND user_id = ?
+`
+
+type UpdateTemplateParams struct {
+	Name          string         `json:"name"`
+	ServiceType   string         `json:"service_type"`
+	DestinationID string         `json:"destination_id"`
+	RecipientID   sql.NullString `json:"recipient_id"`
+	ID            string         `json:"id"`
+	UserID        string         `json:"user_id"`
+}
+
+func (q *Queries) UpdateTemplate(ctx context.Context, arg UpdateTemplateParams) error {
+	_, err := q.db.ExecContext(ctx, updateTemplate,
+		arg.Name,
+		arg.ServiceType,
+		arg.DestinationID,
+		arg.RecipientID,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
 }

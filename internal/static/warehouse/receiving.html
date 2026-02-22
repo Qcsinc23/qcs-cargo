@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drop-off Receiving | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script>
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/receiving'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+      fetch('/api/v1/me', auth).then(r => {
+        if (!r.ok) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/receiving'); return null; }
+        return r.json();
+      }).then(me => {
+        if (!me) return;
+        const role = (me.data && me.data.role) || '';
+        if (role !== 'staff' && role !== 'admin') { window.location.href = '/dashboard'; return; }
+        const sidebar = '<aside class="w-64 bg-[#0F172A] text-white py-6 px-4"><a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a><p class="text-amber-400 text-sm font-medium mb-2">Warehouse</p><nav class="space-y-1">' +
+          '<a href="/warehouse" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/warehouse/locker-receive" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Locker Receive</a>' +
+          '<a href="/warehouse/service-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Service Queue</a>' +
+          '<a href="/warehouse/ship-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Queue</a>' +
+          '<a href="/warehouse/packages" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Packages</a>' +
+          '<a href="/warehouse/receiving" class="block py-2 px-3 rounded-lg bg-[#1E293B]">Receiving</a>' +
+          '<a href="/warehouse/staging" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Staging</a>' +
+          '<a href="/warehouse/manifests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Manifests</a>' +
+          '<a href="/warehouse/exceptions" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Exceptions</a></nav>' +
+          '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a><a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a><button type="button" class="sidebar-logout mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+        function renderList(data) {
+          const list = (data && data.data) || [];
+          const rows = list.map(b => {
+            const checkInBtn = '<button type="button" class="check-in-btn px-3 py-1 rounded bg-emerald-600 text-white text-sm" data-id="' + b.id + '">Check in</button>';
+            return '<tr class="border-b border-slate-200"><td class="py-3 px-4">' + (b.confirmation_code || '—') + '</td><td class="py-3 px-4">' + (b.scheduled_date || '') + '</td><td class="py-3 px-4">' + (b.time_slot || '') + '</td><td class="py-3 px-4">' + (b.status || '') + '</td><td class="py-3 px-4">' + checkInBtn + '</td></tr>';
+          }).join('');
+          return '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-3 px-4">Confirmation</th><th class="text-left py-3 px-4">Date</th><th class="text-left py-3 px-4">Time</th><th class="text-left py-3 px-4">Status</th><th class="text-left py-3 px-4">Action</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+        }
+        function showForm(bookingId) {
+          const form = '<div id="checkin-form" class="fixed inset-0 bg-black/50 flex items-center justify-center z-10"><div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">' +
+            '<h3 class="text-lg font-semibold mb-4">Check in – Receive from booking</h3>' +
+            '<form id="receive-form"><input type="hidden" name="booking_id" value="' + bookingId + '">' +
+            '<div class="space-y-3"><label class="block text-sm font-medium">Package count</label><input type="number" name="package_count" value="1" min="1" class="w-full border rounded px-3 py-2" />' +
+            '<label class="block text-sm font-medium">Weight (lbs, optional)</label><input type="number" step="0.1" name="weight_lbs" class="w-full border rounded px-3 py-2" />' +
+            '<label class="block text-sm font-medium">Storage bay (optional)</label><input type="text" name="storage_bay" class="w-full border rounded px-3 py-2" /></div>' +
+            '<div class="mt-4 flex gap-2"><button type="submit" class="bg-[#0F172A] text-white px-4 py-2 rounded-lg">Receive</button><button type="button" id="close-form" class="border px-4 py-2 rounded-lg">Cancel</button></div></form></div></div>';
+          document.body.insertAdjacentHTML('beforeend', form);
+          document.getElementById('close-form').onclick = () => document.getElementById('checkin-form').remove();
+          document.getElementById('receive-form').onsubmit = function(e) {
+            e.preventDefault();
+            const fd = new FormData(this);
+            const payload = { booking_id: fd.get('booking_id'), package_count: parseInt(fd.get('package_count') || '1', 10) };
+            const w = fd.get('weight_lbs'); if (w) payload.weight_lbs = parseFloat(w);
+            if (fd.get('storage_bay')) payload.storage_bay = fd.get('storage_bay');
+            fetch('/api/v1/warehouse/packages/receive-from-booking', { method: 'POST', headers: auth.headers, body: JSON.stringify(payload) })
+              .then(r => r.json())
+              .then(j => {
+                if (j.data) { document.getElementById('checkin-form').remove(); document.getElementById('msg').className = 'mb-4 p-3 rounded-lg bg-green-100 text-green-800'; document.getElementById('msg').textContent = 'Packages received: ' + (Array.isArray(j.data) ? j.data.length : 1); load(); }
+                else { document.getElementById('msg').className = 'mb-4 p-3 rounded-lg bg-red-100 text-red-800'; document.getElementById('msg').textContent = (j.error && j.error.message) || 'Failed'; }
+              });
+          };
+        }
+        function load() {
+          fetch('/api/v1/warehouse/bookings/today', auth).then(r => r.json()).then(j => {
+            const main = '<main class="flex-1 p-8"><nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/warehouse" class="hover:underline">Warehouse</a></li><li aria-current="page" class="font-medium">Receiving</li></ol></nav>' +
+              '<h1 class="text-3xl font-bold mb-6">Today\'s bookings (check-in)</h1><div id="msg" class="mb-4"></div>' + renderList(j) + '</main>';
+            document.getElementById('app').innerHTML = '<div class="flex min-h-screen">' + sidebar + main + '</div>';
+            document.querySelectorAll('.check-in-btn').forEach(btn => { btn.onclick = () => showForm(btn.dataset.id); });
+          }).catch(() => { document.getElementById('app').innerHTML = '<div class="p-8">Failed to load.</div>'; });
+        }
+        load();
+      });
+    })();
+  </script>
+</body>
+</html>

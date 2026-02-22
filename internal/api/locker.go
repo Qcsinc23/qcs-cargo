@@ -14,6 +14,7 @@ import (
 // RegisterLocker mounts locker routes. All require auth.
 func RegisterLocker(g fiber.Router) {
 	g.Get("/locker/summary", middleware.RequireAuth, lockerSummary)
+	g.Get("/locker/:id/service-requests", middleware.RequireAuth, lockerServiceRequestsList)
 	g.Post("/locker/:id/photo-request", middleware.RequireAuth, lockerPhotoRequest)
 	g.Post("/locker/:id/service-request", middleware.RequireAuth, lockerServiceRequest)
 	g.Get("/locker/:id", middleware.RequireAuth, lockerGetByID)
@@ -82,6 +83,29 @@ func lockerSummary(c *fiber.Ctx) error {
 	})
 }
 
+func lockerServiceRequestsList(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
+	}
+	userID := c.Locals(middleware.CtxUserID).(string)
+	_, err := db.Queries().GetLockerPackageByID(c.Context(), gen.GetLockerPackageByIDParams{ID: id, UserID: userID})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Package not found"))
+		}
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load package"))
+	}
+	list, err := db.Queries().ListServiceRequestsByLockerPackageID(c.Context(), gen.ListServiceRequestsByLockerPackageIDParams{
+		LockerPackageID: id,
+		UserID:          userID,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list service requests"))
+	}
+	return c.JSON(fiber.Map{"data": list})
+}
+
 func lockerPhotoRequest(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -130,7 +154,13 @@ func lockerServiceRequest(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
-	if body.ServiceType == "" {
+	// PRD 8.4 value-added service types
+	validTypes := map[string]bool{
+		"photo_detail": true, "content_inspection": true, "repackage": true,
+		"remove_invoice": true, "fragile_wrap": true, "gift_wrap": true,
+		"photo": true, "general": true, // legacy
+	}
+	if body.ServiceType == "" || !validTypes[body.ServiceType] {
 		body.ServiceType = "general"
 	}
 	reqID := uuid.New().String()

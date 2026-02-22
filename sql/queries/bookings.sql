@@ -36,3 +36,35 @@ RETURNING id, user_id, confirmation_code, status, service_type, destination_id, 
 
 -- name: DeleteBooking :exec
 DELETE FROM bookings WHERE id = ? AND user_id = ?;
+
+-- name: AdminListBookings :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+ORDER BY scheduled_date DESC, created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: ListBookingsToday :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE date(scheduled_date) = date('now')
+ORDER BY time_slot ASC, created_at ASC;
+
+-- name: GetBookingByIDOnly :one
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE id = ?;
+
+-- name: AdminListBookingsToday :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE scheduled_date = ?
+ORDER BY time_slot, created_at
+LIMIT 100;

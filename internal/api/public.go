@@ -3,12 +3,14 @@ package api
 import (
 	"fmt"
 	"log"
-	"math"
 	"os"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/balance"
+
+	"github.com/Qcsinc23/qcs-cargo/internal/calc"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 )
 
 // Destinations per PRD 8.2
@@ -93,10 +95,16 @@ func contactForm(c *fiber.Ctx) error {
 	if body.Name == "" || body.Email == "" || body.Message == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name, email, and message required"))
 	}
-	// TODO: send via Resend when RESEND_API_KEY set
-	log.Printf("[Contact] %s <%s> %s: %s", body.Name, body.Email, body.Subject, body.Message)
+	if len(body.Message) > MaxContactMessageLength {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "message must not exceed 5000 characters"))
+	}
 	if os.Getenv("RESEND_API_KEY") != "" {
-		// Resend send would go here
+		if err := services.SendContactFormSubmission(body.Name, body.Email, body.Subject, body.Message); err != nil {
+			log.Printf("contact form email send: %v", err)
+			return c.Status(503).JSON(ErrorResponse{}.withCode("SERVICE_UNAVAILABLE", "Unable to send message. Please try again later."))
+		}
+	} else {
+		log.Printf("[Contact] %s <%s> %s: %s", body.Name, body.Email, body.Subject, body.Message)
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Thank you. We will get back to you soon."}})
 }
@@ -113,7 +121,7 @@ func publicTrack(c *fiber.Ctx) error {
 	return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "No shipment found with that tracking number"))
 }
 
-// shippingCalculator applies the PRD 8.9 pricing formula.
+// shippingCalculator applies the PRD 8.9 pricing formula via internal/calc.
 func shippingCalculator(c *fiber.Ctx) error {
 	destID := c.Query("dest")
 	weightStr := c.Query("weight")
@@ -125,14 +133,6 @@ func shippingCalculator(c *fiber.Ctx) error {
 
 	if destID == "" || weightStr == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "dest and weight are required"))
-	}
-
-	destRates := map[string]float64{
-		"guyana": 3.50, "jamaica": 3.75, "trinidad": 3.50, "barbados": 4.00, "suriname": 4.25,
-	}
-	rate, ok := destRates[destID]
-	if !ok {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "unknown destination"))
 	}
 
 	parseF := func(s string) float64 {
@@ -149,45 +149,33 @@ func shippingCalculator(c *fiber.Ctx) error {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "weight must be > 0"))
 	}
 
-	dimWeight := 0.0
-	if L > 0 && W > 0 && H > 0 {
-		dimWeight = (L * W * H) / 166.0
-	}
-	billable := weight
-	if dimWeight > billable {
-		billable = dimWeight
-	}
-
-	base := billable * rate
-	surcharge := 0.0
-	d2d := 0.0
-	switch service {
-	case "express":
-		surcharge = base * 0.25
-	case "door_to_door":
-		d2d = 25.0
-	}
-
-	insurance := declaredValue / 100.0
-	total := base + surcharge + d2d + insurance
-	if total < 10 {
-		total = 10
+	result, ok := calc.CalculateShipping(calc.ShippingInput{
+		Destination:   destID,
+		Service:       service,
+		ActualWeight:  weight,
+		Length:        L, Width: W, Height: H,
+		DeclaredValue: declaredValue,
+		Insurance:     declaredValue > 0,
+	})
+	if !ok {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "unknown destination"))
 	}
 
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"destination_id":   destID,
-			"service":          service,
-			"actual_weight":    weight,
-			"dim_weight":       dimWeight,
-			"billable_weight":  billable,
-			"rate_per_lb":      rate,
-			"base_cost":        math.Round(base*100) / 100,
-			"surcharge":        math.Round(surcharge*100) / 100,
-			"door_to_door_fee": d2d,
-			"insurance":        math.Round(insurance*100) / 100,
-			"total":            math.Round(total*100) / 100,
-			"minimum_applied":  total == 10,
+			"destination_id":   result.DestinationID,
+			"service":         result.Service,
+			"actual_weight":   result.ActualWeight,
+			"dim_weight":      result.DimWeight,
+			"billable_weight": result.BillableWeight,
+			"rate_per_lb":     result.RatePerLb,
+			"base_cost":       result.BaseCost,
+			"surcharge":       result.Surcharge,
+			"door_to_door_fee": result.DoorToDoorFee,
+			"insurance":       result.Insurance,
+			"volume_discount": result.VolumeDiscount,
+			"total":           result.Total,
+			"minimum_applied": result.MinimumApplied,
 		},
 	})
 }

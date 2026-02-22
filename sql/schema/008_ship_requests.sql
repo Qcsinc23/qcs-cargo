@@ -16,6 +16,9 @@ CREATE TABLE ship_requests (
     payment_status TEXT,
     stripe_payment_intent_id TEXT,
     customs_status TEXT,
+    consolidated_weight_lbs REAL,
+    staging_bay TEXT,
+    manifest_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );

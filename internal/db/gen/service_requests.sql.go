@@ -38,3 +38,142 @@ func (q *Queries) CreateServiceRequest(ctx context.Context, arg CreateServiceReq
 	err := row.Scan(&id)
 	return id, err
 }
+
+const getServiceRequestByID = `-- name: GetServiceRequestByID :one
+SELECT id, user_id, locker_package_id, service_type, status, notes, completed_by, price, created_at, completed_at
+FROM service_requests
+WHERE id = ?
+`
+
+func (q *Queries) GetServiceRequestByID(ctx context.Context, id string) (ServiceRequest, error) {
+	row := q.db.QueryRowContext(ctx, getServiceRequestByID, id)
+	var i ServiceRequest
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.LockerPackageID,
+		&i.ServiceType,
+		&i.Status,
+		&i.Notes,
+		&i.CompletedBy,
+		&i.Price,
+		&i.CreatedAt,
+		&i.CompletedAt,
+	)
+	return i, err
+}
+
+const listServiceRequests = `-- name: ListServiceRequests :many
+SELECT id, user_id, locker_package_id, service_type, status, notes, completed_by, price, created_at, completed_at
+FROM service_requests
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListServiceRequestsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListServiceRequests(ctx context.Context, arg ListServiceRequestsParams) ([]ServiceRequest, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceRequests, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServiceRequest
+	for rows.Next() {
+		var i ServiceRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LockerPackageID,
+			&i.ServiceType,
+			&i.Status,
+			&i.Notes,
+			&i.CompletedBy,
+			&i.Price,
+			&i.CreatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listServiceRequestsByLockerPackageID = `-- name: ListServiceRequestsByLockerPackageID :many
+SELECT id, user_id, locker_package_id, service_type, status, notes, completed_by, price, created_at, completed_at
+FROM service_requests
+WHERE locker_package_id = ? AND user_id = ?
+ORDER BY created_at DESC
+`
+
+type ListServiceRequestsByLockerPackageIDParams struct {
+	LockerPackageID string `json:"locker_package_id"`
+	UserID          string `json:"user_id"`
+}
+
+func (q *Queries) ListServiceRequestsByLockerPackageID(ctx context.Context, arg ListServiceRequestsByLockerPackageIDParams) ([]ServiceRequest, error) {
+	rows, err := q.db.QueryContext(ctx, listServiceRequestsByLockerPackageID, arg.LockerPackageID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ServiceRequest
+	for rows.Next() {
+		var i ServiceRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LockerPackageID,
+			&i.ServiceType,
+			&i.Status,
+			&i.Notes,
+			&i.CompletedBy,
+			&i.Price,
+			&i.CreatedAt,
+			&i.CompletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateServiceRequestStatus = `-- name: UpdateServiceRequestStatus :exec
+UPDATE service_requests SET status = ?, completed_by = ?, completed_at = ?, price = ? WHERE id = ?
+`
+
+type UpdateServiceRequestStatusParams struct {
+	Status      string         `json:"status"`
+	CompletedBy sql.NullString `json:"completed_by"`
+	CompletedAt sql.NullString `json:"completed_at"`
+	Price       float64        `json:"price"`
+	ID          string         `json:"id"`
+}
+
+func (q *Queries) UpdateServiceRequestStatus(ctx context.Context, arg UpdateServiceRequestStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateServiceRequestStatus,
+		arg.Status,
+		arg.CompletedBy,
+		arg.CompletedAt,
+		arg.Price,
+		arg.ID,
+	)
+	return err
+}

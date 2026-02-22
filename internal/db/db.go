@@ -45,5 +45,15 @@ func Close() error {
 
 // Ping checks connectivity.
 func Ping() error {
+	if conn == nil {
+		return nil
+	}
 	return conn.Ping()
+}
+
+// SetConnForTest injects a connection for integration tests. Call before building
+// the API app so handlers use this DB. Only use in tests; do not call in production.
+func SetConnForTest(c *sql.DB) {
+	conn = c
+	queries = nil
 }

@@ -14,7 +14,7 @@
     (function() {
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/templates'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
 
       function sidebar(user, active) {
         const suiteCode = (user && user.suite_code) || '—';
@@ -42,46 +42,160 @@
           .then(r => { if (r.status === 204) location.reload(); else btn.disabled = false; });
       }
 
+      function destName(destinations, id) {
+        if (!id) return '—';
+        const d = destinations.find(x => (x.id || x.ID) === id);
+        return d ? (d.name || d.Name || id) : id;
+      }
+      function recipName(recipients, id) {
+        if (!id) return '—';
+        const r = recipients.find(x => (x.id || x.ID) === id);
+        return r ? (typeof r.name === 'string' ? r.name : (r.name && r.name.String) || '—') : id;
+      }
+
+      function destinationOptions(destinations, selectedId) {
+        let s = '<option value="">Select destination</option>';
+        (destinations || []).forEach(d => {
+          const id = d.id || d.ID;
+          const name = d.name || d.Name || id;
+          s += '<option value="' + id + '"' + (id === selectedId ? ' selected' : '') + '>' + name + '</option>';
+        });
+        return s;
+      }
+      function recipientOptions(recipients, selectedId) {
+        let s = '<option value="">None</option>';
+        (recipients || []).forEach(r => {
+          const id = r.id || r.ID;
+          const name = typeof r.name === 'string' ? r.name : (r.name && r.name.String) || 'Unnamed';
+          s += '<option value="' + id + '"' + (id === selectedId ? ' selected' : '') + '>' + name + '</option>';
+        });
+        return s;
+      }
+
+      function renderCreateForm(destinations, recipients) {
+        return '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">' +
+          '<h2 class="text-lg font-semibold text-[#0F172A] mb-4">Create template</h2>' +
+          '<form id="create-template-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Name</label><input type="text" name="name" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. Home shipping" /></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Service type</label><select name="service_type" class="w-full border border-slate-300 rounded-lg px-3 py-2"><option value="standard">Standard</option><option value="express">Express</option></select></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Destination</label><select name="destination_id" required class="w-full border border-slate-300 rounded-lg px-3 py-2">' + destinationOptions(destinations, '') + '</select></div>' +
+          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Recipient</label><select name="recipient_id" class="w-full border border-slate-300 rounded-lg px-3 py-2">' + recipientOptions(recipients, '') + '</select></div>' +
+          '<div class="md:col-span-2 lg:col-span-4"><button type="submit" class="bg-[#2563EB] text-white px-4 py-2 rounded-lg font-medium">Save as template</button><span id="create-msg" class="ml-3 text-sm"></span></div>' +
+          '</form></div>';
+      }
+
+      function renderEditRow(t, destinations, recipients) {
+        const recipVal = (t.recipient_id && (typeof t.recipient_id === 'string' ? t.recipient_id : t.recipient_id.String)) || '';
+        return '<tr class="edit-row border-b border-slate-100 bg-amber-50/50" data-id="' + t.id + '">' +
+          '<td class="py-2 px-4" colspan="5">' +
+          '<form class="edit-template-form grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2 items-end" data-id="' + t.id + '">' +
+          '<div><label class="block text-xs font-medium text-slate-600">Name</label><input type="text" name="name" value="' + (t.name || '').replace(/"/g, '&quot;') + '" class="w-full border rounded px-2 py-1 text-sm" /></div>' +
+          '<div><label class="block text-xs font-medium text-slate-600">Service</label><select name="service_type" class="w-full border rounded px-2 py-1 text-sm"><option value="standard"' + (t.service_type === 'standard' ? ' selected' : '') + '>Standard</option><option value="express"' + (t.service_type === 'express' ? ' selected' : '') + '>Express</option></select></div>' +
+          '<div><label class="block text-xs font-medium text-slate-600">Destination</label><select name="destination_id" class="w-full border rounded px-2 py-1 text-sm">' + destinationOptions(destinations, t.destination_id) + '</select></div>' +
+          '<div><label class="block text-xs font-medium text-slate-600">Recipient</label><select name="recipient_id" class="w-full border rounded px-2 py-1 text-sm">' + recipientOptions(recipients, recipVal) + '</select></div>' +
+          '<div><button type="submit" class="btn-save text-sm bg-[#2563EB] text-white px-3 py-1 rounded">Save</button> <button type="button" class="btn-cancel text-sm text-slate-600">Cancel</button></div>' +
+          '</form></td></tr>';
+      }
+
       Promise.all([
         fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/templates', auth).then(r => r.ok ? r.json() : null)
-      ]).then(([me, res]) => {
+        fetch('/api/v1/templates', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/destinations', {}).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/recipients', auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, templatesRes, destRes, recRes]) => {
         if (!me) { window.location.href = '/login'; return; }
         const user = me.data;
-        const list = (res && res.data) || [];
+        const list = (templatesRes && templatesRes.data) || [];
+        const destinations = (destRes && destRes.data) || [];
+        const recipients = (recRes && recRes.data) || [];
+
         let main = '<main class="flex-1 p-8">' +
           '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Templates</li></ol></nav>' +
           '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Booking Templates</h1>' +
           '<p class="text-slate-600 mb-6">' + list.length + ' template(s)</p>';
+
+        main += renderCreateForm(destinations, recipients);
+
         if (list.length === 0) {
           main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
-            '<p class="text-slate-600 mb-4">No templates yet.</p>' +
-            '<a href="/dashboard/bookings" class="text-[#2563EB] font-medium">Create a booking to save as template</a></div>';
+            '<p class="text-slate-600">No templates yet. Create one above or from a booking.</p></div>';
         } else {
           main += '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">' +
             '<table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Name</th>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Service</th>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Destination</th>' +
+            '<th class="text-left py-3 px-4 font-medium text-slate-600">Recipient</th>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Used</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600"></th></tr></thead><tbody>';
+            '<th class="text-left py-3 px-4 font-medium text-slate-600 w-28">Actions</th></tr></thead><tbody>';
           list.forEach(t => {
-            main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
+            const recipId = (t.recipient_id && (typeof t.recipient_id === 'string' ? t.recipient_id : t.recipient_id.String)) || '';
+            main += '<tr class="border-b border-slate-100 hover:bg-slate-50" data-id="' + t.id + '">' +
               '<td class="py-3 px-4 font-medium">' + (t.name || '—') + '</td>' +
               '<td class="py-3 px-4">' + (t.service_type || '—') + '</td>' +
-              '<td class="py-3 px-4">' + (t.destination_id || '—') + '</td>' +
+              '<td class="py-3 px-4">' + destName(destinations, t.destination_id) + '</td>' +
+              '<td class="py-3 px-4">' + recipName(recipients, recipId) + '</td>' +
               '<td class="py-3 px-4 text-slate-500">' + (t.use_count != null ? t.use_count : 0) + '</td>' +
-              '<td class="py-3 px-4"><button type="button" class="text-red-600 hover:text-red-800 text-sm" data-id="' + t.id + '">Delete</button></td></tr>';
+              '<td class="py-3 px-4"><button type="button" class="edit-btn text-[#2563EB] hover:underline text-sm mr-2" data-id="' + t.id + '">Edit</button><button type="button" class="del-btn text-red-600 hover:text-red-800 text-sm" data-id="' + t.id + '">Delete</button></td></tr>';
           });
           main += '</tbody></table></div>';
         }
         main += '</main></div>';
         document.getElementById('app').innerHTML = sidebar(user, 'templates') + main;
+
         document.getElementById('logout-btn').onclick = () => {
           fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
         };
-        document.querySelectorAll('button[data-id]').forEach(btn => {
+
+        document.querySelectorAll('.del-btn').forEach(btn => {
           btn.onclick = () => deleteTemplate(btn.getAttribute('data-id'), btn);
+        });
+
+        document.getElementById('create-template-form').onsubmit = function(e) {
+          e.preventDefault();
+          const fd = new FormData(this);
+          const payload = { name: fd.get('name'), service_type: fd.get('service_type') || 'standard', destination_id: fd.get('destination_id'), recipient_id: fd.get('recipient_id') || null };
+          if (!payload.recipient_id) delete payload.recipient_id;
+          const msgEl = document.getElementById('create-msg');
+          msgEl.textContent = 'Saving…';
+          fetch('/api/v1/templates', { method: 'POST', ...auth, body: JSON.stringify(payload) })
+            .then(r => {
+              if (r.status === 201) { msgEl.textContent = 'Saved.'; location.reload(); }
+              else { r.json().then(j => { msgEl.textContent = j.message || 'Failed'; }); }
+            })
+            .catch(() => { msgEl.textContent = 'Failed'; });
+        };
+
+        document.querySelectorAll('.edit-btn').forEach(btn => {
+          btn.onclick = function() {
+            const id = this.getAttribute('data-id');
+            const row = document.querySelector('tr[data-id="' + id + '"]');
+            if (row.classList.contains('edit-row')) return;
+            const t = list.find(x => x.id === id);
+            if (!t) return;
+            const tr = document.createElement('tr');
+            tr.className = 'edit-row border-b border-slate-100 bg-amber-50/50';
+            tr.setAttribute('data-id', id);
+            tr.innerHTML = '<td colspan="6" class="py-2 px-4">' +
+              '<form class="edit-template-form grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-2 items-end" data-id="' + id + '">' +
+              '<div><label class="block text-xs font-medium text-slate-600">Name</label><input type="text" name="name" value="' + (t.name || '').replace(/"/g, '&quot;') + '" class="w-full border rounded px-2 py-1 text-sm" /></div>' +
+              '<div><label class="block text-xs font-medium text-slate-600">Service</label><select name="service_type" class="w-full border rounded px-2 py-1 text-sm"><option value="standard"' + (t.service_type === 'standard' ? ' selected' : '') + '>Standard</option><option value="express"' + (t.service_type === 'express' ? ' selected' : '') + '>Express</option></select></div>' +
+              '<div><label class="block text-xs font-medium text-slate-600">Destination</label><select name="destination_id" class="w-full border rounded px-2 py-1 text-sm">' + destinationOptions(destinations, t.destination_id) + '</select></div>' +
+              '<div><label class="block text-xs font-medium text-slate-600">Recipient</label><select name="recipient_id" class="w-full border rounded px-2 py-1 text-sm">' + recipientOptions(recipients, (t.recipient_id && (typeof t.recipient_id === 'string' ? t.recipient_id : t.recipient_id.String)) || '') + '</select></div>' +
+              '<div><button type="submit" class="btn-save text-sm bg-[#2563EB] text-white px-3 py-1 rounded">Save</button> <button type="button" class="btn-cancel text-sm text-slate-600">Cancel</button></div>' +
+              '</form></td>';
+            row.parentNode.insertBefore(tr, row.nextSibling);
+            tr.querySelector('.edit-template-form').onsubmit = function(ev) {
+              ev.preventDefault();
+              const form = ev.target;
+              const fd = new FormData(form);
+              let payload = { name: fd.get('name'), service_type: fd.get('service_type'), destination_id: fd.get('destination_id'), recipient_id: fd.get('recipient_id') || null };
+              if (!payload.recipient_id) payload.recipient_id = null;
+              fetch('/api/v1/templates/' + id, { method: 'PATCH', ...auth, body: JSON.stringify(payload) })
+                .then(r => { if (r.ok) location.reload(); });
+            };
+            tr.querySelector('.btn-cancel').onclick = () => { tr.remove(); };
+          };
         });
       });
     })();

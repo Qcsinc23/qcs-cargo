@@ -11,6 +11,7 @@ import (
 	"github.com/stripe/stripe-go/v81/webhook"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 )
 
 // RegisterStripeWebhook mounts POST /webhooks/stripe. Must be mounted on a router that serves /api (e.g. app.Group("/api")).
@@ -65,11 +66,19 @@ func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, paymentIntentID string) e
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	return db.Queries().UpdateShipRequestPaymentReconcile(c.Context(), gen.UpdateShipRequestPaymentReconcileParams{
+	if err := db.Queries().UpdateShipRequestPaymentReconcile(c.Context(), gen.UpdateShipRequestPaymentReconcileParams{
 		PaymentStatus: sql.NullString{String: "paid", Valid: true},
 		Status:        "paid",
 		UpdatedAt:     now,
 		ID:            sr.ID,
 		UserID:        sr.UserID,
-	})
+	}); err != nil {
+		return err
+	}
+	// Lifecycle email: payment success
+	u, err := db.Queries().GetUserByID(c.Context(), sr.UserID)
+	if err == nil {
+		_ = services.SendShipRequestPaid(u.Email, sr.ConfirmationCode)
+	}
+	return nil
 }

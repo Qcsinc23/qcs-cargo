@@ -8,6 +8,16 @@ import (
 	"database/sql"
 )
 
+type AdminActivity struct {
+	ID         string         `json:"id"`
+	ActorID    string         `json:"actor_id"`
+	Action     string         `json:"action"`
+	EntityType string         `json:"entity_type"`
+	EntityID   sql.NullString `json:"entity_id"`
+	Details    sql.NullString `json:"details"`
+	CreatedAt  string         `json:"created_at"`
+}
+
 type Booking struct {
 	ID                    string         `json:"id"`
 	UserID                string         `json:"user_id"`
@@ -71,6 +81,7 @@ type LockerPackage struct {
 	ID                   string          `json:"id"`
 	UserID               string          `json:"user_id"`
 	SuiteCode            string          `json:"suite_code"`
+	BookingID            sql.NullString  `json:"booking_id"`
 	TrackingInbound      sql.NullString  `json:"tracking_inbound"`
 	CarrierInbound       sql.NullString  `json:"carrier_inbound"`
 	SenderName           sql.NullString  `json:"sender_name"`
@@ -164,25 +175,28 @@ type Session struct {
 }
 
 type ShipRequest struct {
-	ID                    string         `json:"id"`
-	UserID                string         `json:"user_id"`
-	ConfirmationCode      string         `json:"confirmation_code"`
-	Status                string         `json:"status"`
-	DestinationID         string         `json:"destination_id"`
-	RecipientID           sql.NullString `json:"recipient_id"`
-	ServiceType           string         `json:"service_type"`
-	Consolidate           int            `json:"consolidate"`
-	SpecialInstructions   sql.NullString `json:"special_instructions"`
-	Subtotal              float64        `json:"subtotal"`
-	ServiceFees           float64        `json:"service_fees"`
-	Insurance             float64        `json:"insurance"`
-	Discount              float64        `json:"discount"`
-	Total                 float64        `json:"total"`
-	PaymentStatus         sql.NullString `json:"payment_status"`
-	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
-	CustomsStatus         sql.NullString `json:"customs_status"`
-	CreatedAt             string         `json:"created_at"`
-	UpdatedAt             string         `json:"updated_at"`
+	ID                    string          `json:"id"`
+	UserID                string          `json:"user_id"`
+	ConfirmationCode      string          `json:"confirmation_code"`
+	Status                string          `json:"status"`
+	DestinationID         string          `json:"destination_id"`
+	RecipientID           sql.NullString  `json:"recipient_id"`
+	ServiceType           string          `json:"service_type"`
+	Consolidate           int             `json:"consolidate"`
+	SpecialInstructions   sql.NullString  `json:"special_instructions"`
+	Subtotal              float64         `json:"subtotal"`
+	ServiceFees           float64         `json:"service_fees"`
+	Insurance             float64         `json:"insurance"`
+	Discount              float64         `json:"discount"`
+	Total                 float64         `json:"total"`
+	PaymentStatus         sql.NullString  `json:"payment_status"`
+	StripePaymentIntentID sql.NullString  `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString  `json:"customs_status"`
+	ConsolidatedWeightLbs sql.NullFloat64 `json:"consolidated_weight_lbs"`
+	StagingBay            sql.NullString  `json:"staging_bay"`
+	ManifestID            sql.NullString  `json:"manifest_id"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
 }
 
 type ShipRequestItem struct {
@@ -213,6 +227,17 @@ type Shipment struct {
 	UpdatedAt         string          `json:"updated_at"`
 }
 
+type StorageFee struct {
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id"`
+	LockerPackageID string         `json:"locker_package_id"`
+	FeeDate         string         `json:"fee_date"`
+	Amount          float64        `json:"amount"`
+	Invoiced        int            `json:"invoiced"`
+	InvoiceID       sql.NullString `json:"invoice_id"`
+	CreatedAt       string         `json:"created_at"`
+}
+
 type Template struct {
 	ID            string         `json:"id"`
 	UserID        string         `json:"user_id"`
@@ -222,6 +247,21 @@ type Template struct {
 	RecipientID   sql.NullString `json:"recipient_id"`
 	UseCount      int            `json:"use_count"`
 	CreatedAt     string         `json:"created_at"`
+}
+
+type UnmatchedPackage struct {
+	ID              string          `json:"id"`
+	Carrier         sql.NullString  `json:"carrier"`
+	TrackingNumber  sql.NullString  `json:"tracking_number"`
+	LabelText       sql.NullString  `json:"label_text"`
+	PhotoUrl        sql.NullString  `json:"photo_url"`
+	WeightLbs       sql.NullFloat64 `json:"weight_lbs"`
+	Status          string          `json:"status"`
+	MatchedUserID   sql.NullString  `json:"matched_user_id"`
+	ResolutionNotes sql.NullString  `json:"resolution_notes"`
+	ReceivedAt      string          `json:"received_at"`
+	ResolvedAt      sql.NullString  `json:"resolved_at"`
+	CreatedAt       string          `json:"created_at"`
 }
 
 type User struct {
@@ -242,4 +282,26 @@ type User struct {
 	Status          string         `json:"status"`
 	CreatedAt       string         `json:"created_at"`
 	UpdatedAt       string         `json:"updated_at"`
+}
+
+type WarehouseBay struct {
+	ID            string         `json:"id"`
+	Name          string         `json:"name"`
+	Zone          sql.NullString `json:"zone"`
+	DestinationID sql.NullString `json:"destination_id"`
+	Capacity      int            `json:"capacity"`
+	CurrentCount  int            `json:"current_count"`
+}
+
+type WarehouseManifest struct {
+	ID            string `json:"id"`
+	DestinationID string `json:"destination_id"`
+	Status        string `json:"status"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+type WarehouseManifestShipRequest struct {
+	ManifestID    string `json:"manifest_id"`
+	ShipRequestID string `json:"ship_request_id"`
 }

@@ -39,6 +39,24 @@
         const max = 12;
         return Math.min(100, (count / max) * 100);
       }
+      // PRD 9.4: storage bar by days left (0-20 emerald, 21-27 amber, 28-30 red, 31+ red)
+      function daysLeft(expiresAt) {
+        if (!expiresAt) return null;
+        return Math.ceil((new Date(expiresAt) - new Date()) / (24*60*60*1000));
+      }
+      function storageColorByDaysLeft(days) {
+        if (days == null) return 'bg-slate-300';
+        if (days < 0) return 'bg-red-500';
+        if (days <= 20) return 'bg-emerald-500';
+        if (days <= 27) return 'bg-amber-500';
+        return 'bg-red-500';
+      }
+      function storageBarPct(days) {
+        if (days == null || days < 0) return 100;
+        const total = 30;
+        const remaining = Math.min(total, Math.max(0, days));
+        return (remaining / total) * 100;
+      }
 
       function renderList(list, user) {
         const sorted = list.slice().sort((a, b) => {
@@ -46,6 +64,14 @@
             const sa = (typeof a.sender_name === 'string' ? a.sender_name : (a.sender_name && a.sender_name.String)) || '';
             const sb = (typeof b.sender_name === 'string' ? b.sender_name : (b.sender_name && b.sender_name.String)) || '';
             return sa.localeCompare(sb);
+          }
+          if (inboxState.sortBy === 'expiring') {
+            const da = daysLeft(a.free_storage_expires_at || a.FreeStorageExpiresAt);
+            const db = daysLeft(b.free_storage_expires_at || b.FreeStorageExpiresAt);
+            if (da == null && db == null) return 0;
+            if (da == null) return 1;
+            if (db == null) return -1;
+            return da - db;
           }
           return (b.arrived_at || '').localeCompare(a.arrived_at || '');
         });
@@ -55,11 +81,17 @@
           const weight = typeof p.weight_lbs === 'number' ? p.weight_lbs : (p.weight_lbs && p.weight_lbs.Float64) || 0;
           const status = p.status || 'stored';
           const checked = inboxState.selectedIds.includes(p.id) ? ' checked' : '';
+          const expiry = p.free_storage_expires_at || p.FreeStorageExpiresAt;
+          const days = daysLeft(expiry);
+          const barColor = (status === 'stored' && days != null) ? storageColorByDaysLeft(days) : 'bg-slate-300';
+          const barPct = (status === 'stored' && days != null) ? storageBarPct(days) : 100;
+          const barHtml = (status === 'stored') ? '<div class="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full ' + barColor + '" style="width:' + barPct + '%"></div></div>' : '';
           html += '<div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-start gap-3">' +
             '<input type="checkbox" class="inbox-cb mt-1" data-id="' + p.id + '"' + checked + '>' +
             '<a href="/dashboard/inbox/' + p.id + '" class="flex-1 min-w-0">' +
             '<p class="font-medium text-[#0F172A]">' + sender + '</p>' +
-            '<p class="text-sm text-slate-500">' + weight + ' lbs · ' + status + '</p></a></div>';
+            '<p class="text-sm text-slate-500">' + weight + ' lbs · ' + status + (days != null && status === 'stored' ? ' · ' + (days < 0 ? 'Expired' : days + ' days left') : '') + '</p>' +
+            barHtml + '</a></div>';
         });
         html += '</div>';
         return html;
@@ -94,15 +126,21 @@
           '<div class="flex flex-wrap gap-2 mb-4">' +
           '<button type="button" class="filter-btn px-4 py-2 rounded-lg ' + (inboxState.filter === '' ? 'bg-[#2563EB] text-white' : 'bg-white border border-slate-200') + '" data-filter="">All</button>' +
           '<button type="button" class="filter-btn px-4 py-2 rounded-lg ' + (inboxState.filter === 'stored' ? 'bg-[#2563EB] text-white' : 'bg-white border border-slate-200') + '" data-filter="stored">Stored</button>' +
+          '<button type="button" class="filter-btn px-4 py-2 rounded-lg ' + (inboxState.filter === 'expiring_soon' ? 'bg-[#2563EB] text-white' : 'bg-white border border-slate-200') + '" data-filter="expiring_soon">Expiring soon</button>' +
           '</div>' +
           '<div class="flex flex-wrap gap-4 mb-6 items-center">' +
           '<a href="/dashboard/ship" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Ship My Packages</a>' +
           '<a href="/dashboard/inbound" class="bg-white border border-slate-200 px-6 py-2 rounded-lg">Add Inbound Tracking</a>' +
           '<label class="text-sm text-slate-600">Sort: <select id="inbox-sort" class="border border-slate-300 rounded px-2 py-1">' +
           '<option value="date"' + (inboxState.sortBy === 'date' ? ' selected' : '') + '>Date arrived</option>' +
-          '<option value="sender"' + (inboxState.sortBy === 'sender' ? ' selected' : '') + '>Sender</option></select></label>' +
+          '<option value="sender"' + (inboxState.sortBy === 'sender' ? ' selected' : '') + '>Sender</option>' +
+          '<option value="expiring"' + (inboxState.sortBy === 'expiring' ? ' selected' : '') + '>Expiring soon</option></select></label>' +
           '</div>';
-        const filtered = inboxState.filter === 'stored' ? list.filter(p => (p.status || '') === 'stored') : list;
+        const filtered = inboxState.filter === 'stored' ? list.filter(p => (p.status || '') === 'stored') :
+          inboxState.filter === 'expiring_soon' ? list.filter(p => {
+            const d = daysLeft(p.free_storage_expires_at || p.FreeStorageExpiresAt);
+            return (p.status || '') === 'stored' && d != null && d >= 0 && d <= 7;
+          }) : list;
         if (filtered.length === 0) {
           main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
             '<p class="text-slate-600 mb-4">No packages match.</p>' +

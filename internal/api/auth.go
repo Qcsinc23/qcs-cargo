@@ -110,7 +110,6 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 		log.Printf("magic link request: %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
-	// TODO: send email via Resend with link containing rawToken. For now log it.
 	appURL := os.Getenv("APP_URL")
 	if appURL == "" {
 		appURL = "http://localhost:8080"
@@ -119,8 +118,20 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 	if body.RedirectTo != "" {
 		link += "&redirectTo=" + body.RedirectTo
 	}
-	log.Printf("[DEV] Magic link for %s: %s", body.Email, link)
-	return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
+	if os.Getenv("RESEND_API_KEY") != "" {
+		if err := services.SendMagicLink(body.Email, link); err != nil {
+			log.Printf("magic link email send: %v", err)
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+		}
+	} else {
+		log.Printf("[DEV] Magic link for %s: %s", body.Email, link)
+	}
+	data := fiber.Map{"message": enumSafeMsg}
+	// In local dev, expose link on login page so you don't need to check server logs
+	if os.Getenv("APP_ENV") == "dev" || appURL == "http://localhost:8080" {
+		data["magic_link"] = link
+	}
+	return c.JSON(fiber.Map{"data": data})
 }
 
 // authForgotPassword requests a password-reset token. Always returns 200 (no enumeration).
@@ -142,13 +153,19 @@ func authForgotPassword(c *fiber.Ctx) error {
 	if appURL == "" {
 		appURL = "http://localhost:8080"
 	}
-	rawToken, link, err := services.RequestPasswordReset(c.Context(), user.ID, appURL)
+	_, link, err := services.RequestPasswordReset(c.Context(), user.ID, appURL)
 	if err != nil {
 		log.Printf("forgot password: %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
-	log.Printf("[DEV] Password reset link for %s: %s (token=%s)", body.Email, link, rawToken)
-	// TODO: send via Resend when RESEND_API_KEY is set
+	if os.Getenv("RESEND_API_KEY") != "" {
+		if err := services.SendPasswordResetLink(body.Email, link); err != nil {
+			log.Printf("password reset email send: %v", err)
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+		}
+	} else {
+		log.Printf("[DEV] Password reset link for %s: %s", body.Email, link)
+	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 }
 
@@ -279,12 +296,17 @@ func userToMap(u gen.User) fiber.Map {
 	if u.AddressZip.Valid {
 		addressZip = u.AddressZip.String
 	}
+	avatarURL := ""
+	if u.AvatarUrl.Valid {
+		avatarURL = u.AvatarUrl.String
+	}
 	return fiber.Map{
 		"id":                u.ID,
 		"name":              u.Name,
 		"email":             u.Email,
 		"phone":             phone,
 		"role":              u.Role,
+		"avatar_url":        avatarURL,
 		"suite_code":        suiteCode,
 		"address_street":    addressStreet,
 		"address_city":      addressCity,

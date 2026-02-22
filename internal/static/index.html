@@ -14,6 +14,7 @@
   </style>
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:rounded focus:outline focus:ring-2 focus:ring-[#2563EB]">Skip to main content</a>
   <header class="bg-[#0F172A] text-white py-4 px-6">
     <nav class="max-w-6xl mx-auto flex justify-between items-center flex-wrap gap-4">
       <a href="/" class="font-bold text-lg">QCS Cargo</a>
@@ -33,7 +34,7 @@
       </ol>
     </div>
   </nav>
-  <main>
+  <main id="main">
     <section class="max-w-5xl mx-auto px-6 py-20 text-center">
       <p class="text-sm font-medium text-slate-400 mb-4">TSA Licensed · Fully Insured</p>
       <h1 class="text-5xl md:text-6xl font-extrabold text-[#0F172A] mb-6 leading-tight">
@@ -91,5 +92,8 @@
       <p class="mt-2"><a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy" class="underline">Privacy</a></p>
     </div>
   </footer>
+  <script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js', { scope: '/' }); }
+  </script>
 </body>
 </html>

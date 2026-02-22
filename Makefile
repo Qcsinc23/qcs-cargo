@@ -1,5 +1,5 @@
 # QCS Cargo — PRD 13.1 build commands
-.PHONY: build run migrate test lint wasm deps smoke
+.PHONY: build run migrate test test-unit test-integration test-e2e ci lint wasm deps smoke
 
 deps:
 	go mod download
@@ -17,6 +17,17 @@ migrate: build
 
 test:
 	go test ./cmd/... ./internal/... -race -cover
+
+test-unit:
+	go test ./internal/... -race -short -count=1
+
+test-integration:
+	DATABASE_URL=file::memory:?cache=shared JWT_SECRET=test go test ./internal/api/... -race -count=1 -tags=integration
+
+test-e2e:
+	cd e2e && npx playwright test
+
+ci: lint test-unit test-integration smoke
 
 lint:
 	golangci-lint run ./cmd/... ./internal/...

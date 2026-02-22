@@ -10,6 +10,108 @@ import (
 	"database/sql"
 )
 
+const adminListShipRequests = `-- name: AdminListShipRequests :many
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, created_at, updated_at
+FROM ship_requests
+WHERE (? = '' OR status = ?)
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type AdminListShipRequestsParams struct {
+	Column1 interface{} `json:"column_1"`
+	Status  string      `json:"status"`
+	Limit   int64       `json:"limit"`
+	Offset  int64       `json:"offset"`
+}
+
+type AdminListShipRequestsRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+func (q *Queries) AdminListShipRequests(ctx context.Context, arg AdminListShipRequestsParams) ([]AdminListShipRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, adminListShipRequests,
+		arg.Column1,
+		arg.Status,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AdminListShipRequestsRow
+	for rows.Next() {
+		var i AdminListShipRequestsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConfirmationCode,
+			&i.Status,
+			&i.DestinationID,
+			&i.RecipientID,
+			&i.ServiceType,
+			&i.Consolidate,
+			&i.SpecialInstructions,
+			&i.Subtotal,
+			&i.ServiceFees,
+			&i.Insurance,
+			&i.Discount,
+			&i.Total,
+			&i.PaymentStatus,
+			&i.StripePaymentIntentID,
+			&i.CustomsStatus,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminUpdateShipRequestStatus = `-- name: AdminUpdateShipRequestStatus :exec
+UPDATE ship_requests SET status = ?, updated_at = ? WHERE id = ?
+`
+
+type AdminUpdateShipRequestStatusParams struct {
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) AdminUpdateShipRequestStatus(ctx context.Context, arg AdminUpdateShipRequestStatusParams) error {
+	_, err := q.db.ExecContext(ctx, adminUpdateShipRequestStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const createShipRequest = `-- name: CreateShipRequest :one
 INSERT INTO ship_requests (
     id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
@@ -36,7 +138,29 @@ type CreateShipRequestParams struct {
 	UpdatedAt           string         `json:"updated_at"`
 }
 
-func (q *Queries) CreateShipRequest(ctx context.Context, arg CreateShipRequestParams) (ShipRequest, error) {
+type CreateShipRequestRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+func (q *Queries) CreateShipRequest(ctx context.Context, arg CreateShipRequestParams) (CreateShipRequestRow, error) {
 	row := q.db.QueryRowContext(ctx, createShipRequest,
 		arg.ID,
 		arg.UserID,
@@ -49,7 +173,7 @@ func (q *Queries) CreateShipRequest(ctx context.Context, arg CreateShipRequestPa
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
-	var i ShipRequest
+	var i CreateShipRequestRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -135,9 +259,31 @@ type GetShipRequestByIDParams struct {
 	UserID string `json:"user_id"`
 }
 
-func (q *Queries) GetShipRequestByID(ctx context.Context, arg GetShipRequestByIDParams) (ShipRequest, error) {
+type GetShipRequestByIDRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+func (q *Queries) GetShipRequestByID(ctx context.Context, arg GetShipRequestByIDParams) (GetShipRequestByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getShipRequestByID, arg.ID, arg.UserID)
-	var i ShipRequest
+	var i GetShipRequestByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -162,6 +308,45 @@ func (q *Queries) GetShipRequestByID(ctx context.Context, arg GetShipRequestByID
 	return i, err
 }
 
+const getShipRequestByIDOnly = `-- name: GetShipRequestByIDOnly :one
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, consolidated_weight_lbs, staging_bay, manifest_id,
+       created_at, updated_at
+FROM ship_requests
+WHERE id = ?
+`
+
+func (q *Queries) GetShipRequestByIDOnly(ctx context.Context, id string) (ShipRequest, error) {
+	row := q.db.QueryRowContext(ctx, getShipRequestByIDOnly, id)
+	var i ShipRequest
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ConfirmationCode,
+		&i.Status,
+		&i.DestinationID,
+		&i.RecipientID,
+		&i.ServiceType,
+		&i.Consolidate,
+		&i.SpecialInstructions,
+		&i.Subtotal,
+		&i.ServiceFees,
+		&i.Insurance,
+		&i.Discount,
+		&i.Total,
+		&i.PaymentStatus,
+		&i.StripePaymentIntentID,
+		&i.CustomsStatus,
+		&i.ConsolidatedWeightLbs,
+		&i.StagingBay,
+		&i.ManifestID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getShipRequestByStripePaymentIntentID = `-- name: GetShipRequestByStripePaymentIntentID :one
 SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
        consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
@@ -170,9 +355,31 @@ FROM ship_requests
 WHERE stripe_payment_intent_id = ?
 `
 
-func (q *Queries) GetShipRequestByStripePaymentIntentID(ctx context.Context, stripePaymentIntentID sql.NullString) (ShipRequest, error) {
+type GetShipRequestByStripePaymentIntentIDRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+func (q *Queries) GetShipRequestByStripePaymentIntentID(ctx context.Context, stripePaymentIntentID sql.NullString) (GetShipRequestByStripePaymentIntentIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getShipRequestByStripePaymentIntentID, stripePaymentIntentID)
-	var i ShipRequest
+	var i GetShipRequestByStripePaymentIntentIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -195,6 +402,68 @@ func (q *Queries) GetShipRequestByStripePaymentIntentID(ctx context.Context, str
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listPaidShipRequestsByPaymentStatus = `-- name: ListPaidShipRequestsByPaymentStatus :many
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, consolidated_weight_lbs, staging_bay, manifest_id,
+       created_at, updated_at
+FROM ship_requests
+WHERE payment_status = 'paid'
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListPaidShipRequestsByPaymentStatusParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListPaidShipRequestsByPaymentStatus(ctx context.Context, arg ListPaidShipRequestsByPaymentStatusParams) ([]ShipRequest, error) {
+	rows, err := q.db.QueryContext(ctx, listPaidShipRequestsByPaymentStatus, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ShipRequest
+	for rows.Next() {
+		var i ShipRequest
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConfirmationCode,
+			&i.Status,
+			&i.DestinationID,
+			&i.RecipientID,
+			&i.ServiceType,
+			&i.Consolidate,
+			&i.SpecialInstructions,
+			&i.Subtotal,
+			&i.ServiceFees,
+			&i.Insurance,
+			&i.Discount,
+			&i.Total,
+			&i.PaymentStatus,
+			&i.StripePaymentIntentID,
+			&i.CustomsStatus,
+			&i.ConsolidatedWeightLbs,
+			&i.StagingBay,
+			&i.ManifestID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listShipRequestItemsByShipRequestID = `-- name: ListShipRequestItemsByShipRequestID :many
@@ -247,15 +516,37 @@ WHERE user_id = ?
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListShipRequestsByUser(ctx context.Context, userID string) ([]ShipRequest, error) {
+type ListShipRequestsByUserRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+func (q *Queries) ListShipRequestsByUser(ctx context.Context, userID string) ([]ListShipRequestsByUserRow, error) {
 	rows, err := q.db.QueryContext(ctx, listShipRequestsByUser, userID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ShipRequest
+	var items []ListShipRequestsByUserRow
 	for rows.Next() {
-		var i ShipRequest
+		var i ListShipRequestsByUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -288,6 +579,21 @@ func (q *Queries) ListShipRequestsByUser(ctx context.Context, userID string) ([]
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateShipRequestConsolidatedWeight = `-- name: UpdateShipRequestConsolidatedWeight :exec
+UPDATE ship_requests SET consolidated_weight_lbs = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateShipRequestConsolidatedWeightParams struct {
+	ConsolidatedWeightLbs sql.NullFloat64 `json:"consolidated_weight_lbs"`
+	UpdatedAt             string          `json:"updated_at"`
+	ID                    string          `json:"id"`
+}
+
+func (q *Queries) UpdateShipRequestConsolidatedWeight(ctx context.Context, arg UpdateShipRequestConsolidatedWeightParams) error {
+	_, err := q.db.ExecContext(ctx, updateShipRequestConsolidatedWeight, arg.ConsolidatedWeightLbs, arg.UpdatedAt, arg.ID)
+	return err
 }
 
 const updateShipRequestCustomsStatus = `-- name: UpdateShipRequestCustomsStatus :exec
@@ -391,6 +697,29 @@ func (q *Queries) UpdateShipRequestPaymentReconcile(ctx context.Context, arg Upd
 		arg.UpdatedAt,
 		arg.ID,
 		arg.UserID,
+	)
+	return err
+}
+
+const updateShipRequestStaged = `-- name: UpdateShipRequestStaged :exec
+UPDATE ship_requests SET staging_bay = ?, manifest_id = ?, status = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateShipRequestStagedParams struct {
+	StagingBay sql.NullString `json:"staging_bay"`
+	ManifestID sql.NullString `json:"manifest_id"`
+	Status     string         `json:"status"`
+	UpdatedAt  string         `json:"updated_at"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) UpdateShipRequestStaged(ctx context.Context, arg UpdateShipRequestStagedParams) error {
+	_, err := q.db.ExecContext(ctx, updateShipRequestStaged,
+		arg.StagingBay,
+		arg.ManifestID,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.ID,
 	)
 	return err
 }

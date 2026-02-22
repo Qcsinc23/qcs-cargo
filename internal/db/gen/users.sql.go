@@ -76,6 +76,109 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	return i, err
 }
 
+const getUserBySuiteCode = `-- name: GetUserBySuiteCode :one
+SELECT id, name, email, phone, role, avatar_url, suite_code,
+       address_street, address_city, address_state, address_zip,
+       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
+FROM users
+WHERE suite_code = ?
+`
+
+func (q *Queries) GetUserBySuiteCode(ctx context.Context, suiteCode sql.NullString) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserBySuiteCode, suiteCode)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.Role,
+		&i.AvatarUrl,
+		&i.SuiteCode,
+		&i.AddressStreet,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressZip,
+		&i.StoragePlan,
+		&i.FreeStorageDays,
+		&i.EmailVerified,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, name, email, phone, role, avatar_url, suite_code,
+       address_street, address_city, address_state, address_zip,
+       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
+FROM users
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListUsersParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.QueryContext(ctx, listUsers, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.Role,
+			&i.AvatarUrl,
+			&i.SuiteCode,
+			&i.AddressStreet,
+			&i.AddressCity,
+			&i.AddressState,
+			&i.AddressZip,
+			&i.StoragePlan,
+			&i.FreeStorageDays,
+			&i.EmailVerified,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateUserAvatar = `-- name: UpdateUserAvatar :exec
+UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateUserAvatarParams struct {
+	AvatarUrl sql.NullString `json:"avatar_url"`
+	UpdatedAt string         `json:"updated_at"`
+	ID        string         `json:"id"`
+}
+
+func (q *Queries) UpdateUserAvatar(ctx context.Context, arg UpdateUserAvatarParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserAvatar, arg.AvatarUrl, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const updateUserProfile = `-- name: UpdateUserProfile :exec
 UPDATE users
 SET name = ?, phone = ?, address_street = ?, address_city = ?, address_state = ?, address_zip = ?, updated_at = ?
@@ -101,6 +204,42 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		arg.AddressCity,
 		arg.AddressState,
 		arg.AddressZip,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const updateUserRole = `-- name: UpdateUserRole :exec
+UPDATE users SET role = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateUserRoleParams struct {
+	Role      string `json:"role"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateUserRole(ctx context.Context, arg UpdateUserRoleParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserRole, arg.Role, arg.UpdatedAt, arg.ID)
+	return err
+}
+
+const updateUserRoleAndStatus = `-- name: UpdateUserRoleAndStatus :exec
+UPDATE users SET role = ?, status = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateUserRoleAndStatusParams struct {
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateUserRoleAndStatus(ctx context.Context, arg UpdateUserRoleAndStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserRoleAndStatus,
+		arg.Role,
+		arg.Status,
 		arg.UpdatedAt,
 		arg.ID,
 	)

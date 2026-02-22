@@ -7,6 +7,12 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// Validation limits for API input (contact form and similar text fields).
+// Use these when validating request bodies to reject oversized content.
+const (
+	MaxContactMessageLength = 5000 // max length for contact form message body
+)
+
 // ErrorResponse matches PRD 3.6.1: { "error": { "code", "message", "details" } }
 type ErrorResponse struct {
 	Error struct {

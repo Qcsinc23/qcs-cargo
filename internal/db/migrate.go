@@ -1,15 +1,23 @@
 package db
 
 import (
+	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
 
-// RunMigrations executes all *.sql files in dir in lexicographic order.
+// RunMigrations executes all *.sql files in dir in lexicographic order on the global DB.
 // Each file may contain "-- +goose Up" and "-- +goose Down"; only the Up block is executed.
 func RunMigrations(dir string) error {
+	return Migrate(DB(), dir)
+}
+
+// Migrate runs all *.sql migration files in dir against the given connection.
+// Used by tests (e.g. testdata.NewTestDB) to migrate an in-memory DB.
+func Migrate(conn *sql.DB, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -31,18 +39,18 @@ func RunMigrations(dir string) error {
 		if up == "" {
 			continue
 		}
-		tx, err := DB().Begin()
+		tx, err := conn.Begin()
 		if err != nil {
 			return err
 		}
-		for _, stmt := range splitStatements(up) {
+		for i, stmt := range splitStatements(up) {
 			stmt = strings.TrimSpace(stmt)
 			if stmt == "" {
 				continue
 			}
 			if _, err := tx.Exec(stmt); err != nil {
 				_ = tx.Rollback()
-				return err
+				return fmt.Errorf("migration %s statement %d: %w", name, i+1, err)
 			}
 		}
 		if err := tx.Commit(); err != nil {

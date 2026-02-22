@@ -19,6 +19,8 @@ make run
 - **Health:** [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
 - **App:** [http://localhost:8080](http://localhost:8080)
 
+**Dev seed:** `./scripts/seed-dev.sh` (requires `qcs-migrate` and `sqlite3`).
+
 ## Build WASM frontend (optional)
 
 ```bash
@@ -68,16 +70,63 @@ See `.env.example` for a full list.
 - To configure Stripe via CLI: `stripe config --list`, `stripe webhook_endpoints list --live`, or create a webhook with `stripe webhook_endpoints create --url=https://qcs-cargo.com/api/webhooks/stripe ... --live` (use a secret key; the create response includes the signing secret for `STRIPE_WEBHOOK_SECRET`).
 - The Stripe CLI can use your live key: `stripe config --set live_mode_api_key sk_live_...` so `stripe balance retrieve --live` and other commands work.
 
+## Testing & integrations
+
+See **[docs/TESTING_AND_INTEGRATIONS.md](docs/TESTING_AND_INTEGRATIONS.md)** for the full testing and integration strategy. Use it when building and completing the application. It covers:
+
+- CI pipeline (lint, unit, integration, smoke, E2E)
+- Test data seeding (`internal/testdata/`)
+- Unit tests (pricing, storage, validation)
+- Integration tests (API with in-memory SQLite): `go test ./internal/api/... -tags=integration -count=1` (optionally `DATABASE_URL=file::memory:?cache=shared`)
+- Stripe payment and webhook testing
+- Storage fee cron job tests
+- Playwright E2E and offline warehouse tests
+- Load testing (k6)
+- Test file organization and go-app component testing
+
+Implement tests and CI steps according to that doc as features are added.
+
+**E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal).
+
 ## Commands
 
 - `make build` — build server + migrate binaries  
 - `make run` — build and run server  
 - `make migrate` — run migrations  
-- `make test` — run tests  
+- `make test` — run full unit tests  
+- `make test-unit` — unit tests only (`./internal/...`, no integration)  
+- `make test-integration` — API integration tests (in-memory SQLite)  
+- `make test-e2e` — Playwright E2E tests (`e2e/`)  
+- `make ci` — lint, test-unit, test-integration, smoke  
 - `make smoke` — smoke test (build, migrate, start, curl health/destinations/auth)  
 - `make stripe-verify` — verify Stripe config (app API + optional Stripe CLI)  
 - `make wasm` — build frontend to `web/app.wasm` and copy `wasm_exec.js`  
 - `make sqlc` — regenerate sqlc code from `sql/`  
+
+## Admin console (Phase 3)
+
+Admin routes live under `/api/v1/admin/` and the UI under `/admin`. Only users with role `admin` can access them; others receive 403.
+
+**How to set a user as admin**
+
+1. **Database update (SQLite):**  
+   After the user exists (e.g. after sign-up or magic-link login), set their role in the DB:
+   ```bash
+   sqlite3 qcs.db "UPDATE users SET role = 'admin', updated_at = datetime('now') WHERE email = 'admin@example.com';"
+   ```
+2. **Seed script:**  
+   You can add a seed or migration that inserts or updates a known admin user (e.g. by email) with `role = 'admin'`. The `users` table has a `role` column (default `customer`); valid values include `customer`, `staff`, `admin`.
+
+After updating, log in as that user and open `/admin` to see the admin dashboard and lists (ship requests, locker packages, service queue, unmatched, bookings, users).
+
+## PRD implementation status
+
+- **Phase 0** — Module, Fiber, health, SQLite/WAL, migrations, sqlc, frontend skeleton, models, CI: ✅ done
+- **Phase 1** — Auth + public pages (magic link, suite code, public routes): ✅ done
+- **Phase 2** — Dashboard, forwarding, templates: ✅ done
+- **Phase 3** — Admin, reports, settings, search, activity: ✅ done
+- **Phase 4** — Warehouse, receiving, staging, manifests, exceptions: ✅ done
+- **Phase 5** — Jobs, CORS, rate limit, E2E, accessibility, deployment docs: ✅ done
 
 ## Phase 0 deliverable
 

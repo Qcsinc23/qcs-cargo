@@ -38,3 +38,25 @@ func RequireAuth(c *fiber.Ctx) error {
 	c.Locals(CtxUserRole, role)
 	return c.Next()
 }
+
+// RequireAdmin must be used after RequireAuth. Returns 403 if user role is not "admin".
+func RequireAdmin(c *fiber.Ctx) error {
+	role, _ := c.Locals(CtxUserRole).(string)
+	if role != "admin" {
+		return c.Status(403).JSON(fiber.Map{
+			"error": fiber.Map{"code": "FORBIDDEN", "message": "Admin access required"},
+		})
+	}
+	return c.Next()
+}
+
+// RequireStaffOrAdmin must be used after RequireAuth. Returns 403 if user role is not "staff" or "admin".
+func RequireStaffOrAdmin(c *fiber.Ctx) error {
+	role, _ := c.Locals(CtxUserRole).(string)
+	if role != "staff" && role != "admin" {
+		return c.Status(403).JSON(fiber.Map{
+			"error": fiber.Map{"code": "FORBIDDEN", "message": "Staff or admin access required"},
+		})
+	}
+	return c.Next()
+}

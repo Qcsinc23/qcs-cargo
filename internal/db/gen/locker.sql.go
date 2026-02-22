@@ -10,8 +10,247 @@ import (
 	"database/sql"
 )
 
+const adminListLockerPackages = `-- name: AdminListLockerPackages :many
+SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
+       weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+       status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
+FROM locker_packages
+WHERE (? = '' OR user_id = ?)
+  AND (? = '' OR suite_code = ?)
+  AND (? = '' OR status = ?)
+ORDER BY arrived_at DESC
+LIMIT ? OFFSET ?
+`
+
+type AdminListLockerPackagesParams struct {
+	Column1   interface{} `json:"column_1"`
+	UserID    string      `json:"user_id"`
+	Column3   interface{} `json:"column_3"`
+	SuiteCode string      `json:"suite_code"`
+	Column5   interface{} `json:"column_5"`
+	Status    string      `json:"status"`
+	Limit     int64       `json:"limit"`
+	Offset    int64       `json:"offset"`
+}
+
+func (q *Queries) AdminListLockerPackages(ctx context.Context, arg AdminListLockerPackagesParams) ([]LockerPackage, error) {
+	rows, err := q.db.QueryContext(ctx, adminListLockerPackages,
+		arg.Column1,
+		arg.UserID,
+		arg.Column3,
+		arg.SuiteCode,
+		arg.Column5,
+		arg.Status,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockerPackage
+	for rows.Next() {
+		var i LockerPackage
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SuiteCode,
+			&i.BookingID,
+			&i.TrackingInbound,
+			&i.CarrierInbound,
+			&i.SenderName,
+			&i.SenderAddress,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ArrivalPhotoUrl,
+			&i.Condition,
+			&i.StorageBay,
+			&i.Status,
+			&i.ArrivedAt,
+			&i.FreeStorageExpiresAt,
+			&i.DisposedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createLockerPackage = `-- name: CreateLockerPackage :one
+INSERT INTO locker_packages (
+    id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name,
+    weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+    status, arrived_at, free_storage_expires_at, created_at, updated_at
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stored', ?, ?, ?, ?
+)
+RETURNING id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
+          weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+          status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
+`
+
+type CreateLockerPackageParams struct {
+	ID                   string          `json:"id"`
+	UserID               string          `json:"user_id"`
+	SuiteCode            string          `json:"suite_code"`
+	TrackingInbound      sql.NullString  `json:"tracking_inbound"`
+	CarrierInbound       sql.NullString  `json:"carrier_inbound"`
+	SenderName           sql.NullString  `json:"sender_name"`
+	WeightLbs            sql.NullFloat64 `json:"weight_lbs"`
+	LengthIn             sql.NullFloat64 `json:"length_in"`
+	WidthIn              sql.NullFloat64 `json:"width_in"`
+	HeightIn             sql.NullFloat64 `json:"height_in"`
+	ArrivalPhotoUrl      sql.NullString  `json:"arrival_photo_url"`
+	Condition            sql.NullString  `json:"condition"`
+	StorageBay           sql.NullString  `json:"storage_bay"`
+	ArrivedAt            sql.NullString  `json:"arrived_at"`
+	FreeStorageExpiresAt sql.NullString  `json:"free_storage_expires_at"`
+	CreatedAt            string          `json:"created_at"`
+	UpdatedAt            string          `json:"updated_at"`
+}
+
+func (q *Queries) CreateLockerPackage(ctx context.Context, arg CreateLockerPackageParams) (LockerPackage, error) {
+	row := q.db.QueryRowContext(ctx, createLockerPackage,
+		arg.ID,
+		arg.UserID,
+		arg.SuiteCode,
+		arg.TrackingInbound,
+		arg.CarrierInbound,
+		arg.SenderName,
+		arg.WeightLbs,
+		arg.LengthIn,
+		arg.WidthIn,
+		arg.HeightIn,
+		arg.ArrivalPhotoUrl,
+		arg.Condition,
+		arg.StorageBay,
+		arg.ArrivedAt,
+		arg.FreeStorageExpiresAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i LockerPackage
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SuiteCode,
+		&i.BookingID,
+		&i.TrackingInbound,
+		&i.CarrierInbound,
+		&i.SenderName,
+		&i.SenderAddress,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ArrivalPhotoUrl,
+		&i.Condition,
+		&i.StorageBay,
+		&i.Status,
+		&i.ArrivedAt,
+		&i.FreeStorageExpiresAt,
+		&i.DisposedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createLockerPackageFromBooking = `-- name: CreateLockerPackageFromBooking :one
+INSERT INTO locker_packages (
+    id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name,
+    weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+    status, arrived_at, free_storage_expires_at, created_at, updated_at
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stored', ?, ?, ?, ?
+)
+RETURNING id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
+          weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+          status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
+`
+
+type CreateLockerPackageFromBookingParams struct {
+	ID                   string          `json:"id"`
+	UserID               string          `json:"user_id"`
+	SuiteCode            string          `json:"suite_code"`
+	BookingID            sql.NullString  `json:"booking_id"`
+	TrackingInbound      sql.NullString  `json:"tracking_inbound"`
+	CarrierInbound       sql.NullString  `json:"carrier_inbound"`
+	SenderName           sql.NullString  `json:"sender_name"`
+	WeightLbs            sql.NullFloat64 `json:"weight_lbs"`
+	LengthIn             sql.NullFloat64 `json:"length_in"`
+	WidthIn              sql.NullFloat64 `json:"width_in"`
+	HeightIn             sql.NullFloat64 `json:"height_in"`
+	ArrivalPhotoUrl      sql.NullString  `json:"arrival_photo_url"`
+	Condition            sql.NullString  `json:"condition"`
+	StorageBay           sql.NullString  `json:"storage_bay"`
+	ArrivedAt            sql.NullString  `json:"arrived_at"`
+	FreeStorageExpiresAt sql.NullString  `json:"free_storage_expires_at"`
+	CreatedAt            string          `json:"created_at"`
+	UpdatedAt            string          `json:"updated_at"`
+}
+
+func (q *Queries) CreateLockerPackageFromBooking(ctx context.Context, arg CreateLockerPackageFromBookingParams) (LockerPackage, error) {
+	row := q.db.QueryRowContext(ctx, createLockerPackageFromBooking,
+		arg.ID,
+		arg.UserID,
+		arg.SuiteCode,
+		arg.BookingID,
+		arg.TrackingInbound,
+		arg.CarrierInbound,
+		arg.SenderName,
+		arg.WeightLbs,
+		arg.LengthIn,
+		arg.WidthIn,
+		arg.HeightIn,
+		arg.ArrivalPhotoUrl,
+		arg.Condition,
+		arg.StorageBay,
+		arg.ArrivedAt,
+		arg.FreeStorageExpiresAt,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
+	var i LockerPackage
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SuiteCode,
+		&i.BookingID,
+		&i.TrackingInbound,
+		&i.CarrierInbound,
+		&i.SenderName,
+		&i.SenderAddress,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ArrivalPhotoUrl,
+		&i.Condition,
+		&i.StorageBay,
+		&i.Status,
+		&i.ArrivedAt,
+		&i.FreeStorageExpiresAt,
+		&i.DisposedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getLockerPackageByID = `-- name: GetLockerPackageByID :one
-SELECT id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name, sender_address,
+SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
        weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
        status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
 FROM locker_packages
@@ -30,6 +269,44 @@ func (q *Queries) GetLockerPackageByID(ctx context.Context, arg GetLockerPackage
 		&i.ID,
 		&i.UserID,
 		&i.SuiteCode,
+		&i.BookingID,
+		&i.TrackingInbound,
+		&i.CarrierInbound,
+		&i.SenderName,
+		&i.SenderAddress,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ArrivalPhotoUrl,
+		&i.Condition,
+		&i.StorageBay,
+		&i.Status,
+		&i.ArrivedAt,
+		&i.FreeStorageExpiresAt,
+		&i.DisposedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getLockerPackageByIDOnly = `-- name: GetLockerPackageByIDOnly :one
+SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
+       weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+       status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
+FROM locker_packages
+WHERE id = ?
+`
+
+func (q *Queries) GetLockerPackageByIDOnly(ctx context.Context, id string) (LockerPackage, error) {
+	row := q.db.QueryRowContext(ctx, getLockerPackageByIDOnly, id)
+	var i LockerPackage
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.SuiteCode,
+		&i.BookingID,
 		&i.TrackingInbound,
 		&i.CarrierInbound,
 		&i.SenderName,
@@ -52,7 +329,7 @@ func (q *Queries) GetLockerPackageByID(ctx context.Context, arg GetLockerPackage
 }
 
 const listLockerPackagesByUser = `-- name: ListLockerPackagesByUser :many
-SELECT id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name, sender_address,
+SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
        weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
        status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
 FROM locker_packages
@@ -80,6 +357,7 @@ func (q *Queries) ListLockerPackagesByUser(ctx context.Context, arg ListLockerPa
 			&i.ID,
 			&i.UserID,
 			&i.SuiteCode,
+			&i.BookingID,
 			&i.TrackingInbound,
 			&i.CarrierInbound,
 			&i.SenderName,
@@ -138,4 +416,19 @@ func (q *Queries) LockerSummaryByUser(ctx context.Context, userID string) (Locke
 		&i.PendingServices,
 	)
 	return i, err
+}
+
+const updateLockerPackageStorageBay = `-- name: UpdateLockerPackageStorageBay :exec
+UPDATE locker_packages SET storage_bay = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateLockerPackageStorageBayParams struct {
+	StorageBay sql.NullString `json:"storage_bay"`
+	UpdatedAt  string         `json:"updated_at"`
+	ID         string         `json:"id"`
+}
+
+func (q *Queries) UpdateLockerPackageStorageBay(ctx context.Context, arg UpdateLockerPackageStorageBayParams) error {
+	_, err := q.db.ExecContext(ctx, updateLockerPackageStorageBay, arg.StorageBay, arg.UpdatedAt, arg.ID)
+	return err
 }

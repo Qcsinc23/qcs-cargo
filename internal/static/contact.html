@@ -71,12 +71,20 @@
         const r = await fetch('/api/v1/contact', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: fd.get('name'), email: fd.get('email'), subject: fd.get('subject'), message: fd.get('message') })
+          body: JSON.stringify({ name: fd.get('name'), email: fd.get('email'), message: fd.get('message'), subject: fd.get('subject') || '' })
         });
         const j = await r.json();
-        if (r.ok) status.textContent = j.data?.message || 'Sent.'; status.className = 'mt-4 text-sm text-green-600';
-        else status.textContent = j.error?.message || 'Something went wrong.'; status.className = 'mt-4 text-sm text-red-600';
-      } catch (err) { status.textContent = 'Network error.'; status.className = 'mt-4 text-sm text-red-600'; }
+        if (r.ok) {
+          status.textContent = j.data?.message || 'Sent.';
+          status.className = 'mt-4 text-sm text-green-600';
+        } else {
+          status.textContent = (j.error && j.error.message) ? j.error.message : 'Something went wrong.';
+          status.className = 'mt-4 text-sm text-red-600';
+        }
+      } catch (err) {
+        status.textContent = 'Network error.';
+        status.className = 'mt-4 text-sm text-red-600';
+      }
     });
   </script>
 </body>

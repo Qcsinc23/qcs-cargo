@@ -9,6 +9,7 @@
   <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:rounded focus:outline focus:ring-2 focus:ring-[#2563EB]">Skip to main content</a>
   <div id="dashboard-app">
     <p class="p-8 text-slate-500">Loading…</p>
   </div>
@@ -26,8 +27,8 @@
             <div class="flex min-h-screen">\
               <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">\
                 <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>\
-                <nav class="space-y-1">\
-                  <a href="/dashboard" class="block py-2 px-3 rounded-lg bg-[#1E293B]">Dashboard</a>\
+                <nav class="space-y-1" aria-label="Main navigation">\
+                  <a href="/dashboard" class="block py-2 px-3 rounded-lg bg-[#1E293B]" aria-current="page">Dashboard</a>\
                   <a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>\
                   <a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>\
                   <a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>\
@@ -43,7 +44,7 @@
                 <p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>\
                 <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>\
               </aside>\
-              <main class="flex-1 p-8">\
+              <main id="main" class="flex-1 p-8">\
                 <nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li class="text-[#0F172A] font-medium" aria-current="page">Dashboard</li></ol></nav>\
                 <h1 class="text-3xl font-bold text-[#0F172A] mb-8">Dashboard</h1>\
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">\
@@ -76,22 +77,30 @@
                 const stored = s.data.stored_count ?? 0;
                 const nextExpiry = s.data.next_expiry || '';
                 const daysUntil = nextExpiry ? Math.ceil((new Date(nextExpiry) - new Date()) / (24*60*60*1000)) : null;
-                const expiringSoon = daysUntil != null && daysUntil <= 7 && daysUntil >= 0;
                 const expired = daysUntil != null && daysUntil < 0;
+                const lastDay = daysUntil === 0;
+                const within5Days = daysUntil != null && daysUntil >= 1 && daysUntil <= 5;
                 const highCount = stored >= 8;
                 let banner = '';
                 if (expired && stored > 0) {
-                  banner = '<div class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4"><p class="text-red-800 font-medium">Free storage has expired. <a href="/dashboard/inbox" class="underline">View packages in My Packages</a></p></div>';
-                } else if (expiringSoon && stored > 0) {
+                  banner = '<div class="mb-6 rounded-lg border border-red-200 bg-red-50 p-4"><p class="text-red-800 font-medium">Free storage has expired. Ship or dispose to avoid fees. <a href="/dashboard/inbox" class="underline">View packages in My Packages</a></p></div>';
+                } else if (lastDay && stored > 0) {
+                  banner = '<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="text-amber-800 font-medium">Last day of free storage. Ship or dispose packages today. <a href="/dashboard/inbox" class="underline">View in My Packages</a></p></div>';
+                } else if (within5Days && stored > 0) {
                   const d = new Date(nextExpiry);
                   const y = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                  banner = '<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="text-amber-800 font-medium">' + stored + ' package(s) expiring soon. Free storage expires on ' + y + '. <a href="/dashboard/inbox" class="underline">View in My Packages</a></p></div>';
-                } else if (highCount && !expiringSoon && !expired) {
-                  banner = '<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="text-amber-800 font-medium">' + stored + ' packages in locker. <a href="/dashboard/inbox" class="underline">View in My Packages</a></p></div>';
+                  banner = '<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4"><p class="text-amber-800 font-medium">Package(s) start storage fees in ' + daysUntil + ' day(s). Free storage expires ' + y + '. <a href="/dashboard/inbox" class="underline">View in My Packages</a></p></div>';
+                } else if (highCount && !within5Days && !lastDay && !expired) {
+                  banner = '<div class="mb-6 rounded-lg border border-slate-200 bg-slate-50 p-4"><p class="text-slate-800 font-medium">' + stored + ' packages in locker. <a href="/dashboard/inbox" class="underline">View in My Packages</a></p></div>';
                 }
                 if (banner) {
                   const main = document.querySelector('main');
-                  if (main && main.firstChild) main.insertAdjacentHTML('afterbegin', banner);
+                  const breadcrumb = main && main.querySelector('nav[aria-label="Breadcrumb"]');
+                  if (breadcrumb && breadcrumb.nextElementSibling) {
+                    breadcrumb.insertAdjacentHTML('afterend', banner);
+                  } else if (main) {
+                    main.insertAdjacentHTML('afterbegin', banner);
+                  }
                 }
               }
             });

@@ -10,6 +10,114 @@ import (
 	"database/sql"
 )
 
+const adminListBookings = `-- name: AdminListBookings :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+ORDER BY scheduled_date DESC, created_at DESC
+LIMIT ? OFFSET ?
+`
+
+type AdminListBookingsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) AdminListBookings(ctx context.Context, arg AdminListBookingsParams) ([]Booking, error) {
+	rows, err := q.db.QueryContext(ctx, adminListBookings, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Booking
+	for rows.Next() {
+		var i Booking
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConfirmationCode,
+			&i.Status,
+			&i.ServiceType,
+			&i.DestinationID,
+			&i.RecipientID,
+			&i.ScheduledDate,
+			&i.TimeSlot,
+			&i.SpecialInstructions,
+			&i.Subtotal,
+			&i.Discount,
+			&i.Insurance,
+			&i.Total,
+			&i.PaymentStatus,
+			&i.StripePaymentIntentID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const adminListBookingsToday = `-- name: AdminListBookingsToday :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE scheduled_date = ?
+ORDER BY time_slot, created_at
+LIMIT 100
+`
+
+func (q *Queries) AdminListBookingsToday(ctx context.Context, scheduledDate string) ([]Booking, error) {
+	rows, err := q.db.QueryContext(ctx, adminListBookingsToday, scheduledDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Booking
+	for rows.Next() {
+		var i Booking
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConfirmationCode,
+			&i.Status,
+			&i.ServiceType,
+			&i.DestinationID,
+			&i.RecipientID,
+			&i.ScheduledDate,
+			&i.TimeSlot,
+			&i.SpecialInstructions,
+			&i.Subtotal,
+			&i.Discount,
+			&i.Insurance,
+			&i.Total,
+			&i.PaymentStatus,
+			&i.StripePaymentIntentID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createBooking = `-- name: CreateBooking :one
 INSERT INTO bookings (
     id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
@@ -138,6 +246,40 @@ func (q *Queries) GetBookingByID(ctx context.Context, arg GetBookingByIDParams) 
 	return i, err
 }
 
+const getBookingByIDOnly = `-- name: GetBookingByIDOnly :one
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE id = ?
+`
+
+func (q *Queries) GetBookingByIDOnly(ctx context.Context, id string) (Booking, error) {
+	row := q.db.QueryRowContext(ctx, getBookingByIDOnly, id)
+	var i Booking
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ConfirmationCode,
+		&i.Status,
+		&i.ServiceType,
+		&i.DestinationID,
+		&i.RecipientID,
+		&i.ScheduledDate,
+		&i.TimeSlot,
+		&i.SpecialInstructions,
+		&i.Subtotal,
+		&i.Discount,
+		&i.Insurance,
+		&i.Total,
+		&i.PaymentStatus,
+		&i.StripePaymentIntentID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listBookingsByUser = `-- name: ListBookingsByUser :many
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
        scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
@@ -149,6 +291,57 @@ ORDER BY scheduled_date DESC, created_at DESC
 
 func (q *Queries) ListBookingsByUser(ctx context.Context, userID string) ([]Booking, error) {
 	rows, err := q.db.QueryContext(ctx, listBookingsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Booking
+	for rows.Next() {
+		var i Booking
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.ConfirmationCode,
+			&i.Status,
+			&i.ServiceType,
+			&i.DestinationID,
+			&i.RecipientID,
+			&i.ScheduledDate,
+			&i.TimeSlot,
+			&i.SpecialInstructions,
+			&i.Subtotal,
+			&i.Discount,
+			&i.Insurance,
+			&i.Total,
+			&i.PaymentStatus,
+			&i.StripePaymentIntentID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listBookingsToday = `-- name: ListBookingsToday :many
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE date(scheduled_date) = date('now')
+ORDER BY time_slot ASC, created_at ASC
+`
+
+func (q *Queries) ListBookingsToday(ctx context.Context) ([]Booking, error) {
+	rows, err := q.db.QueryContext(ctx, listBookingsToday)
 	if err != nil {
 		return nil, err
 	}

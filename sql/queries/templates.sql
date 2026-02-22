@@ -1,3 +1,13 @@
+-- name: CreateTemplate :one
+INSERT INTO templates (id, user_id, name, service_type, destination_id, recipient_id, use_count, created_at)
+VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+RETURNING id, user_id, name, service_type, destination_id, recipient_id, use_count, created_at;
+
+-- name: UpdateTemplate :exec
+UPDATE templates
+SET name = ?, service_type = ?, destination_id = ?, recipient_id = ?
+WHERE id = ? AND user_id = ?;
+
 -- name: ListTemplatesByUser :many
 SELECT id, user_id, name, service_type, destination_id, recipient_id, use_count, created_at
 FROM templates

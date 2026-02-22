@@ -67,3 +67,39 @@ WHERE id = ? AND user_id = ?;
 UPDATE ship_requests
 SET payment_status = ?, status = ?, updated_at = ?
 WHERE id = ? AND user_id = ?;
+
+-- name: AdminListShipRequests :many
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, created_at, updated_at
+FROM ship_requests
+WHERE (? = '' OR status = ?)
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: GetShipRequestByIDOnly :one
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, consolidated_weight_lbs, staging_bay, manifest_id,
+       created_at, updated_at
+FROM ship_requests
+WHERE id = ?;
+
+-- name: AdminUpdateShipRequestStatus :exec
+UPDATE ship_requests SET status = ?, updated_at = ? WHERE id = ?;
+
+-- name: UpdateShipRequestConsolidatedWeight :exec
+UPDATE ship_requests SET consolidated_weight_lbs = ?, updated_at = ? WHERE id = ?;
+
+-- name: UpdateShipRequestStaged :exec
+UPDATE ship_requests SET staging_bay = ?, manifest_id = ?, status = ?, updated_at = ? WHERE id = ?;
+
+-- name: ListPaidShipRequestsByPaymentStatus :many
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, consolidated_weight_lbs, staging_bay, manifest_id,
+       created_at, updated_at
+FROM ship_requests
+WHERE payment_status = 'paid'
+ORDER BY created_at DESC
+LIMIT ? OFFSET ?;

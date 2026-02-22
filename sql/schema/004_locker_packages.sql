@@ -2,6 +2,7 @@ CREATE TABLE locker_packages (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id),
     suite_code TEXT NOT NULL,
+    booking_id TEXT,
     tracking_inbound TEXT,
     carrier_inbound TEXT,
     sender_name TEXT,
