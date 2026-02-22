@@ -71,7 +71,9 @@
               return;
             }
             clearLegacyCaches().finally(() => {
-              window.location.href = withCacheBust(redirectTo);
+              setTimeout(function() {
+                window.location.replace(withCacheBust(redirectTo));
+              }, 100);
             });
           } else {
             status.textContent = j.error?.message || 'Invalid or expired link.';

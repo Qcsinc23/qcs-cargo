@@ -1,3 +1,5 @@
+//go:build js && wasm
+
 // Package frontend is the WASM entrypoint. Build with:
 //   GOOS=js GOARCH=wasm go build -o web/app.wasm .
 package main

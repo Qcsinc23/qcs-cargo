@@ -176,6 +176,9 @@ func main() {
 			c.Set("Content-Type", "text/html; charset=utf-8")
 			return c.Send(data)
 		}
+		if strings.HasPrefix(path, "dashboard/") || path == "dashboard" || strings.HasPrefix(path, "verify") {
+			c.Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		}
 		c.Set("Content-Type", contentType(path))
 		return c.Send(data)
 	})

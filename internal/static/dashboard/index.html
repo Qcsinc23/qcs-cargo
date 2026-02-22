@@ -44,12 +44,26 @@
         return;
       }
       if (!token) { window.location.href = loginRedirect; return; }
-      fetch('/api/v1/me', { headers: { 'Authorization': 'Bearer ' + token } })
-        .then(r => { if (!r.ok) { window.location.href = loginRedirect; return null; } return r.json(); })
+
+      var meAbort = new AbortController();
+      var meTimeout = setTimeout(function() {
+        meAbort.abort();
+      }, 15000);
+
+      fetch('/api/v1/me', { headers: { 'Authorization': 'Bearer ' + token }, signal: meAbort.signal })
+        .then(r => {
+          clearTimeout(meTimeout);
+          if (!r.ok) { window.location.href = loginRedirect; return null; }
+          return r.json();
+        })
         .then(j => {
           if (!j) return;
+          if (!j.data || typeof j.data !== 'object') {
+            showBootstrapError('Invalid response from server. Please sign in again.');
+            return;
+          }
           const user = j.data;
-          const suiteCode = user.suite_code || '—';
+          const suiteCode = (user && user.suite_code) || '—';
           document.getElementById('dashboard-app').innerHTML = '\
             <div class="flex min-h-screen">\
               <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">\
@@ -137,8 +151,10 @@
           };
         })
         .catch(err => {
+          clearTimeout(meTimeout);
           console.error('Dashboard bootstrap failed', err);
-          showBootstrapError('We could not load your account right now. Please retry.');
+          var msg = (err && err.name === 'AbortError') ? 'Request timed out. Check your connection and retry.' : 'We could not load your account right now. Please retry.';
+          showBootstrapError(msg);
         });
     })();
   </script>

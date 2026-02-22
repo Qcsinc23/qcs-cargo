@@ -37,6 +37,10 @@ func RegisterAdmin(g fiber.Router) {
 	admin.Get("/users", adminUsersList)
 	admin.Get("/users/:id", adminUserGet)
 	admin.Patch("/users/:id", adminUserUpdate)
+	admin.Get("/reports/storage", adminStorageReport)
+	admin.Get("/reports/revenue", adminReportsRevenue)
+	admin.Get("/reports/shipments", adminReportsShipments)
+	admin.Get("/reports/customers", adminReportsCustomers)
 }
 
 func pagination(c *fiber.Ctx) (limit, offset int64) {
@@ -73,9 +77,7 @@ func adminDashboard(c *fiber.Ctx) error {
 	})
 }
 
-// adminStorageReport is reserved for admin reports UI.
-//
-//nolint:unused
+// adminStorageReport returns storage report for admin reports UI.
 func adminStorageReport(c *fiber.Ctx) error {
 	row, err := db.Queries().AdminStorageReport(c.Context())
 	if err != nil {
@@ -95,8 +97,6 @@ func adminStorageReport(c *fiber.Ctx) error {
 }
 
 // toFloat64 is used by admin report helpers.
-//
-//nolint:unused
 func toFloat64(v interface{}) (float64, bool) {
 	if v == nil {
 		return 0, true
@@ -113,9 +113,7 @@ func toFloat64(v interface{}) (float64, bool) {
 	}
 }
 
-// adminReportsRevenue is reserved for admin reports UI.
-//
-//nolint:unused
+// adminReportsRevenue returns revenue report for admin reports UI.
 func adminReportsRevenue(c *fiber.Ctx) error {
 	from := c.Query("from", "")
 	to := c.Query("to", "")
@@ -132,9 +130,7 @@ func adminReportsRevenue(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": fiber.Map{"revenue": revenue, "from": from, "to": to}})
 }
 
-// adminReportsShipments is reserved for admin reports UI.
-//
-//nolint:unused
+// adminReportsShipments returns shipments count report for admin reports UI.
 func adminReportsShipments(c *fiber.Ctx) error {
 	from := c.Query("from", "")
 	to := c.Query("to", "")
@@ -150,9 +146,7 @@ func adminReportsShipments(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": fiber.Map{"count": count, "from": from, "to": to}})
 }
 
-// adminReportsCustomers is reserved for admin reports UI.
-//
-//nolint:unused
+// adminReportsCustomers returns customers count for admin reports UI.
 func adminReportsCustomers(c *fiber.Ctx) error {
 	count, err := db.Queries().AdminCustomersCount(c.Context())
 	if err != nil {
