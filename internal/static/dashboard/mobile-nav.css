@@ -1,0 +1,129 @@
+/* Shared responsive dashboard navigation overlay for mobile.
+   Desktop layout remains unchanged. */
+
+.qcs-mobile-topbar,
+.qcs-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .qcs-shell {
+    display: block !important;
+    min-height: 100vh;
+  }
+
+  .qcs-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0;
+    width: min(82vw, 320px) !important;
+    height: 100dvh;
+    padding-top: 1rem !important;
+    z-index: 70;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.42);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .qcs-shell.qcs-nav-open .qcs-sidebar {
+    transform: translateX(0);
+  }
+
+  .qcs-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(2, 6, 23, 0.42);
+    z-index: 60;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .qcs-shell.qcs-nav-open .qcs-sidebar-overlay {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .qcs-mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 0.75rem 1rem;
+    background: rgba(248, 250, 252, 0.97);
+    border-bottom: 1px solid #cbd5e1;
+    backdrop-filter: blur(8px);
+  }
+
+  .qcs-mobile-menu-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #0f172a;
+    border-radius: 0.5rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .qcs-mobile-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.92rem;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .qcs-mobile-home {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 0.32rem 0.6rem;
+    text-decoration: none;
+  }
+
+  .qcs-main {
+    width: 100%;
+    padding: 1rem !important;
+  }
+
+  .qcs-main nav[aria-label="Breadcrumb"] {
+    display: none;
+  }
+
+  .qcs-main h1 {
+    font-size: 1.55rem !important;
+    line-height: 1.25;
+  }
+
+  .qcs-main .grid,
+  .qcs-main [class*="grid-cols-"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .qcs-main table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  body.qcs-nav-lock {
+    overflow: hidden;
+  }
+}
