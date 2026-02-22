@@ -16,10 +16,36 @@
   </div>
   <script>
     (function() {
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard'); return; }
+      const appEl = document.getElementById('dashboard-app');
+      const loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard');
+      function showBootstrapError(message) {
+        if (!appEl) return;
+        appEl.innerHTML = '\
+          <div class="min-h-screen flex items-center justify-center p-6">\
+            <div class="max-w-md w-full bg-white border border-slate-200 rounded-xl p-6 shadow-sm">\
+              <h1 class="text-xl font-semibold text-slate-900 mb-2">Unable to load dashboard</h1>\
+              <p class="text-slate-600 mb-4">' + message + '</p>\
+              <div class="flex flex-wrap gap-3">\
+                <button id="dashboard-retry-btn" type="button" class="bg-[#2563EB] text-white px-4 py-2 rounded-lg">Retry</button>\
+                <a href="' + loginRedirect + '" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Sign in again</a>\
+              </div>\
+            </div>\
+          </div>';
+        var retryBtn = document.getElementById('dashboard-retry-btn');
+        if (retryBtn) retryBtn.onclick = function() { window.location.reload(); };
+      }
+
+      let token = '';
+      try {
+        token = localStorage.getItem('qcs_access_token') || '';
+      } catch (e) {
+        console.error('Dashboard bootstrap token read failed', e);
+        showBootstrapError('Your browser blocked local storage access. Please allow storage and try again.');
+        return;
+      }
+      if (!token) { window.location.href = loginRedirect; return; }
       fetch('/api/v1/me', { headers: { 'Authorization': 'Bearer ' + token } })
-        .then(r => { if (!r.ok) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard'); return null; } return r.json(); })
+        .then(r => { if (!r.ok) { window.location.href = loginRedirect; return null; } return r.json(); })
         .then(j => {
           if (!j) return;
           const user = j.data;
@@ -104,10 +130,15 @@
                   }
                 }
               }
-            });
+            })
+            .catch(() => {});
           document.getElementById('logout-btn').onclick = () => {
             fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
           };
+        })
+        .catch(err => {
+          console.error('Dashboard bootstrap failed', err);
+          showBootstrapError('We could not load your account right now. Please retry.');
         });
     })();
   </script>
