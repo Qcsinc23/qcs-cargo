@@ -1,0 +1,19 @@
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    role TEXT NOT NULL DEFAULT 'customer',
+    avatar_url TEXT,
+    suite_code TEXT,
+    address_street TEXT,
+    address_city TEXT,
+    address_state TEXT,
+    address_zip TEXT,
+    storage_plan TEXT NOT NULL DEFAULT 'free',
+    free_storage_days INTEGER NOT NULL DEFAULT 30,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);

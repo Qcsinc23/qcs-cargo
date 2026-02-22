@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QCS Cargo — Your Personal US Shipping Address</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <div id="app">
+    <div class="max-w-4xl mx-auto px-4 py-16 text-center">
+      <p class="text-slate-500 mb-4">QCS Cargo</p>
+      <h1 class="text-4xl font-bold text-slate-900 mb-4">Your Personal US Shipping Address</h1>
+      <p class="text-lg text-slate-600 mb-8">Parcel Forwarding · Air Freight · Warehouse Operations</p>
+      <p class="text-slate-500">Loading…</p>
+    </div>
+  </div>
+  <script src="/wasm_exec.js"></script>
+  <script>
+    if (!WebAssembly) document.getElementById('app').innerHTML = '<p class="text-red-600">WebAssembly is not supported.</p>';
+    else {
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch('/app.wasm'), go.importObject).then(r => {
+        go.run(r.instance);
+      }).catch(e => {
+        document.getElementById('app').innerHTML = '<p class="text-slate-600">App not built yet. Run: GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend</p>';
+      });
+    }
+  </script>
+</body>
+</html>

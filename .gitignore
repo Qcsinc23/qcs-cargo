@@ -1,0 +1,35 @@
+# Binaries
+qcs-server
+qcs-migrate
+*.exe
+*.dll
+*.so
+*.dylib
+web/app.wasm
+web/wasm_exec.js
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Go
+/vendor/
+*.test
+coverage.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Env
+.env
+.env.local
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

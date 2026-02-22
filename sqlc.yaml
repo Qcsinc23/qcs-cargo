@@ -1,0 +1,21 @@
+# sqlc config per PRD 2.1. Type-safe SQL for SQLite/Postgres.
+version: "2"
+sql:
+  - engine: "sqlite"
+    queries: "sql/queries"
+    schema: "sql/schema"
+    gen:
+      go:
+        package: "gen"
+        out: "internal/db/gen"
+        sql_package: "database/sql"
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_interface: false
+        overrides:
+          - db_type: "TEXT"
+            go_type: "string"
+          - db_type: "INTEGER"
+            go_type: "int"
+          - db_type: "REAL"
+            go_type: "float64"

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact Us | QCS Cargo</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <header class="bg-[#0F172A] text-white py-4 px-6">
+    <nav class="max-w-6xl mx-auto flex justify-between items-center">
+      <a href="/" class="font-bold text-lg">QCS Cargo</a>
+      <div class="flex gap-6">
+        <a href="/how-it-works">How It Works</a>
+        <a href="/about">About</a>
+        <a href="/contact">Contact</a>
+        <a href="/login">Sign In</a>
+        <a href="/register" class="bg-[#F97316] text-white px-4 py-2 rounded-lg font-medium">Get My Free Address</a>
+      </div>
+    </nav>
+  </header>
+  <main class="max-w-2xl mx-auto px-6 py-16">
+    <h1 class="text-4xl font-bold text-[#0F172A] mb-8">Contact Us</h1>
+    <p class="text-slate-600 mb-8">Sales: <a href="mailto:sales@qcs-cargo.com" class="text-[#2563EB]">sales@qcs-cargo.com</a> · Support: <a href="mailto:support@qcs-cargo.com" class="text-[#2563EB]">support@qcs-cargo.com</a><br>Phone: 201-249-0929 · WhatsApp: +1-201-249-0929</p>
+    <p class="text-slate-600 mb-8">35 Obrien St, E12, Kearny, NJ 07032<br>Mon–Fri 9AM–6PM, Sat 9AM–2PM, Sun closed</p>
+    <form id="contact-form" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Name *</label>
+        <input type="text" name="name" required class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+        <input type="email" name="email" required class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Subject</label>
+        <input type="text" name="subject" class="w-full h-10 rounded-lg border border-slate-200 px-3" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Message *</label>
+        <textarea name="message" required rows="4" class="w-full rounded-lg border border-slate-200 px-3 py-2"></textarea>
+      </div>
+      <button type="submit" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium h-10">Send</button>
+    </form>
+    <p id="form-status" class="mt-4 text-sm hidden"></p>
+  </main>
+  <footer class="bg-[#0F172A] text-white py-8 px-6 mt-16">
+    <div class="max-w-6xl mx-auto text-center text-slate-300 text-sm">
+      <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+      <p class="mt-2"><a href="/legal/terms" class="underline">Terms</a> · <a href="/legal/privacy" class="underline">Privacy</a></p>
+    </div>
+  </footer>
+  <script>
+    document.getElementById('contact-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const status = document.getElementById('form-status');
+      status.classList.remove('hidden');
+      try {
+        const r = await fetch('/api/v1/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: fd.get('name'), email: fd.get('email'), subject: fd.get('subject'), message: fd.get('message') })
+        });
+        const j = await r.json();
+        if (r.ok) status.textContent = j.data?.message || 'Sent.'; status.className = 'mt-4 text-sm text-green-600';
+        else status.textContent = j.error?.message || 'Something went wrong.'; status.className = 'mt-4 text-sm text-red-600';
+      } catch (err) { status.textContent = 'Network error.'; status.className = 'mt-4 text-sm text-red-600'; }
+    });
+  </script>
+</body>
+</html>
