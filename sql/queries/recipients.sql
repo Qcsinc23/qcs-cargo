@@ -25,3 +25,5 @@ RETURNING id;
 -- name: DeleteRecipient :exec
 DELETE FROM recipients
 WHERE id = ? AND user_id = ?;
+-- name: UnsetDefaultRecipients :exec
+UPDATE recipients SET is_default = 0 WHERE user_id = ?;

@@ -26,6 +26,14 @@ func resendClient() *resend.Client {
 	return resend.NewClient(key)
 }
 
+// appURL returns the base URL of the application, preferring APP_URL env; otherwise production default.
+func appURL() string {
+	if s := os.Getenv("APP_URL"); s != "" {
+		return s
+	}
+	return "https://qcs-cargo.com"
+}
+
 // SendMagicLink sends a magic link email to the given address. Link is valid 10 minutes.
 // No-op if RESEND_API_KEY is not set; callers should fall back to logging.
 func SendMagicLink(to, link string) error {
@@ -99,11 +107,12 @@ func SendPackageArrived(to, senderName string, weightLbs float64) error {
 		return nil
 	}
 	body := fmt.Sprintf("New package from %s! Weight: %.1f lbs. Log in to view.", escapeHTML(senderName), weightLbs)
+	dashboardLink := appURL() + "/dashboard/inbox"
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "New package at QCS Cargo",
-		Html:    "<p>" + body + "</p><p><a href=\"https://qcs-cargo.com/dashboard/inbox\">View in My Packages</a></p>",
+		Html:    fmt.Sprintf("<p>%s</p><p><a href=\"%s\">View in My Packages</a></p>", body, dashboardLink),
 		Text:    body,
 	})
 	return err
@@ -117,8 +126,8 @@ func SendPhotoReady(to, senderName string, photoCount int) error {
 	}
 	body := fmt.Sprintf("%d photos of your package from %s are ready.", photoCount, escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Your package photos are ready",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -134,8 +143,8 @@ func SendServiceComplete(to, serviceName, senderName string) error {
 	}
 	body := fmt.Sprintf("%s for package from %s is complete.", serviceName, escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Service complete – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -151,8 +160,8 @@ func SendStorageWarning5Days(to, senderName string) error {
 	}
 	body := fmt.Sprintf("Package from %s starts storage fees in 5 days.", escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Storage reminder – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -168,8 +177,8 @@ func SendStorageWarning1Day(to, senderName string) error {
 	}
 	body := fmt.Sprintf("Last day of free storage for %s package.", escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Last day of free storage – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -185,8 +194,8 @@ func SendStorageFeeCharged(to, senderName string, amount float64) error {
 	}
 	body := fmt.Sprintf("Storage fee $%.2f charged for %s package.", amount, escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Storage fee charged – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -202,8 +211,8 @@ func SendStorageFinalNotice(to, senderName string) error {
 	}
 	body := fmt.Sprintf("Package from %s will be disposed in 5 days unless shipped.", escapeHTML(senderName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Final notice – package disposal – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -219,8 +228,8 @@ func SendShipRequestPaid(to, code string) error {
 	}
 	body := fmt.Sprintf("Ship request %s confirmed! Being prepared.", escapeHTML(code))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Ship request confirmed – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -236,8 +245,8 @@ func SendShipRequestShipped(to, code, tracking string) error {
 	}
 	body := fmt.Sprintf("Shipment %s on its way! Tracking: %s", escapeHTML(code), escapeHTML(tracking))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Shipment on its way – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -253,8 +262,8 @@ func SendShipRequestDelivered(to, code, destination string) error {
 	}
 	body := fmt.Sprintf("Shipment %s delivered in %s!", escapeHTML(code), escapeHTML(destination))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Shipment delivered – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -270,8 +279,8 @@ func SendInboundDelivered(to, retailerName string) error {
 	}
 	body := fmt.Sprintf("%s package delivered to QCS. Check locker shortly.", escapeHTML(retailerName))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Package arrived at QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -287,8 +296,8 @@ func SendCustomsHold(to, code string) error {
 	}
 	body := fmt.Sprintf("Ship request %s needs customs attention.", escapeHTML(code))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Customs notice – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -304,8 +313,8 @@ func SendBookingConfirmed(to, code, date string) error {
 	}
 	body := fmt.Sprintf("Booking %s confirmed for %s.", escapeHTML(code), escapeHTML(date))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Booking confirmed – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,
@@ -321,8 +330,8 @@ func SendShipmentStatus(to, trackingNumber, status string) error {
 	}
 	body := fmt.Sprintf("Shipment %s: now %s", escapeHTML(trackingNumber), escapeHTML(status))
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
-		From: "QCS Cargo <" + fromAddress() + ">",
-		To:   []string{to},
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
 		Subject: "Shipment update – QCS Cargo",
 		Html:    "<p>" + body + "</p>",
 		Text:    body,

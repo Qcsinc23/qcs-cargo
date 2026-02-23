@@ -1,18 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Mailbox | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif
+    }
+
+    h1,
+    h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif
+    }
+  </style>
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
+
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
   <script>
-    (function() {
+    (function () {
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/mailbox'); return; }
       fetch('/api/v1/me', { headers: { 'Authorization': 'Bearer ' + token } })
@@ -43,6 +56,14 @@
             '<p class="mt-4 text-slate-600 text-sm"><a href="/dashboard/inbound" class="text-[#2563EB]">Track incoming packages</a></p>' +
             '</main></div>';
           document.getElementById('app').innerHTML = sidebar + main;
+
+          // Securely set dynamic text content to prevent XSS
+          const addressEl = document.querySelector('main .bg-white p');
+          if (addressEl) {
+            addressEl.textContent = fullAddress;
+            addressEl.style.whiteSpace = 'pre-line';
+          }
+
           document.getElementById('copy-btn').onclick = () => { navigator.clipboard.writeText(fullAddress); alert('Address copied.'); };
           document.getElementById('logout-btn').onclick = () => {
             fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
@@ -52,4 +73,5 @@
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
 </body>
+
 </html>

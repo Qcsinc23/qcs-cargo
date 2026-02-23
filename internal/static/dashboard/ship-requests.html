@@ -1,18 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ship Requests | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif
+    }
+
+    h1,
+    h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif
+    }
+  </style>
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
+
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
   <script>
-    (function() {
+    (function () {
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/ship-requests'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
@@ -62,10 +75,14 @@
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Created</th>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600"></th></tr></thead><tbody>';
           list.forEach(sr => {
+            const safeCode = qcsEscapeHTML(sr.confirmation_code || sr.id);
+            const safeStatus = qcsEscapeHTML(sr.status || 'draft');
+            const safeDest = qcsEscapeHTML(sr.destination_id || '—');
+
             main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
-              '<td class="py-3 px-4 font-mono text-sm">' + (sr.confirmation_code || sr.id) + '</td>' +
-              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm ' + (sr.status === 'draft' ? 'bg-amber-100 text-amber-800' : sr.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700') + '">' + (sr.status || 'draft') + '</span></td>' +
-              '<td class="py-3 px-4">' + (sr.destination_id || '—') + '</td>' +
+              '<td class="py-3 px-4 font-mono text-sm">' + safeCode + '</td>' +
+              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm ' + (sr.status === 'draft' ? 'bg-amber-100 text-amber-800' : sr.status === 'paid' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700') + '">' + safeStatus + '</span></td>' +
+              '<td class="py-3 px-4">' + safeDest + '</td>' +
               '<td class="py-3 px-4 text-slate-500 text-sm">' + (sr.created_at ? sr.created_at.slice(0, 10) : '—') + '</td>' +
               '<td class="py-3 px-4"><a href="/dashboard/ship-requests/' + sr.id + '" class="text-[#2563EB] font-medium">View</a></td></tr>';
           });
@@ -81,4 +98,5 @@
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
 </body>
+
 </html>

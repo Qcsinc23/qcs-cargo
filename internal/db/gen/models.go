@@ -151,6 +151,14 @@ type Recipient struct {
 	UpdatedAt            string         `json:"updated_at"`
 }
 
+type SentNotification struct {
+	ID               string `json:"id"`
+	NotificationType string `json:"notification_type"`
+	ResourceID       string `json:"resource_id"`
+	RecipientEmail   string `json:"recipient_email"`
+	SentAt           string `json:"sent_at"`
+}
+
 type ServiceRequest struct {
 	ID              string         `json:"id"`
 	UserID          string         `json:"user_id"`

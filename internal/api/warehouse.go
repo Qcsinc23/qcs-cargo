@@ -6,11 +6,12 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // RegisterWarehouse mounts warehouse routes under /warehouse. All require auth + staff or admin. PRD §6.10.
@@ -47,7 +48,7 @@ func warehouseStats(c *fiber.Ctx) error {
 			"ship_requests_count":   row.ShipRequestsCount,
 			"bookings_count":        row.BookingsCount,
 			"service_queue_count":   row.ServiceQueueCount,
-			"unmatched_count":      row.UnmatchedCount,
+			"unmatched_count":       row.UnmatchedCount,
 		},
 	})
 }
@@ -95,7 +96,7 @@ func warehouseLockerReceive(c *fiber.Ctx) error {
 		HeightIn:             toNullFloat64(body.HeightIn),
 		ArrivalPhotoUrl:      sql.NullString{},
 		Condition:            toNullString(body.Condition),
-		StorageBay:            toNullString(body.StorageBay),
+		StorageBay:           toNullString(body.StorageBay),
 		ArrivedAt:            sql.NullString{String: nowStr, Valid: true},
 		FreeStorageExpiresAt: sql.NullString{String: expiresAt, Valid: true},
 		CreatedAt:            nowStr,
@@ -105,6 +106,16 @@ func warehouseLockerReceive(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create locker package"))
 	}
+
+	// Notify customer
+	if user.Email != "" {
+		sender := "your package"
+		if body.SenderName != nil && *body.SenderName != "" {
+			sender = *body.SenderName
+		}
+		_ = services.SendPackageArrived(user.Email, sender, pkg.WeightLbs.Float64)
+	}
+
 	return c.Status(201).JSON(fiber.Map{"data": pkg})
 }
 
@@ -239,10 +250,24 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 	nowStr := now.Format(time.RFC3339)
 	expiresAt := now.AddDate(0, 0, 30).Format(time.RFC3339)
 	bookingIDNull := sql.NullString{String: body.BookingID, Valid: true}
-	created := make([]gen.LockerPackage, 0, body.PackageCount)
-	if body.PackageCount < 1 {
-		body.PackageCount = 1
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
+	defer tx.Rollback()
+	qtx := db.Queries().WithTx(tx)
+
+	// Mark booking as received
+	err = qtx.UpdateBookingStatus(c.Context(), gen.UpdateBookingStatusParams{
+		Status:    "received",
+		UpdatedAt: nowStr,
+		ID:        body.BookingID,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update booking status"))
+	}
+
+	created := make([]gen.LockerPackage, 0, body.PackageCount)
 	for i := 0; i < body.PackageCount; i++ {
 		id := uuid.New().String()
 		arg := gen.CreateLockerPackageFromBookingParams{
@@ -257,12 +282,27 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 			CreatedAt:            nowStr,
 			UpdatedAt:            nowStr,
 		}
-		pkg, err := db.Queries().CreateLockerPackageFromBooking(c.Context(), arg)
+		pkg, err := qtx.CreateLockerPackageFromBooking(c.Context(), arg)
 		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create locker package"))
 		}
 		created = append(created, pkg)
 	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
+	}
+
+	// Notify customer
+	if user.Email != "" {
+		sender := "your booking"
+		weight := 0.0
+		if body.WeightLbs != nil {
+			weight = *body.WeightLbs
+		}
+		_ = services.SendPackageArrived(user.Email, sender, weight)
+	}
+
 	return c.Status(201).JSON(fiber.Map{"data": created})
 }
 
@@ -398,8 +438,8 @@ func warehouseBaysMove(c *fiber.Ctx) error {
 		}
 		err = db.Queries().UpdateLockerPackageStorageBay(c.Context(), gen.UpdateLockerPackageStorageBayParams{
 			StorageBay: bayIDNull,
-			UpdatedAt: now,
-			ID:        pkgID,
+			UpdatedAt:  now,
+			ID:         pkgID,
 		})
 		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to move package"))
@@ -422,7 +462,7 @@ func warehouseManifestsList(c *fiber.Ctx) error {
 
 func warehouseManifestsCreate(c *fiber.Ctx) error {
 	var body struct {
-		DestinationID string   `json:"destination_id"`
+		DestinationID  string   `json:"destination_id"`
 		ShipRequestIDs []string `json:"ship_request_ids"`
 	}
 	if err := c.BodyParser(&body); err != nil {
@@ -431,9 +471,16 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 	if body.DestinationID == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "destination_id required"))
 	}
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
+	}
+	defer tx.Rollback()
+	qtx := db.Queries().WithTx(tx)
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	manifestID := uuid.New().String()
-	_, err := db.Queries().CreateWarehouseManifest(c.Context(), gen.CreateWarehouseManifestParams{
+	_, err = qtx.CreateWarehouseManifest(c.Context(), gen.CreateWarehouseManifestParams{
 		ID:            manifestID,
 		DestinationID: body.DestinationID,
 		Status:        "draft",
@@ -443,18 +490,40 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create manifest"))
 	}
+
 	manifestIDNull := sql.NullString{String: manifestID, Valid: true}
 	for _, srID := range body.ShipRequestIDs {
-		_ = db.Queries().AddShipRequestToManifest(c.Context(), gen.AddShipRequestToManifestParams{
+		_ = qtx.AddShipRequestToManifest(c.Context(), gen.AddShipRequestToManifestParams{
 			ManifestID:    manifestID,
 			ShipRequestID: srID,
 		})
-		_ = db.Queries().UpdateShipRequestManifestID(c.Context(), gen.UpdateShipRequestManifestIDParams{
+		// Mark ship request as shipped
+		_ = qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+			Status:    "shipped",
+			UpdatedAt: now,
+			ID:        srID,
+		})
+		_ = qtx.UpdateShipRequestManifestID(c.Context(), gen.UpdateShipRequestManifestIDParams{
 			ManifestID: manifestIDNull,
 			UpdatedAt:  now,
 			ID:         srID,
 		})
+
+		// Mark locker packages as shipped
+		items, _ := qtx.ListShipRequestItemsByShipRequestID(c.Context(), srID)
+		for _, item := range items {
+			_ = qtx.UpdateLockerPackageStatus(c.Context(), gen.UpdateLockerPackageStatusParams{
+				Status:    "shipped",
+				UpdatedAt: now,
+				ID:        item.LockerPackageID,
+			})
+		}
 	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
+	}
+
 	m, _ := db.Queries().GetWarehouseManifestByID(c.Context(), manifestID)
 	return c.Status(201).JSON(fiber.Map{"data": m})
 }

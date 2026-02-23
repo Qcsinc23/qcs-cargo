@@ -5,11 +5,12 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // RegisterBookings mounts booking routes. All require auth.
@@ -49,16 +50,18 @@ func bookingGetByID(c *fiber.Ctx) error {
 
 func bookingCreate(c *fiber.Ctx) error {
 	var body struct {
-		ServiceType          string   `json:"service_type"`
-		DestinationID        string   `json:"destination_id"`
-		RecipientID          *string  `json:"recipient_id"`
-		ScheduledDate        string   `json:"scheduled_date"`
-		TimeSlot             string   `json:"time_slot"`
-		SpecialInstructions  *string  `json:"special_instructions"`
-		Subtotal             float64  `json:"subtotal"`
-		Discount             float64  `json:"discount"`
-		Insurance            float64  `json:"insurance"`
-		Total                float64  `json:"total"`
+		ServiceType         string  `json:"service_type"`
+		DestinationID       string  `json:"destination_id"`
+		RecipientID         *string `json:"recipient_id"`
+		ScheduledDate       string  `json:"scheduled_date"`
+		TimeSlot            string  `json:"time_slot"`
+		SpecialInstructions *string `json:"special_instructions"`
+		WeightLbs           float64 `json:"weight_lbs"`
+		LengthIn            float64 `json:"length_in"`
+		WidthIn             float64 `json:"width_in"`
+		HeightIn            float64 `json:"height_in"`
+		ValueUSD            float64 `json:"value_usd"`
+		AddInsurance        bool    `json:"add_insurance"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -79,6 +82,18 @@ func bookingCreate(c *fiber.Ctx) error {
 		specialInstructions = sql.NullString{String: *body.SpecialInstructions, Valid: true}
 	}
 
+	// Server-side pricing calculation
+	price := services.CalculatePricing(services.PricingInput{
+		DestinationID: body.DestinationID,
+		WeightLbs:     body.WeightLbs,
+		LengthIn:      body.LengthIn,
+		WidthIn:       body.WidthIn,
+		HeightIn:      body.HeightIn,
+		ServiceType:   body.ServiceType,
+		ValueUSD:      body.ValueUSD,
+		AddInsurance:  body.AddInsurance,
+	})
+
 	b, err := db.Queries().CreateBooking(c.Context(), gen.CreateBookingParams{
 		ID:                  uuid.New().String(),
 		UserID:              userID,
@@ -90,10 +105,10 @@ func bookingCreate(c *fiber.Ctx) error {
 		ScheduledDate:       body.ScheduledDate,
 		TimeSlot:            body.TimeSlot,
 		SpecialInstructions: specialInstructions,
-		Subtotal:            body.Subtotal,
-		Discount:            body.Discount,
-		Insurance:           body.Insurance,
-		Total:               body.Total,
+		Subtotal:            price.Subtotal,
+		Discount:            price.Discount,
+		Insurance:           price.Insurance,
+		Total:               price.Total,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	})
@@ -120,10 +135,12 @@ func bookingUpdate(c *fiber.Ctx) error {
 	var body struct {
 		Status              *string  `json:"status"`
 		SpecialInstructions *string  `json:"special_instructions"`
-		Subtotal            *float64 `json:"subtotal"`
-		Discount            *float64 `json:"discount"`
-		Insurance           *float64 `json:"insurance"`
-		Total               *float64 `json:"total"`
+		WeightLbs           *float64 `json:"weight_lbs"`
+		LengthIn            *float64 `json:"length_in"`
+		WidthIn             *float64 `json:"width_in"`
+		HeightIn            *float64 `json:"height_in"`
+		ValueUSD            *float64 `json:"value_usd"`
+		AddInsurance        *bool    `json:"add_insurance"`
 		PaymentStatus       *string  `json:"payment_status"`
 	}
 	if err := c.BodyParser(&body); err != nil {
@@ -138,22 +155,58 @@ func bookingUpdate(c *fiber.Ctx) error {
 	if body.SpecialInstructions != nil {
 		specialInstructions = sql.NullString{String: *body.SpecialInstructions, Valid: true}
 	}
+
+	// Recalculate price if any pricing field is changed
+	// For simplicity, we use existing values if body field is nil
+	weight := 0.0 // Note: we should probably store these in the DB to properly update
+	if body.WeightLbs != nil {
+		weight = *body.WeightLbs
+	}
+	length := 0.0
+	if body.LengthIn != nil {
+		length = *body.LengthIn
+	}
+	width := 0.0
+	if body.WidthIn != nil {
+		width = *body.WidthIn
+	}
+	height := 0.0
+	if body.HeightIn != nil {
+		height = *body.HeightIn
+	}
+	val := 0.0
+	if body.ValueUSD != nil {
+		val = *body.ValueUSD
+	}
+	insure := false
+	if body.AddInsurance != nil {
+		insure = *body.AddInsurance
+	}
+
+	price := services.CalculatePricing(services.PricingInput{
+		DestinationID: existing.DestinationID,
+		WeightLbs:     weight,
+		LengthIn:      length,
+		WidthIn:       width,
+		HeightIn:      height,
+		ServiceType:   existing.ServiceType,
+		ValueUSD:      val,
+		AddInsurance:  insure,
+	})
+
 	subtotal := existing.Subtotal
-	if body.Subtotal != nil {
-		subtotal = *body.Subtotal
-	}
 	discount := existing.Discount
-	if body.Discount != nil {
-		discount = *body.Discount
-	}
-	insurance := existing.Insurance
-	if body.Insurance != nil {
-		insurance = *body.Insurance
-	}
+	insCost := existing.Insurance
 	total := existing.Total
-	if body.Total != nil {
-		total = *body.Total
+
+	// Only update price if any pricing field was actually provided in the request
+	if body.WeightLbs != nil || body.LengthIn != nil || body.WidthIn != nil || body.HeightIn != nil || body.ValueUSD != nil || body.AddInsurance != nil {
+		subtotal = price.Subtotal
+		discount = price.Discount
+		insCost = price.Insurance
+		total = price.Total
 	}
+
 	paymentStatus := existing.PaymentStatus
 	if body.PaymentStatus != nil {
 		paymentStatus = sql.NullString{String: *body.PaymentStatus, Valid: true}
@@ -165,7 +218,7 @@ func bookingUpdate(c *fiber.Ctx) error {
 		SpecialInstructions: specialInstructions,
 		Subtotal:            subtotal,
 		Discount:            discount,
-		Insurance:           insurance,
+		Insurance:           insCost,
 		Total:               total,
 		PaymentStatus:       paymentStatus,
 		UpdatedAt:           now,

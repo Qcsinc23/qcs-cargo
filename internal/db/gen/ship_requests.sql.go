@@ -246,6 +246,19 @@ func (q *Queries) CreateShipRequestItem(ctx context.Context, arg CreateShipReque
 	return i, err
 }
 
+const getActiveShipRequestCountByPackageID = `-- name: GetActiveShipRequestCountByPackageID :one
+SELECT COUNT(*) FROM ship_request_items sri
+JOIN ship_requests sr ON sri.ship_request_id = sr.id
+WHERE sri.locker_package_id = ? AND sr.status != 'cancelled'
+`
+
+func (q *Queries) GetActiveShipRequestCountByPackageID(ctx context.Context, lockerPackageID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, getActiveShipRequestCountByPackageID, lockerPackageID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getShipRequestByID = `-- name: GetShipRequestByID :one
 SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
        consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,

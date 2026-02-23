@@ -441,3 +441,18 @@ func (q *Queries) UpdateBooking(ctx context.Context, arg UpdateBookingParams) (B
 	)
 	return i, err
 }
+
+const updateBookingStatus = `-- name: UpdateBookingStatus :exec
+UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateBookingStatusParams struct {
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateBookingStatus(ctx context.Context, arg UpdateBookingStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateBookingStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	return err
+}

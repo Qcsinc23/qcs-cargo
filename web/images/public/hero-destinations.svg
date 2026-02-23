@@ -1,0 +1,24 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sea" x1="96" y1="80" x2="1120" y2="644" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0F2FE"/>
+      <stop offset="1" stop-color="#DCFCE7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" rx="36" fill="url(#sea)"/>
+  <rect x="156" y="124" width="888" height="470" rx="30" fill="#FFFFFF" stroke="#CAE0EB" stroke-width="2"/>
+  <ellipse cx="596" cy="358" rx="300" ry="164" fill="#E6F3FB"/>
+  <circle cx="430" cy="296" r="26" fill="#0F766E"/>
+  <circle cx="492" cy="416" r="22" fill="#1D4ED8"/>
+  <circle cx="594" cy="286" r="24" fill="#F97316"/>
+  <circle cx="696" cy="392" r="28" fill="#059669"/>
+  <circle cx="782" cy="304" r="20" fill="#0369A1"/>
+  <path d="M430 296C474 268 540 252 594 286" stroke="#2A5679" stroke-width="4" stroke-dasharray="9 10"/>
+  <path d="M594 286C640 302 676 336 696 392" stroke="#2A5679" stroke-width="4" stroke-dasharray="9 10"/>
+  <path d="M696 392C739 363 762 332 782 304" stroke="#2A5679" stroke-width="4" stroke-dasharray="9 10"/>
+  <path d="M430 296C442 366 456 398 492 416" stroke="#2A5679" stroke-width="4" stroke-dasharray="9 10"/>
+  <path d="M360 208H840" stroke="#D0E4F0" stroke-width="2"/>
+  <path d="M360 512H840" stroke="#D0E4F0" stroke-width="2"/>
+  <path d="M360 512V208" stroke="#D0E4F0" stroke-width="2"/>
+  <path d="M840 512V208" stroke="#D0E4F0" stroke-width="2"/>
+</svg>

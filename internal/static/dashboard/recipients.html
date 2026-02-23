@@ -1,18 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Recipients | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif
+    }
+
+    h1,
+    h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif
+    }
+  </style>
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
+
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
   <script>
-    (function() {
+    (function () {
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/recipients'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
@@ -63,12 +76,19 @@
 
         let tableHtml = '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr class="text-left text-sm text-slate-600">' +
           '<th class="p-4">Name</th><th class="p-4">Destination</th><th class="p-4">Address</th><th class="p-4">Default</th><th class="p-4 w-28">Actions</th></tr></thead><tbody id="recipients-tbody">';
-        (list || []).forEach(function(r) {
-          const addr = val(r, 'street') + (val(r, 'apt') ? ', ' + val(r, 'apt') : '') + ', ' + val(r, 'city');
+        (list || []).forEach(function (r) {
+          const name = val(r, 'name');
+          const dest = val(r, 'destination_id');
+          const street = val(r, 'street');
+          const apt = val(r, 'apt');
+          const city = val(r, 'city');
+
+          const addr = street + (apt ? ', ' + apt : '') + ', ' + city;
+
           tableHtml += '<tr class="border-t border-slate-100 hover:bg-slate-50">' +
-            '<td class="p-4 font-medium">' + val(r, 'name') + '</td>' +
-            '<td class="p-4">' + val(r, 'destination_id') + '</td>' +
-            '<td class="p-4 text-slate-600">' + addr + '</td>' +
+            '<td class="p-4 font-medium">' + qcsEscapeHTML(name) + '</td>' +
+            '<td class="p-4">' + qcsEscapeHTML(dest) + '</td>' +
+            '<td class="p-4 text-slate-600">' + qcsEscapeHTML(addr) + '</td>' +
             '<td class="p-4">' + (r.is_default ? 'Yes' : '') + '</td>' +
             '<td class="p-4"><button type="button" class="edit-btn text-[#2563EB] font-medium mr-2" data-id="' + r.id + '">Edit</button>' +
             '<button type="button" class="delete-btn text-red-600 font-medium" data-id="' + r.id + '">Delete</button></td></tr>';
@@ -84,7 +104,7 @@
       }
 
       function loadRecipients() {
-        return fetch('/api/v1/recipients', auth).then(function(r) { return r.ok ? r.json() : null; }).then(function(j) { return j && j.data ? j.data : []; });
+        return fetch('/api/v1/recipients', auth).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.data ? j.data : []; });
       }
 
       function setForm(rec) {
@@ -113,9 +133,9 @@
       }
 
       Promise.all([
-        fetch('/api/v1/me', auth).then(function(r) { return r.ok ? r.json() : null; }),
+        fetch('/api/v1/me', auth).then(function (r) { return r.ok ? r.json() : null; }),
         loadRecipients()
-      ]).then(function(results) {
+      ]).then(function (results) {
         const me = results[0];
         const list = results[1];
         if (!me) { window.location.href = '/login'; return; }
@@ -126,7 +146,7 @@
         function render() {
           container.innerHTML = sidebar(user, 'recipients') + renderMain(user, list, editingId);
 
-          document.getElementById('recipient-form').onsubmit = function(e) {
+          document.getElementById('recipient-form').onsubmit = function (e) {
             e.preventDefault();
             const id = document.getElementById('form-id').value;
             const payload = getFormPayload();
@@ -136,46 +156,46 @@
             }
             if (id) {
               fetch('/api/v1/recipients/' + id, { method: 'PATCH', ...auth, body: JSON.stringify(payload) })
-                .then(function(r) { return r.json(); })
-                .then(function(j) {
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
                   if (j.error) { alert(j.error.message || 'Update failed'); return; }
                   editingId = null;
                   return loadRecipients();
                 })
-                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); render(); } });
+                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); render(); } });
             } else {
               fetch('/api/v1/recipients', { method: 'POST', ...auth, body: JSON.stringify(payload) })
-                .then(function(r) { return r.json(); })
-                .then(function(j) {
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
                   if (j.error) { alert(j.error.message || 'Create failed'); return; }
                   return loadRecipients();
                 })
-                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); setForm(null); render(); } });
+                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); setForm(null); render(); } });
             }
           };
 
           var cancelBtn = document.getElementById('form-cancel');
-          if (cancelBtn) cancelBtn.onclick = function() { editingId = null; setForm(null); render(); };
+          if (cancelBtn) cancelBtn.onclick = function () { editingId = null; setForm(null); render(); };
 
-          document.querySelectorAll('.edit-btn').forEach(function(btn) {
-            btn.onclick = function() {
+          document.querySelectorAll('.edit-btn').forEach(function (btn) {
+            btn.onclick = function () {
               const id = btn.getAttribute('data-id');
-              const rec = list.find(function(r) { return r.id === id; });
+              const rec = list.find(function (r) { return r.id === id; });
               if (rec) { editingId = id; setForm(rec); render(); }
             };
           });
-          document.querySelectorAll('.delete-btn').forEach(function(btn) {
-            btn.onclick = function() {
+          document.querySelectorAll('.delete-btn').forEach(function (btn) {
+            btn.onclick = function () {
               if (!confirm('Delete this recipient?')) return;
               const id = btn.getAttribute('data-id');
               fetch('/api/v1/recipients/' + id, { method: 'DELETE', ...auth })
-                .then(function(r) { return r.ok ? loadRecipients() : null; })
-                .then(function(newList) { if (newList) { list.length = 0; newList.forEach(function(x) { list.push(x); }); render(); } });
+                .then(function (r) { return r.ok ? loadRecipients() : null; })
+                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); render(); } });
             };
           });
 
-          document.getElementById('logout-btn').onclick = function() {
-            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function() { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          document.getElementById('logout-btn').onclick = function () {
+            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function () { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
           };
         }
 
@@ -185,4 +205,5 @@
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
 </body>
+
 </html>

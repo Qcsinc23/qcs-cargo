@@ -146,6 +146,15 @@ func (q *Queries) ListRecipientsByUser(ctx context.Context, userID string) ([]Re
 	return items, nil
 }
 
+const unsetDefaultRecipients = `-- name: UnsetDefaultRecipients :exec
+UPDATE recipients SET is_default = 0 WHERE user_id = ?
+`
+
+func (q *Queries) UnsetDefaultRecipients(ctx context.Context, userID string) error {
+	_, err := q.db.ExecContext(ctx, unsetDefaultRecipients, userID)
+	return err
+}
+
 const updateRecipient = `-- name: UpdateRecipient :one
 UPDATE recipients
 SET name = ?, phone = ?, destination_id = ?, street = ?, apt = ?, city = ?, delivery_instructions = ?, is_default = ?, updated_at = ?

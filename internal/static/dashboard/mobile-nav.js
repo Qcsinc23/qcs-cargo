@@ -1,3 +1,15 @@
+window.qcsEscapeHTML = function (str) {
+  if (typeof str !== 'string') return str || '';
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return str.replace(/[&<>"']/g, function (m) { return map[m] || m; });
+};
+
 (function () {
   const MOBILE_MAX = 1023;
 
@@ -103,7 +115,10 @@
       const main = shell.querySelector('main');
       const title = shell.querySelector('.qcs-mobile-title');
       if (main && title) {
-        title.textContent = inferTitle(main);
+        const newTitle = inferTitle(main);
+        if (title.textContent !== newTitle) {
+          title.textContent = newTitle;
+        }
       }
     });
   }

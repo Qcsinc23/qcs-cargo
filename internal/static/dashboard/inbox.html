@@ -1,18 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>My Packages | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+    rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif
+    }
+
+    h1,
+    h2 {
+      font-family: 'Plus Jakarta Sans', sans-serif
+    }
+  </style>
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
+
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
   <script>
-    (function() {
+    (function () {
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/inbox'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
@@ -43,7 +56,7 @@
       // PRD 9.4: storage bar by days left (0-20 emerald, 21-27 amber, 28-30 red, 31+ red)
       function daysLeft(expiresAt) {
         if (!expiresAt) return null;
-        return Math.ceil((new Date(expiresAt) - new Date()) / (24*60*60*1000));
+        return Math.ceil((new Date(expiresAt) - new Date()) / (24 * 60 * 60 * 1000));
       }
       function storageColorByDaysLeft(days) {
         if (days == null) return 'bg-slate-300';
@@ -87,11 +100,15 @@
           const barColor = (status === 'stored' && days != null) ? storageColorByDaysLeft(days) : 'bg-slate-300';
           const barPct = (status === 'stored' && days != null) ? storageBarPct(days) : 100;
           const barHtml = (status === 'stored') ? '<div class="mt-2 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div class="h-full rounded-full ' + barColor + '" style="width:' + barPct + '%"></div></div>' : '';
+
+          const safeSender = qcsEscapeHTML(sender);
+          const safeStatus = qcsEscapeHTML(status);
+
           html += '<div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex items-start gap-3">' +
             '<input type="checkbox" class="inbox-cb mt-1" data-id="' + p.id + '"' + checked + '>' +
             '<a href="/dashboard/inbox/' + p.id + '" class="flex-1 min-w-0">' +
-            '<p class="font-medium text-[#0F172A]">' + sender + '</p>' +
-            '<p class="text-sm text-slate-500">' + weight + ' lbs · ' + status + (days != null && status === 'stored' ? ' · ' + (days < 0 ? 'Expired' : days + ' days left') : '') + '</p>' +
+            '<p class="font-medium text-[#0F172A]">' + safeSender + '</p>' +
+            '<p class="text-sm text-slate-500">' + weight + ' lbs · ' + safeStatus + (days != null && status === 'stored' ? ' · ' + (days < 0 ? 'Expired' : days + ' days left') : '') + '</p>' +
             barHtml + '</a></div>';
         });
         html += '</div>';
@@ -106,7 +123,7 @@
         const barPct = storageBarPercent(storedCount);
         const barColor = storageBarColor(storedCount);
         const nextExpiry = sum.next_expiry || '';
-        const daysUntil = nextExpiry ? Math.ceil((new Date(nextExpiry) - new Date()) / (24*60*60*1000)) : null;
+        const daysUntil = nextExpiry ? Math.ceil((new Date(nextExpiry) - new Date()) / (24 * 60 * 60 * 1000)) : null;
         const expiringSoon = daysUntil != null && daysUntil <= 7 && daysUntil >= 0;
         const expired = daysUntil != null && daysUntil < 0;
         let alertBanner = '';
@@ -210,4 +227,5 @@
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
 </body>
+
 </html>

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/gofiber/fiber/v2"
 )
 
 const defaultLimit = 20
@@ -64,15 +64,18 @@ func adminDashboard(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load dashboard"))
 	}
-	pendingShip, _ := db.Queries().AdminDashboardPendingShipCount(c.Context())
+	pendingShip, err := db.Queries().AdminDashboardPendingShipCount(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load pending shipments count"))
+	}
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"locker_packages_count":   row.LockerPackagesCount,
-			"ship_requests_count":    row.ShipRequestsCount,
-			"bookings_count":         row.BookingsCount,
-			"service_queue_count":    row.ServiceQueueCount,
-			"unmatched_count":        row.UnmatchedCount,
-			"pending_ship_count":     pendingShip,
+			"locker_packages_count": row.LockerPackagesCount,
+			"ship_requests_count":   row.ShipRequestsCount,
+			"bookings_count":        row.BookingsCount,
+			"service_queue_count":   row.ServiceQueueCount,
+			"unmatched_count":       row.UnmatchedCount,
+			"pending_ship_count":    pendingShip,
 		},
 	})
 }
@@ -159,8 +162,8 @@ func adminSearch(c *fiber.Ctx) error {
 	q := strings.TrimSpace(c.Query("q", ""))
 	if q == "" {
 		return c.JSON(fiber.Map{
-			"users":          []fiber.Map{},
-			"ship_requests":  []fiber.Map{},
+			"users":           []fiber.Map{},
+			"ship_requests":   []fiber.Map{},
 			"locker_packages": []fiber.Map{},
 		})
 	}
@@ -226,18 +229,18 @@ func shipRequestToMap(sr gen.ShipRequest) fiber.Map {
 		recip = sr.RecipientID.String
 	}
 	return fiber.Map{
-		"id":                   sr.ID,
-		"user_id":              sr.UserID,
-		"confirmation_code":    sr.ConfirmationCode,
-		"status":               sr.Status,
-		"destination_id":       sr.DestinationID,
-		"recipient_id":         recip,
-		"service_type":         sr.ServiceType,
-		"payment_status":       paymentStatus,
+		"id":                       sr.ID,
+		"user_id":                  sr.UserID,
+		"confirmation_code":        sr.ConfirmationCode,
+		"status":                   sr.Status,
+		"destination_id":           sr.DestinationID,
+		"recipient_id":             recip,
+		"service_type":             sr.ServiceType,
+		"payment_status":           paymentStatus,
 		"stripe_payment_intent_id": piID,
-		"customs_status":       customs,
-		"created_at":           sr.CreatedAt,
-		"updated_at":           sr.UpdatedAt,
+		"customs_status":           customs,
+		"created_at":               sr.CreatedAt,
+		"updated_at":               sr.UpdatedAt,
 	}
 }
 
@@ -256,17 +259,17 @@ func lockerPackageToMap(p gen.LockerPackage) fiber.Map {
 		carrier = p.CarrierInbound.String
 	}
 	return fiber.Map{
-		"id":              p.ID,
-		"user_id":         p.UserID,
-		"suite_code":      p.SuiteCode,
+		"id":               p.ID,
+		"user_id":          p.UserID,
+		"suite_code":       p.SuiteCode,
 		"tracking_inbound": tracking,
-		"carrier_inbound": carrier,
-		"sender_name":     senderName,
-		"sender_address":  senderAddr,
-		"status":          p.Status,
-		"arrived_at":      p.ArrivedAt,
-		"created_at":      p.CreatedAt,
-		"updated_at":      p.UpdatedAt,
+		"carrier_inbound":  carrier,
+		"sender_name":      senderName,
+		"sender_address":   senderAddr,
+		"status":           p.Status,
+		"arrived_at":       p.ArrivedAt,
+		"created_at":       p.CreatedAt,
+		"updated_at":       p.UpdatedAt,
 	}
 }
 
@@ -311,8 +314,8 @@ func adminShipRequests(c *fiber.Ctx) error {
 	arg := gen.AdminListShipRequestsParams{
 		Column1: "",
 		Status:  status,
-		Limit:  limit,
-		Offset: offset,
+		Limit:   limit,
+		Offset:  offset,
 	}
 	if status != "" {
 		arg.Column1 = status
@@ -432,9 +435,9 @@ func adminUnmatchedPackageUpdate(c *fiber.Ctx) error {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
 	}
 	var body struct {
-		Action   string  `json:"action"`   // "match", "return", "dispose"
-		UserID   *string `json:"user_id"`   // for match
-		Notes    *string `json:"notes"`
+		Action string  `json:"action"`  // "match", "return", "dispose"
+		UserID *string `json:"user_id"` // for match
+		Notes  *string `json:"notes"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -469,7 +472,7 @@ func adminUnmatchedPackageUpdate(c *fiber.Ctx) error {
 	resolvedAt := sql.NullString{String: now, Valid: true}
 	err = db.Queries().UpdateUnmatchedPackageStatus(c.Context(), gen.UpdateUnmatchedPackageStatusParams{
 		Status:          status,
-		MatchedUserID:  matchedUserID,
+		MatchedUserID:   matchedUserID,
 		ResolutionNotes: resolutionNotes,
 		ResolvedAt:      resolvedAt,
 		ID:              id,
@@ -506,17 +509,17 @@ func bookingToMap(b gen.Booking) fiber.Map {
 		stripeID = b.StripePaymentIntentID.String
 	}
 	return fiber.Map{
-		"id":                     b.ID,
-		"user_id":                b.UserID,
-		"confirmation_code":      b.ConfirmationCode,
-		"status":                 b.Status,
-		"service_type":           b.ServiceType,
-		"recipient_id":           recip,
-		"scheduled_date":         b.ScheduledDate,
-		"time_slot":              b.TimeSlot,
-		"payment_status":         payStatus,
+		"id":                       b.ID,
+		"user_id":                  b.UserID,
+		"confirmation_code":        b.ConfirmationCode,
+		"status":                   b.Status,
+		"service_type":             b.ServiceType,
+		"recipient_id":             recip,
+		"scheduled_date":           b.ScheduledDate,
+		"time_slot":                b.TimeSlot,
+		"payment_status":           payStatus,
 		"stripe_payment_intent_id": stripeID,
-		"created_at":             b.CreatedAt,
+		"created_at":               b.CreatedAt,
 	}
 }
 

@@ -6,11 +6,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v81"
 	"github.com/stripe/stripe-go/v81/paymentintent"
 )
@@ -23,7 +23,7 @@ func RegisterShipRequests(g fiber.Router) {
 	g.Post("/ship-requests/:id/customs", middleware.RequireAuth, shipRequestSubmitCustoms)
 	g.Get("/ship-requests/:id/estimate", middleware.RequireAuth, shipRequestEstimate)
 	g.Post("/ship-requests/:id/pay", middleware.RequireAuth, shipRequestPay)
-	g.Post("/ship-requests/:id/reconcile", middleware.RequireAuth, shipRequestReconcile)
+	g.Post("/ship-requests/:id/reconcile", middleware.RequireAuth, middleware.RequireAdmin, shipRequestReconcile)
 }
 
 func shipRequestList(c *fiber.Ctx) error {
@@ -62,13 +62,13 @@ func shipRequestGetByID(c *fiber.Ctx) error {
 
 // customsItemBody is one element of POST /ship-requests/:id/customs body.
 type customsItemBody struct {
-	ID                  string   `json:"id"` // ship_request_item id
-	Description         string   `json:"description"`
-	Value               *float64 `json:"value"`
-	Quantity            *int64   `json:"quantity"`
-	HsCode              string   `json:"hs_code"`
-	CountryOfOrigin     string   `json:"country_of_origin"`
-	WeightLbs           *float64 `json:"weight_lbs"`
+	ID              string   `json:"id"` // ship_request_item id
+	Description     string   `json:"description"`
+	Value           *float64 `json:"value"`
+	Quantity        *int64   `json:"quantity"`
+	HsCode          string   `json:"hs_code"`
+	CountryOfOrigin string   `json:"country_of_origin"`
+	WeightLbs       *float64 `json:"weight_lbs"`
 }
 
 func shipRequestSubmitCustoms(c *fiber.Ctx) error {
@@ -138,7 +138,7 @@ func shipRequestSubmitCustoms(c *fiber.Ctx) error {
 	if err := db.Queries().UpdateShipRequestCustomsStatus(c.Context(), gen.UpdateShipRequestCustomsStatusParams{
 		CustomsStatus: customsStatus,
 		Status:        "pending_payment",
-		UpdatedAt:    now,
+		UpdatedAt:     now,
 		ID:            id,
 		UserID:        userID,
 	}); err != nil {
@@ -162,11 +162,11 @@ func shipRequestEstimate(c *fiber.Ctx) error {
 	}
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"subtotal":      sr.Subtotal,
-			"service_fees":  sr.ServiceFees,
-			"insurance":     sr.Insurance,
-			"discount":      sr.Discount,
-			"total":         sr.Total,
+			"subtotal":     sr.Subtotal,
+			"service_fees": sr.ServiceFees,
+			"insurance":    sr.Insurance,
+			"discount":     sr.Discount,
+			"total":        sr.Total,
 		},
 	})
 }
@@ -192,8 +192,8 @@ func shipRequestPay(c *fiber.Ctx) error {
 	if secretKey == "" {
 		// Dev: return mock client_secret so frontend can show "Payment coming soon" or test flow
 		return c.Status(501).JSON(fiber.Map{
-			"error": "payment_not_configured",
-			"message": "Stripe is not configured. Set STRIPE_SECRET_KEY for live payments.",
+			"error":         "payment_not_configured",
+			"message":       "Stripe is not configured. Set STRIPE_SECRET_KEY for live payments.",
 			"client_secret": nil,
 		})
 	}
@@ -236,7 +236,7 @@ func shipRequestReconcile(c *fiber.Ctx) error {
 	if err := db.Queries().UpdateShipRequestPaymentReconcile(c.Context(), gen.UpdateShipRequestPaymentReconcileParams{
 		PaymentStatus: sql.NullString{String: "paid", Valid: true},
 		Status:        "paid",
-		UpdatedAt:    now,
+		UpdatedAt:     now,
 		ID:            id,
 		UserID:        userID,
 	}); err != nil {
@@ -247,14 +247,14 @@ func shipRequestReconcile(c *fiber.Ctx) error {
 
 // createShipRequestBody supports locker_package_ids (simple list) or items (with optional customs).
 type createShipRequestBody struct {
-	DestinationID        string  `json:"destination_id"`
-	ServiceType          string  `json:"service_type"`
-	RecipientID          *string `json:"recipient_id"`
-	Consolidate          *bool   `json:"consolidate"`
-	SpecialInstructions  *string `json:"special_instructions"`
-	LockerPackageIDs     []string `json:"locker_package_ids"`
-	Items                []struct {
-		LockerPackageID         string   `json:"locker_package_id"`
+	DestinationID       string   `json:"destination_id"`
+	ServiceType         string   `json:"service_type"`
+	RecipientID         *string  `json:"recipient_id"`
+	Consolidate         *bool    `json:"consolidate"`
+	SpecialInstructions *string  `json:"special_instructions"`
+	LockerPackageIDs    []string `json:"locker_package_ids"`
+	Items               []struct {
+		LockerPackageID        string   `json:"locker_package_id"`
 		CustomsDescription     *string  `json:"customs_description,omitempty"`
 		CustomsValue           *float64 `json:"customs_value,omitempty"`
 		CustomsQuantity        *int64   `json:"customs_quantity,omitempty"`
@@ -316,7 +316,25 @@ func shipRequestCreate(c *fiber.Ctx) error {
 		consolidate = 0
 	}
 
-	_, err := db.Queries().CreateShipRequest(c.Context(), gen.CreateShipRequestParams{
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
+	}
+	defer tx.Rollback()
+	qtx := db.Queries().WithTx(tx)
+
+	// Prevent double-shipping: check if any package is already in an active ship request
+	for _, pkgID := range packageIDs {
+		count, err := qtx.GetActiveShipRequestCountByPackageID(c.Context(), pkgID)
+		if err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to check package status"))
+		}
+		if count > 0 {
+			return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Package "+pkgID+" is already associated with an active ship request"))
+		}
+	}
+
+	_, err = qtx.CreateShipRequest(c.Context(), gen.CreateShipRequestParams{
 		ID:                  srID,
 		UserID:              userID,
 		ConfirmationCode:    confirmationCode,
@@ -381,10 +399,14 @@ func shipRequestCreate(c *fiber.Ctx) error {
 		if customs.CustomsWeightLbs != nil {
 			arg.CustomsWeightLbs = sql.NullFloat64{Float64: *customs.CustomsWeightLbs, Valid: true}
 		}
-		_, err = db.Queries().CreateShipRequestItem(c.Context(), arg)
+		_, err = qtx.CreateShipRequestItem(c.Context(), arg)
 		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create ship request item"))
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
 	}
 
 	return c.Status(201).JSON(fiber.Map{

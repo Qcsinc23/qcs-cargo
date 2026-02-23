@@ -418,6 +418,21 @@ func (q *Queries) LockerSummaryByUser(ctx context.Context, userID string) (Locke
 	return i, err
 }
 
+const updateLockerPackageStatus = `-- name: UpdateLockerPackageStatus :exec
+UPDATE locker_packages SET status = ?, updated_at = ? WHERE id = ?
+`
+
+type UpdateLockerPackageStatusParams struct {
+	Status    string `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) UpdateLockerPackageStatus(ctx context.Context, arg UpdateLockerPackageStatusParams) error {
+	_, err := q.db.ExecContext(ctx, updateLockerPackageStatus, arg.Status, arg.UpdatedAt, arg.ID)
+	return err
+}
+
 const updateLockerPackageStorageBay = `-- name: UpdateLockerPackageStorageBay :exec
 UPDATE locker_packages SET storage_bay = ?, updated_at = ? WHERE id = ?
 `

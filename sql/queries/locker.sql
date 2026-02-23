@@ -67,3 +67,5 @@ LIMIT ? OFFSET ?;
 
 -- name: UpdateLockerPackageStorageBay :exec
 UPDATE locker_packages SET storage_bay = ?, updated_at = ? WHERE id = ?;
+-- name: UpdateLockerPackageStatus :exec
+UPDATE locker_packages SET status = ?, updated_at = ? WHERE id = ?;

@@ -199,8 +199,10 @@ func authMagicLinkVerify(c *fiber.Ctx) error {
 	}
 	user, accessToken, refreshToken, err := services.VerifyMagicLink(c.Context(), body.Token)
 	if err != nil {
+		log.Printf("[auth] magic-link verify failed: %v", err)
 		return c.Status(401).JSON(ErrorResponse{}.withCode("INVALID_LINK", err.Error()))
 	}
+	log.Printf("[auth] magic-link verify success user_id=%s", user.ID)
 	setRefreshCookie(c, refreshToken)
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
@@ -262,15 +264,19 @@ func clearRefreshCookie(c *fiber.Ctx) {
 func Me(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID)
 	if userID == nil {
+		log.Printf("[auth] GET /me: no user_id in context")
 		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Not authenticated"))
 	}
 	u, err := db.Queries().GetUserByID(c.Context(), userID.(string))
 	if err != nil {
 		if err == sql.ErrNoRows {
+			log.Printf("[auth] GET /me: user not found id=%s", userID)
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "User not found"))
 		}
+		log.Printf("[auth] GET /me: db error %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load user"))
 	}
+	log.Printf("[auth] GET /me: success user_id=%s", u.ID)
 	return c.JSON(fiber.Map{"data": userToMap(u)})
 }
 

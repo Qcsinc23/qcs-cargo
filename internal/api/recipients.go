@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // RegisterRecipients mounts recipient CRUD routes. All require auth.
@@ -67,9 +67,23 @@ func recipientsCreate(c *fiber.Ctx) error {
 	if body.IsDefault != nil && *body.IsDefault != 0 {
 		isDefault = 1
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
+	}
+	defer tx.Rollback()
+	qtx := db.Queries().WithTx(tx)
+
+	if isDefault == 1 {
+		if err := qtx.UnsetDefaultRecipients(c.Context(), userID); err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to unset existing defaults"))
+		}
+	}
+
 	id := uuid.New().String()
-	_, err := db.Queries().CreateRecipient(c.Context(), gen.CreateRecipientParams{
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = qtx.CreateRecipient(c.Context(), gen.CreateRecipientParams{
 		ID:                   id,
 		UserID:               userID,
 		Name:                 body.Name,
@@ -87,6 +101,11 @@ func recipientsCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create recipient"))
 	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
+	}
+
 	return c.Status(201).JSON(fiber.Map{"status": "success", "data": fiber.Map{"id": id}})
 }
 
@@ -156,8 +175,22 @@ func recipientsUpdate(c *fiber.Ctx) error {
 			isDefault = 0
 		}
 	}
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
+	}
+	defer tx.Rollback()
+	qtx := db.Queries().WithTx(tx)
+
+	if isDefault == 1 {
+		if err := qtx.UnsetDefaultRecipients(c.Context(), userID); err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to unset existing defaults"))
+		}
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	updatedID, err := db.Queries().UpdateRecipient(c.Context(), gen.UpdateRecipientParams{
+	updatedID, err := qtx.UpdateRecipient(c.Context(), gen.UpdateRecipientParams{
 		Name:                 name,
 		Phone:                phone,
 		DestinationID:        destID,
@@ -173,6 +206,11 @@ func recipientsUpdate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update recipient"))
 	}
+
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
+	}
+
 	return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{"id": updatedID}})
 }
 

@@ -103,3 +103,7 @@ FROM ship_requests
 WHERE payment_status = 'paid'
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
+-- name: GetActiveShipRequestCountByPackageID :one
+SELECT COUNT(*) FROM ship_request_items sri
+JOIN ship_requests sr ON sri.ship_request_id = sr.id
+WHERE sri.locker_package_id = ? AND sr.status != 'cancelled';

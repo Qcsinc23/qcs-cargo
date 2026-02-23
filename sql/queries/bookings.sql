@@ -68,3 +68,5 @@ FROM bookings
 WHERE scheduled_date = ?
 ORDER BY time_slot, created_at
 LIMIT 100;
+-- name: UpdateBookingStatus :exec
+UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?;
