@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blog | QCS Cargo</title>
+    <meta name="description" content="News, announcements, and shipping tips from QCS Cargo." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/public.css" />
+</head>
+
+<body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <header class="site-header">
+        <div class="nav-shell">
+            <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+            <nav class="nav-links" aria-label="Main navigation">
+                <a class="nav-link" href="/how-it-works">How It Works</a>
+                <a class="nav-link" href="/about">About</a>
+                <a class="nav-link" href="/contact">Contact</a>
+                <a class="nav-link" href="/login">Sign In</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="page" id="main">
+        <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Blog</span></div>
+
+        <section class="section" style="padding-top: 20px;">
+            <div class="section-head" style="text-align: center; margin-bottom: 60px;">
+                <h1 class="page-title">Latest from the Blog</h1>
+                <p class="muted">Tips, news, and guides for smooth logistics.</p>
+            </div>
+
+            <div class="grid-3" id="blog-grid">
+                <p class="muted text-small text-center animate-pulse" style="grid-column: 1 / -1; padding: 40px 0;">
+                    Loading posts...</p>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="shell">
+            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+            <p>
+                <a href="/legal/terms">Terms</a>
+                <a href="/legal/privacy">Privacy</a>
+                <a href="/legal/shipping-policy">Shipping Policy</a>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('/api/v1/blog?limit=50')
+                .then(r => r.ok ? r.json() : Promise.reject('Failed load'))
+                .then(res => {
+                    const grid = document.getElementById('blog-grid');
+                    const posts = res.data || [];
+                    if (posts.length === 0) {
+                        grid.innerHTML = '<p class="muted text-small text-center" style="grid-column: 1 / -1; padding: 40px 0;">We haven\'t published any posts yet. Check back soon!</p>';
+                        return;
+                    }
+                    grid.innerHTML = '';
+                    posts.forEach(p => {
+                        const colors = ['#e2e8f0', '#cbd5e1', '#94a3b8'];
+                        const bgColor = colors[Math.floor(Math.random() * colors.length)];
+                        const dateStr = p.published_at ? new Date(p.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
+                        grid.innerHTML += `
+              <article class="card blog-card" style="padding: 0; overflow: hidden; border: none; box-shadow: var(--shadow-1);">
+                <a href="/blog/${p.slug}" style="display: block; height: 200px; background: ${bgColor}; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1"></a>
+                <div style="padding: 24px;">
+                  <div class="flex-between" style="margin-bottom: 12px;">
+                    <span class="text-small" style="color: var(--accent); font-weight: 700; letter-spacing: 0.5px;">${p.category || 'NEWS'}</span>
+                    <span class="text-small muted">${dateStr}</span>
+                  </div>
+                  <h3 style="font-size: 1.35rem; margin-bottom: 12px; line-height: 1.4;">${p.title}</h3>
+                  <p class="muted text-small" style="margin-bottom: 24px;">${p.excerpt}</p>
+                  <a href="/blog/${p.slug}" style="color: var(--brand); font-weight: 700; font-size: 0.95rem;">Read Article &rarr;</a>
+                </div>
+              </article>
+            `;
+                    });
+                })
+                .catch(err => {
+                    document.getElementById('blog-grid').innerHTML = '<p class="muted text-small text-center" style="grid-column: 1 / -1; color: #b91c1c;">Error loading blog posts. Please refresh the page.</p>';
+                });
+        });
+    </script>
+</body>
+
+</html>

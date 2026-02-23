@@ -3,9 +3,9 @@ package api
 import (
 	"time"
 
+	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
-	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 )
 
 // RegisterAPIRoutes registers all API routes (v1 and Stripe webhook) on the app.
@@ -46,4 +46,5 @@ func RegisterAPIRoutes(app *fiber.App) {
 	RegisterNotifications(v1)
 	RegisterSessions(v1)
 	RegisterAccount(v1)
+	RegisterBlog(v1)
 }

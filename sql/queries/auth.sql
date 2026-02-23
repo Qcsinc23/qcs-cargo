@@ -1,9 +1,7 @@
 -- name: CreateUser :one
-INSERT INTO users (id, name, email, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
-VALUES (?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
-RETURNING id, name, email, phone, role, avatar_url, suite_code,
-          address_street, address_city, address_state, address_zip,
-          storage_plan, free_storage_days, email_verified, status, created_at, updated_at;
+INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
+RETURNING *;
 
 -- name: CreateSession :one
 INSERT INTO sessions (id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, created_at)

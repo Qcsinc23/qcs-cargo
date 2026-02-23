@@ -46,7 +46,7 @@ func hashToken(token string) string {
 }
 
 // Register creates a user with a new suite code. Returns user or error if email exists.
-func Register(ctx context.Context, name, email string) (gen.User, error) {
+func Register(ctx context.Context, name, email, phone, password string) (gen.User, error) {
 	q := db.Queries()
 	_, err := q.GetUserByEmail(ctx, email)
 	if err == nil {
@@ -59,15 +59,28 @@ func Register(ctx context.Context, name, email string) (gen.User, error) {
 	if err != nil {
 		return gen.User{}, err
 	}
+
+	// Hash the password if provided (cost 12 per PRD 13.5)
+	var passwordHash sql.NullString
+	if password != "" {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+		if err != nil {
+			return gen.User{}, fmt.Errorf("Register: bcrypt: %w", err)
+		}
+		passwordHash = sql.NullString{String: string(hashed), Valid: true}
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	id := uuid.New().String()
 	return q.CreateUser(ctx, gen.CreateUserParams{
-		ID:        id,
-		Name:      name,
-		Email:     email,
-		SuiteCode: sql.NullString{String: suiteCode, Valid: true},
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:           id,
+		Name:         name,
+		Email:        email,
+		Phone:        sql.NullString{String: phone, Valid: phone != ""},
+		PasswordHash: passwordHash,
+		SuiteCode:    sql.NullString{String: suiteCode, Valid: true},
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	})
 }
 
@@ -220,9 +233,28 @@ func RefreshSession(ctx context.Context, refreshTokenString string) (user gen.Us
 		}
 		return gen.User{}, "", err
 	}
-	user, err = q.GetUserByID(ctx, sess.UserID)
+	row, err := q.GetUserByID(ctx, sess.UserID)
 	if err != nil {
 		return gen.User{}, "", err
+	}
+	user = gen.User{
+		ID:              row.ID,
+		Name:            row.Name,
+		Email:           row.Email,
+		Phone:           row.Phone,
+		Role:            row.Role,
+		AvatarUrl:       row.AvatarUrl,
+		SuiteCode:       row.SuiteCode,
+		AddressStreet:   row.AddressStreet,
+		AddressCity:     row.AddressCity,
+		AddressState:    row.AddressState,
+		AddressZip:      row.AddressZip,
+		StoragePlan:     row.StoragePlan,
+		FreeStorageDays: row.FreeStorageDays,
+		EmailVerified:   row.EmailVerified,
+		Status:          row.Status,
+		CreatedAt:       row.CreatedAt,
+		UpdatedAt:       row.UpdatedAt,
 	}
 	accessToken, err = issueAccessToken(user.ID, user.Email, user.Role)
 	if err != nil {

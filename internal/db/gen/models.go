@@ -6,6 +6,7 @@ package gen
 
 import (
 	"database/sql"
+	"time"
 )
 
 type AdminActivity struct {
@@ -16,6 +17,19 @@ type AdminActivity struct {
 	EntityID   sql.NullString `json:"entity_id"`
 	Details    sql.NullString `json:"details"`
 	CreatedAt  string         `json:"created_at"`
+}
+
+type BlogPost struct {
+	ID          string       `json:"id"`
+	Slug        string       `json:"slug"`
+	Title       string       `json:"title"`
+	Excerpt     string       `json:"excerpt"`
+	ContentMd   string       `json:"content_md"`
+	Category    string       `json:"category"`
+	Status      string       `json:"status"`
+	PublishedAt sql.NullTime `json:"published_at"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
 type Booking struct {
@@ -279,6 +293,7 @@ type User struct {
 	Phone           sql.NullString `json:"phone"`
 	Role            string         `json:"role"`
 	AvatarUrl       sql.NullString `json:"avatar_url"`
+	PasswordHash    sql.NullString `json:"password_hash"`
 	SuiteCode       sql.NullString `json:"suite_code"`
 	AddressStreet   sql.NullString `json:"address_street"`
 	AddressCity     sql.NullString `json:"address_city"`

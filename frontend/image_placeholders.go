@@ -1,4 +1,4 @@
-//go:build ignore
+//go:build js && wasm
 
 // This file is reference only: it is not compiled with the current WASM build.
 // The app currently uses a simple syscall/js wrapper in main.go, not go-app.
@@ -11,7 +11,6 @@
 //
 // IDE may show "could not import go-app": this file is reference-only (go:build ignore).
 // Add require github.com/maxence-charriere/go-app/v10 to the root go.mod when you use go-app.
-//
 package main
 
 import "github.com/maxence-charriere/go-app/v10/pkg/app"

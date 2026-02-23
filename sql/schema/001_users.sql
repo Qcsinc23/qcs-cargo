@@ -5,6 +5,7 @@ CREATE TABLE users (
     phone TEXT,
     role TEXT NOT NULL DEFAULT 'customer',
     avatar_url TEXT,
+    password_hash TEXT,
     suite_code TEXT,
     address_street TEXT,
     address_city TEXT,

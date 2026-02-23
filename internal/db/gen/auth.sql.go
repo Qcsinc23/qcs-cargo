@@ -121,20 +121,20 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, name, email, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
-VALUES (?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
-RETURNING id, name, email, phone, role, avatar_url, suite_code,
-          address_street, address_city, address_state, address_zip,
-          storage_plan, free_storage_days, email_verified, status, created_at, updated_at
+INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
+RETURNING id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, status, created_at, updated_at
 `
 
 type CreateUserParams struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Email     string         `json:"email"`
-	SuiteCode sql.NullString `json:"suite_code"`
-	CreatedAt string         `json:"created_at"`
-	UpdatedAt string         `json:"updated_at"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Email        string         `json:"email"`
+	Phone        sql.NullString `json:"phone"`
+	PasswordHash sql.NullString `json:"password_hash"`
+	SuiteCode    sql.NullString `json:"suite_code"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
@@ -142,6 +142,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.ID,
 		arg.Name,
 		arg.Email,
+		arg.Phone,
+		arg.PasswordHash,
 		arg.SuiteCode,
 		arg.CreatedAt,
 		arg.UpdatedAt,
@@ -154,6 +156,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Phone,
 		&i.Role,
 		&i.AvatarUrl,
+		&i.PasswordHash,
 		&i.SuiteCode,
 		&i.AddressStreet,
 		&i.AddressCity,

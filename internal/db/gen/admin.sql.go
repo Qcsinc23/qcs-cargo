@@ -277,10 +277,7 @@ func (q *Queries) AdminSearchShipRequests(ctx context.Context, confirmationCode 
 }
 
 const adminSearchUsers = `-- name: AdminSearchUsers :many
-SELECT id, name, email, phone, role, avatar_url, suite_code,
-       address_street, address_city, address_state, address_zip,
-       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
-FROM users
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, status, created_at, updated_at FROM users
 WHERE name LIKE ? OR email LIKE ? OR (suite_code IS NOT NULL AND suite_code LIKE ?)
 ORDER BY name
 LIMIT 5
@@ -309,6 +306,7 @@ func (q *Queries) AdminSearchUsers(ctx context.Context, arg AdminSearchUsersPara
 			&i.Phone,
 			&i.Role,
 			&i.AvatarUrl,
+			&i.PasswordHash,
 			&i.SuiteCode,
 			&i.AddressStreet,
 			&i.AddressCity,

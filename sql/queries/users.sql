@@ -1,23 +1,11 @@
 -- name: GetUserByID :one
-SELECT id, name, email, phone, role, avatar_url, suite_code,
-       address_street, address_city, address_state, address_zip,
-       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
-FROM users
-WHERE id = ?;
+SELECT * FROM users WHERE id = ?;
 
 -- name: GetUserByEmail :one
-SELECT id, name, email, phone, role, avatar_url, suite_code,
-       address_street, address_city, address_state, address_zip,
-       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
-FROM users
-WHERE email = ?;
+SELECT * FROM users WHERE email = ?;
 
 -- name: GetUserBySuiteCode :one
-SELECT id, name, email, phone, role, avatar_url, suite_code,
-       address_street, address_city, address_state, address_zip,
-       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
-FROM users
-WHERE suite_code = ?;
+SELECT * FROM users WHERE suite_code = ?;
 
 -- name: UpdateUserProfile :exec
 UPDATE users
@@ -31,10 +19,7 @@ UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?;
 UPDATE users SET status = ?, updated_at = ? WHERE id = ?;
 
 -- name: ListUsers :many
-SELECT id, name, email, phone, role, avatar_url, suite_code,
-       address_street, address_city, address_state, address_zip,
-       storage_plan, free_storage_days, email_verified, status, created_at, updated_at
-FROM users
+SELECT * FROM users
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?;
 

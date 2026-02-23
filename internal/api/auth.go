@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
 )
 
 const refreshCookieName = "qcs_refresh"
@@ -59,8 +59,10 @@ func authPasswordChange(c *fiber.Ctx) error {
 
 func authRegister(c *fiber.Ctx) error {
 	var body struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
+		Name     string `json:"name"`
+		Email    string `json:"email"`
+		Phone    string `json:"phone"`
+		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -68,7 +70,7 @@ func authRegister(c *fiber.Ctx) error {
 	if body.Name == "" || body.Email == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name and email required"))
 	}
-	user, err := services.Register(c.Context(), body.Name, body.Email)
+	user, err := services.Register(c.Context(), body.Name, body.Email, body.Phone, body.Password)
 	if err != nil {
 		if err.Error() == "email already registered" {
 			return c.Status(409).JSON(ErrorResponse{}.withCode("EMAIL_EXISTS", err.Error()))

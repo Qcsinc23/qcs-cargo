@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blog Post | QCS Cargo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="/public.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .post-content h1,
+        .post-content h2,
+        .post-content h3 {
+            margin-top: 2em;
+            margin-bottom: 0.5em;
+            color: var(--brand);
+        }
+
+        .post-content p {
+            margin-bottom: 1.5em;
+            line-height: 1.7;
+        }
+
+        .post-content a {
+            color: var(--accent);
+            text-decoration: underline;
+        }
+
+        .post-content ul,
+        .post-content ol {
+            margin-bottom: 1.5em;
+            padding-left: 20px;
+            list-style-position: outside;
+        }
+
+        .post-content ul {
+            list-style-type: disc;
+        }
+
+        .post-content ol {
+            list-style-type: decimal;
+        }
+
+        .post-content li {
+            margin-bottom: 0.5em;
+            line-height: 1.6;
+        }
+
+        .post-content blockquote {
+            border-left: 4px solid var(--accent);
+            padding-left: 1rem;
+            color: var(--muted);
+            font-style: italic;
+            margin: 1.5em 0;
+        }
+
+        .post-content code {
+            background: var(--line);
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="nav-shell">
+            <a class="brand" href="/"><span class="brand-dot"></span><span class="brand-name">QCS Cargo</span></a>
+            <nav class="nav-links">
+                <a class="nav-link" href="/how-it-works">How It Works</a>
+                <a class="nav-link" href="/about">About</a>
+                <a class="nav-link" href="/contact">Contact</a>
+                <a class="nav-link" href="/login">Sign In</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="page pb-20">
+        <div class="breadcrumb"><a href="/">Home</a><span>/</span><a href="/blog">Blog</a><span>/</span><span
+                class="current" id="bc-title">Loading...</span></div>
+
+        <div id="loading" class="section flex items-center justify-center p-20 text-center muted">Loading post...</div>
+        <div id="error" class="section flex flex-col items-center justify-center p-20 text-center"
+            style="display: none;">
+            <h2 style="color: #b91c1c; margin-bottom: 1rem;">Post Not Found</h2>
+            <p>The post you are looking for does not exist or has been removed.</p>
+            <a href="/blog" class="btn btn-accent mt-6">Return to Blog</a>
+        </div>
+
+        <article id="post-article" class="section shell"
+            style="display: none; max-width: 800px; margin: 0 auto; padding-top: 40px;">
+            <div class="mb-8 border-b pb-8"
+                style="border-bottom: 1px solid var(--line); margin-bottom: 32px; padding-bottom: 32px;">
+                <span id="post-category" class="text-small"
+                    style="color: var(--accent); font-weight: 700; letter-spacing: 0.5px; margin-bottom: 12px; display: block;">CATEGORY</span>
+                <h1 id="post-title"
+                    style="font-size: 2.5rem; line-height: 1.2; margin-bottom: 16px; color: var(--brand);">Post Title
+                </h1>
+                <div class="flex items-center text-small muted" style="display: flex; gap: 12px; align-items: center;">
+                    <span id="post-date">Published Date</span>
+                    <span>•</span>
+                    <span>By QCS Admin</span>
+                </div>
+            </div>
+            <div id="post-content" class="post-content" style="font-size: 1.05rem; color: var(--text);">
+                <!-- Markdown injected here -->
+            </div>
+        </article>
+    </main>
+
+    <footer class="footer mt-20">
+        <div class="shell">
+            <p>QCS Cargo · 35 Obrien St, E12, Kearny, NJ 07032 · 201-249-0929</p>
+            <p>
+                <a href="/legal/terms">Terms</a>
+                <a href="/legal/privacy">Privacy</a>
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // The slug is everything after /blog/
+            const pathParts = window.location.pathname.split('/');
+            const slug = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
+
+            fetch('/api/v1/blog/' + slug)
+                .then(r => r.ok ? r.json() : Promise.reject('Failed load'))
+                .then(res => {
+                    const post = res.data;
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('post-article').style.display = 'block';
+
+                    document.title = post.title + ' | QCS Cargo';
+                    document.getElementById('bc-title').textContent = post.title;
+                    document.getElementById('post-title').textContent = post.title;
+                    document.getElementById('post-category').textContent = post.category || 'NEWS';
+
+                    if (post.published_at) {
+                        const dt = new Date(post.published_at);
+                        document.getElementById('post-date').textContent = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                    } else {
+                        document.getElementById('post-date').textContent = 'Draft';
+                    }
+
+                    // Render Markdown
+                    if (post.content_md) {
+                        document.getElementById('post-content').innerHTML = marked.parse(post.content_md);
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                });
+        });
+    </script>
+</body>
+
+</html>
