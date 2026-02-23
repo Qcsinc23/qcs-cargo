@@ -44,3 +44,11 @@ e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
 e2e/redesign-shots/
+
+# IDE & Local Workspace
+.cursor/
+PROMPT_Generate_Images_For_Public_Pages.md
+e2e/package-lock.json
+e2e/test-login.mjs
+e2e/test-login2.mjs
+frontend/README.md
