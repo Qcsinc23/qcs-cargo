@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,12 +17,14 @@ const CtxUserRole = "user_role"
 func RequireAuth(c *fiber.Ctx) error {
 	auth := c.Get("Authorization")
 	if auth == "" {
+		log.Printf("[auth] %s %s RequireAuth: no Authorization header", c.Method(), c.Path())
 		return c.Status(401).JSON(fiber.Map{
 			"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "Authorization required"},
 		})
 	}
 	const prefix = "Bearer "
 	if !strings.HasPrefix(auth, prefix) {
+		log.Printf("[auth] %s %s RequireAuth: invalid Authorization format", c.Method(), c.Path())
 		return c.Status(401).JSON(fiber.Map{
 			"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "Invalid authorization header"},
 		})
@@ -29,10 +32,12 @@ func RequireAuth(c *fiber.Ctx) error {
 	token := strings.TrimSpace(auth[len(prefix):])
 	userID, email, role, err := services.ValidateAccessToken(token)
 	if err != nil {
+		log.Printf("[auth] %s %s RequireAuth: token invalid or expired (%v)", c.Method(), c.Path(), err)
 		return c.Status(401).JSON(fiber.Map{
 			"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "Invalid or expired token"},
 		})
 	}
+	log.Printf("[auth] %s %s RequireAuth: ok user_id=%s", c.Method(), c.Path(), userID)
 	c.Locals(CtxUserID, userID)
 	c.Locals(CtxUserEmail, email)
 	c.Locals(CtxUserRole, role)

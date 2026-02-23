@@ -70,11 +70,14 @@
               status.textContent = 'Could not save sign-in state. Please disable private mode and try again.';
               return;
             }
-            clearLegacyCaches().finally(() => {
-              setTimeout(function() {
-                window.location.replace(withCacheBust(redirectTo));
-              }, 100);
-            });
+            var redirectScheduled = false;
+            function doRedirect() {
+              if (redirectScheduled) return;
+              redirectScheduled = true;
+              window.location.replace(withCacheBust(redirectTo));
+            }
+            clearLegacyCaches().finally(() => { setTimeout(doRedirect, 100); });
+            setTimeout(doRedirect, 4000);
           } else {
             status.textContent = j.error?.message || 'Invalid or expired link.';
           }
