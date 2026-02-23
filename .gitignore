@@ -34,3 +34,13 @@ coverage.out
 # OS
 .DS_Store
 Thumbs.db
+
+# Node / Frontend
+node_modules/
+npm-debug.log*
+
+# Testing
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/redesign-shots/
