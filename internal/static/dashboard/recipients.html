@@ -30,23 +30,45 @@
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/recipients'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
 
+      // Helper function to escape HTML for safe rendering
+      function qcsEscapeHTML(str) {
+        const div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+      }
+
       function sidebar(user, active) {
         const suiteCode = (user && user.suite_code) || '—';
-        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
-          '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
-          '<nav class="space-y-1">' +
-          '<a href="/dashboard" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
-          '<a href="/dashboard/inbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Packages</a>' +
-          '<a href="/dashboard/mailbox" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">My Mailbox</a>' +
-          '<a href="/dashboard/inbound" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Expected Packages</a>' +
-          '<a href="/dashboard/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
-          '<a href="/dashboard/bookings" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Bookings</a>' +
-          '<a href="/dashboard/recipients" class="block py-2 px-3 rounded-lg ' + (active === 'recipients' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Recipients</a>' +
-          '<a href="/dashboard/shipments" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Shipments</a>' +
-          '<a href="/dashboard/invoices" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Invoices</a>' +
-          '<a href="/dashboard/profile" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Profile</a>' +
-          '</nav><p class="mt-8 text-slate-400 text-sm">Suite: ' + suiteCode + '</p>' +
-          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+        const links = [
+          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
+          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
+          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
+          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
+          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
+          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
+          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
+          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
+          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
+          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
+          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
+          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
+        ];
+
+        let navHtml = '';
+        links.forEach(link => {
+          const isActive = (active === link.id);
+          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
+        });
+
+        return `<div class="flex min-h-screen">
+          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
+            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
+            <nav class="space-y-1" aria-label="Main navigation">
+              ${navHtml}
+            </nav>
+            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
+            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
+          </aside>`;
       }
 
       function val(r, key) {
