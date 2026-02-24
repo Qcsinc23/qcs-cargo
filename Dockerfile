@@ -12,7 +12,6 @@ RUN apk --no-cache add ca-certificates wget
 WORKDIR /app
 COPY --from=builder /app/qcs-server /app/qcs-migrate ./
 COPY --from=builder /app/web /app/web
-COPY --from=builder /app/frontend/static/images /app/web/images
 COPY --from=builder /app/sql/migrations /app/sql/migrations
 ENV PORT=8080
 WORKDIR /app
