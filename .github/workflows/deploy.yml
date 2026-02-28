@@ -1,0 +1,72 @@
+name: Deploy Production
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PROD_HOST: 82.25.85.157
+      PROD_USER: root
+      PROD_APP_DIR: /opt/qcs-cargo
+      PROD_PUBLIC_URL: https://qcs-cargo.com
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && 'origin/main' || github.event.workflow_run.head_sha }}
+    steps:
+      - name: Validate deploy secret
+        env:
+          PROD_SSH_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+        run: |
+          if [[ -z "${PROD_SSH_PASSWORD:-}" ]]; then
+            echo "Missing required repository secret: PROD_SSH_PASSWORD" >&2
+            exit 1
+          fi
+
+      - name: Install sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+
+      - name: Trust production host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy validated commit
+        env:
+          PROD_SSH_PASSWORD: ${{ secrets.PROD_SSH_PASSWORD }}
+        run: |
+          sshpass -p "$PROD_SSH_PASSWORD" \
+            ssh -o StrictHostKeyChecking=yes "$PROD_USER@$PROD_HOST" \
+            "set -euo pipefail; \
+             cd '$PROD_APP_DIR'; \
+             git fetch origin main; \
+             git checkout --detach '$DEPLOY_REF'; \
+             APP_DIR='$PROD_APP_DIR' \
+             TARGET_BRANCH='main' \
+             DEPLOY_REF='$DEPLOY_REF' \
+             APP_URL='$PROD_PUBLIC_URL' \
+             SKIP_GIT_PREP=1 \
+             bash '$PROD_APP_DIR/scripts/deploy-production.sh'"
+
+      - name: Verify public production endpoints
+        run: |
+          curl --fail --silent --show-error "$PROD_PUBLIC_URL/api/v1/health"
+          curl --fail --silent --show-error "$PROD_PUBLIC_URL/" >/tmp/qcs-home.html
+          grep -q "<title>" /tmp/qcs-home.html

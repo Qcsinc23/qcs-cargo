@@ -52,6 +52,21 @@
    - https://qcs-cargo.com/api/v1/health → `{"status":"ok",...}`
    - https://qcs-cargo.com/ → home page
 
+## GitHub Actions auto-deploy
+
+Future pushes to `main` can deploy automatically after CI passes.
+
+1. Add this repository secret in GitHub:
+   - `PROD_SSH_PASSWORD` — SSH password for `root@82.25.85.157`
+2. The workflow [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) will:
+   - wait for the `CI` workflow to succeed on `main`
+   - SSH to `root@82.25.85.157`
+   - check out the exact validated commit SHA
+   - run [`scripts/deploy-production.sh`](deploy-production.sh)
+   - verify `https://qcs-cargo.com/api/v1/health` and `https://qcs-cargo.com/`
+
+The server-side script uses a lock file to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful.
+
 ## Traefik file provider (this server)
 
 On this host, Traefik also loads a **file** config at `/etc/dokploy/traefik/dynamic/qcs-cargo.yml` that routes `qcs-cargo.com` / `www.qcs-cargo.com` to the service. That file was updated to point to `http://qcs_cargo:8080` (replacing the old `qcs_web:3000`). If you deploy to a fresh server with Dokploy/Traefik, either add a similar file or rely only on the Docker labels in `docker-compose.prod.yml` (and ensure no conflicting file exists).
