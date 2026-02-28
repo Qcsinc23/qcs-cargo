@@ -75,18 +75,28 @@ func stripeVerify(c *fiber.Ctx) error {
 }
 
 func listDestinations(c *fiber.Ctx) error {
+	var cached []fiber.Map
+	if getCachedJSON(c.Context(), publicDestinationsCacheKey, &cached) && len(cached) > 0 {
+		return c.JSON(fiber.Map{"data": cached})
+	}
+
 	rows, err := listActiveDestinationsFromDB(c.Context())
 	if err != nil {
 		log.Printf("destinations list fallback: %v", err)
-		return c.JSON(fiber.Map{"data": fallbackDestinationMaps()})
+		out := fallbackDestinationMaps()
+		setCachedJSON(c.Context(), publicDestinationsCacheKey, out, publicDestinationsCacheTTL)
+		return c.JSON(fiber.Map{"data": out})
 	}
 	if len(rows) == 0 {
-		return c.JSON(fiber.Map{"data": fallbackDestinationMaps()})
+		out := fallbackDestinationMaps()
+		setCachedJSON(c.Context(), publicDestinationsCacheKey, out, publicDestinationsCacheTTL)
+		return c.JSON(fiber.Map{"data": out})
 	}
 	out := make([]fiber.Map, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, destinationRowToMap(row))
 	}
+	setCachedJSON(c.Context(), publicDestinationsCacheKey, out, publicDestinationsCacheTTL)
 	return c.JSON(fiber.Map{"data": out})
 }
 

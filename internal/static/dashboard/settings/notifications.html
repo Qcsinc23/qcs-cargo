@@ -19,16 +19,20 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
+      const shell = window.QCSPWA || null;
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/notifications'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      if (shell) shell.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
       function qcsEscapeHTML(str) {
         const div = document.createElement('div');
@@ -69,6 +73,7 @@
             <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
           </aside>`;
       }
+      if (shell) shell.mountLoading(document.getElementById('app'), shell.t('loading_notifications'));
       fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
         if (!me) { window.location.href = '/login'; return; }
         const user = me.data;
@@ -78,7 +83,8 @@
           let main = '<main class="flex-1 p-8">' +
             '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Notifications</li></ol></nav>' +
             '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
-            '<h1 class="text-3xl font-bold text-[#0F172A] mb-6">Notification preferences</h1>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Notification preferences</h1>' +
+            '<p id="notification-stream-status" class="text-xs text-slate-500 mb-4">Realtime updates connecting...</p>' +
             '<form id="prefs-form" class="bg-white rounded-xl border border-slate-200 p-6 max-w-lg space-y-4">' +
             '<label class="flex items-center gap-2"><input type="checkbox" name="email_enabled" value="1"' + ch(p.email_enabled) + ' /> Email notifications</label>' +
             '<label class="flex items-center gap-2"><input type="checkbox" name="sms_enabled" value="1"' + ch(p.sms_enabled) + ' /> SMS notifications</label>' +
@@ -88,13 +94,31 @@
             '<label class="flex items-center gap-2"><input type="checkbox" name="on_ship_updates" value="1"' + ch(p.on_ship_updates) + ' /> Shipment updates</label>' +
             '<label class="flex items-center gap-2"><input type="checkbox" name="on_inbound_updates" value="1"' + ch(p.on_inbound_updates) + ' /> Inbound tracking updates</label>' +
             '<p class="text-slate-600 text-sm pt-2">Daily digest: ' + (p.daily_digest || 'off') + '</p>' +
+            '<div class="flex flex-wrap gap-3">' +
             '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Save</button>' +
+            '<button type="button" id="push-enable-btn" class="bg-white border border-slate-200 px-4 py-2 rounded-lg">Enable push on this device</button>' +
+            '</div>' +
             '<p id="prefs-msg" class="text-sm text-emerald-600 hidden">Saved.</p>' +
             '</form></main></div>';
           document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
+          if (shell) {
+            shell.openNotificationStream({ token: token, statusSelector: '#notification-stream-status' });
+          }
           document.getElementById('logout-btn').onclick = () => {
             fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
           };
+          const pushBtn = document.getElementById('push-enable-btn');
+          if (pushBtn && shell) {
+            pushBtn.onclick = function () {
+              shell.subscribePush({
+                token: token,
+                endpoint: '/api/v1/notifications/push/subscribe'
+              }).then(function (msg) {
+                document.getElementById('prefs-msg').textContent = (msg && msg.message) || 'Push saved.';
+                document.getElementById('prefs-msg').classList.remove('hidden');
+              });
+            };
+          }
           document.getElementById('prefs-form').onsubmit = function (e) {
             e.preventDefault();
             const body = {

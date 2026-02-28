@@ -19,16 +19,23 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
+      const shell = window.QCSPWA || null;
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/shipments'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      if (shell) {
+        shell.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+        shell.mountLoading(document.getElementById('app'), shell.t('loading_shipments'));
+      }
 
       function qcsEscapeHTML(str) {
         const div = document.createElement('div');
@@ -82,7 +89,12 @@
           '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">My Shipments</h1>' +
           '<p class="text-slate-600 mb-6">' + list.length + ' shipment(s)</p>';
         if (list.length === 0) {
-          main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
+          main += shell ? shell.renderEmptyState({
+            title: 'No shipments yet',
+            description: 'Create a ship request to generate your first outbound shipment.',
+            actionHref: '/dashboard/ship-requests',
+            actionLabel: 'Create ship request'
+          }) : '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
             '<p class="text-slate-600 mb-4">No shipments yet.</p>' +
             '<a href="/dashboard/ship-requests" class="text-[#2563EB] font-medium">Create a ship request to get started</a></div>';
         } else {

@@ -285,6 +285,7 @@ func adminDestinationUpdate(c *fiber.Ctx) error {
 	}); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update destination"))
 	}
+	invalidateCachedPublicDestinations(c.Context())
 	adminID := c.Locals(middleware.CtxUserID).(string)
 	recordActivity(c.Context(), adminID, "admin.destination.update", "destination", id, "")
 	return c.JSON(fiber.Map{"data": fiber.Map{

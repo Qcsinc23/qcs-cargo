@@ -9,7 +9,7 @@ Unified product per QCS Cargo Unified PRD v3.
 ## Audit remediation status
 
 - Canonical remediation tracker: `findings_status.md`
-- Current snapshot (2026-02-28): `IMPLEMENTED 85`, `OPEN 35`, `TOTAL 120`
+- Current snapshot (2026-02-28): `IMPLEMENTED 120`, `OPEN 0`, `TOTAL 120`
 - Implementation roadmap and tranche sequencing: `plans/IMPLEMENTATION_PLAN.md`
 - Change history: [CHANGELOG.md](CHANGELOG.md)
 
@@ -25,6 +25,10 @@ Unified product per QCS Cargo Unified PRD v3.
 - API docs usage and rendering: [docs/api/README.md](docs/api/README.md)
 - Architecture decisions (ADR): [docs/adr/README.md](docs/adr/README.md)
 - Database schema reference: [docs/database/SCHEMA.md](docs/database/SCHEMA.md)
+- Security/compliance additions: [docs/SECURITY_COMPLIANCE.md](docs/SECURITY_COMPLIANCE.md)
+- Parcel feature additions: [docs/PARCEL_FEATURES.md](docs/PARCEL_FEATURES.md)
+- PWA/UX additions: [docs/PWA_UX.md](docs/PWA_UX.md)
+- Platform/scaling additions: [docs/PLATFORM_SCALING.md](docs/PLATFORM_SCALING.md)
 
 ## Quick start
 
@@ -83,6 +87,8 @@ This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.
 | `STRIPE_SECRET_KEY` | Stripe secret key (sk_live_/sk_test_) for PaymentIntents |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (pk_live_/pk_test_) for pay page |
 | `RESEND_API_KEY` | Resend API key for transactional email; also surfaced as a boolean config flag in admin system-health |
+| `REDIS_URL` | Optional Redis connection string for shared cache backend |
+| `CDN_BASE_URL` | Optional CDN origin surfaced in runtime/readiness responses and asset headers |
 
 See `.env.example` for a full list.
 
@@ -132,6 +138,14 @@ Dependency update automation is configured with Dependabot for:
 - `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
 - `POST /api/v1/account/deactivate` sets account status to `inactive`, revokes sessions, and signs out current auth context.
 - `POST /api/v1/account/delete` anonymizes profile PII, revokes sessions, blacklists current access token, and returns a success message.
+- `POST /api/v1/security/mfa/setup|challenge|verify|disable` provide MFA onboarding and verification scaffolding.
+- `POST /api/v1/security/api-keys`, `GET /api/v1/security/api-keys`, `POST /api/v1/security/api-keys/:id/revoke`, and `POST /api/v1/security/api-keys/:id/rotate` manage hashed API keys.
+- `GET/PUT /api/v1/security/feature-flags/:key` and `GET /api/v1/security/feature-flags` expose runtime feature toggles.
+- `GET/PUT /api/v1/compliance/cookie-consent` and `POST /api/v1/compliance/gdpr/*` cover consent and GDPR metadata workflows.
+- `GET /api/v1/notifications`, `GET /api/v1/notifications/stream`, and `POST /api/v1/notifications/push/subscribe` power in-app/push notification UX.
+- `POST /api/v1/parcel/consolidation-preview`, `GET /api/v1/parcel/photos`, `POST/GET /api/v1/parcel/customs-docs`, `POST /api/v1/parcel/delivery-signature`, `POST /api/v1/parcel/repack-suggestion`, and `GET /api/v1/parcel/loyalty-summary` add parcel differentiator APIs.
+- `GET /api/v1/data/export` and `POST /api/v1/data/recipients/import` provide user data export/import flows.
+- `GET /api/v1/platform/readiness`, `GET /api/v1/platform/runtime`, and `/api/v1/admin/moderation*` cover readiness/runtime and moderation tooling.
 - `GET /api/v1/destinations` and `GET /api/v1/destinations/:id` are DB-backed via the `destinations` catalog table. A static fallback list is used only if destination DB access fails unexpectedly.
 - `GET /api/v1/locker` supports pagination query params: `limit` (default `20`, max `100`) and `page` (default `1`). Response includes `data`, `page`, `limit`, `total`, and `status`.
 - `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, `metrics_endpoint`, queue/count metrics, and `generated_at`.
@@ -154,6 +168,7 @@ Dependency update automation is configured with Dependabot for:
 - `make stripe-verify` — verify Stripe config (app API + optional Stripe CLI)  
 - `make wasm` — build frontend to `web/app.wasm` and copy `wasm_exec.js`  
 - `make sqlc` — regenerate sqlc code from `sql/`  
+- `./scripts/optimize-images.sh [dir]` — optimize PNG/JPEG assets when `pngquant`/`jpegoptim` are installed  
 
 ## Admin console (Phase 3)
 

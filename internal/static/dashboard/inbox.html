@@ -19,16 +19,23 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
+      const shell = window.QCSPWA || null;
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/inbox'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      if (shell) {
+        shell.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+        shell.mountLoading(document.getElementById('app'), shell.t('loading_packages'));
+      }
       function sidebar(user, active) {
         const suiteCode = (user && user.suite_code) || '—';
         const links = [
@@ -180,7 +187,12 @@
             return (p.status || '') === 'stored' && d != null && d >= 0 && d <= 7;
           }) : list;
         if (filtered.length === 0) {
-          main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
+          main += shell ? shell.renderEmptyState({
+            title: 'No packages match',
+            description: 'Use your QCS suite at checkout or add inbound tracking to start receiving packages.',
+            actionHref: '/dashboard/mailbox',
+            actionLabel: 'Open mailbox'
+          }) : '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
             '<p class="text-slate-600 mb-4">No packages match.</p>' +
             '<a href="/dashboard/mailbox" class="text-[#2563EB] font-medium">Copy My QCS Address</a> · ' +
             '<a href="/how-it-works" class="text-[#2563EB] font-medium">How It Works</a></div>';

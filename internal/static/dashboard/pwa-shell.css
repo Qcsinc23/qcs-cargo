@@ -1,0 +1,228 @@
+:root {
+  --qcs-bg: #f8fafc;
+  --qcs-text: #0f172a;
+  --qcs-panel: #ffffff;
+  --qcs-border: #e2e8f0;
+  --qcs-muted: #475569;
+  --qcs-accent: #2563eb;
+  --qcs-warn: #f97316;
+}
+
+html[data-theme="dark"] {
+  --qcs-bg: #0b1220;
+  --qcs-text: #e2e8f0;
+  --qcs-panel: #121a2b;
+  --qcs-border: #334155;
+  --qcs-muted: #94a3b8;
+  --qcs-accent: #60a5fa;
+  --qcs-warn: #fb923c;
+}
+
+body {
+  background: var(--qcs-bg);
+  color: var(--qcs-text);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: var(--qcs-panel) !important;
+}
+
+html[data-theme="dark"] .border-slate-200,
+html[data-theme="dark"] .border-slate-100,
+html[data-theme="dark"] .border-slate-300 {
+  border-color: var(--qcs-border) !important;
+}
+
+html[data-theme="dark"] .text-slate-900,
+html[data-theme="dark"] .text-slate-800,
+html[data-theme="dark"] .text-slate-700,
+html[data-theme="dark"] .text-\[\#0F172A\] {
+  color: var(--qcs-text) !important;
+}
+
+html[data-theme="dark"] .text-slate-600,
+html[data-theme="dark"] .text-slate-500,
+html[data-theme="dark"] .text-slate-400 {
+  color: var(--qcs-muted) !important;
+}
+
+html[data-theme="dark"] .bg-slate-50 {
+  background-color: #1e293b !important;
+}
+
+.qcs-loading {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--qcs-muted);
+}
+
+.qcs-loading-spinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  border: 3px solid rgba(148, 163, 184, 0.35);
+  border-top-color: var(--qcs-accent);
+  animation: qcs-spin 0.85s linear infinite;
+}
+
+.qcs-empty {
+  border: 1px dashed var(--qcs-border);
+  border-radius: 0.9rem;
+  background: var(--qcs-panel);
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.qcs-empty-title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--qcs-text);
+}
+
+.qcs-empty-desc {
+  margin: 0.55rem 0 1rem;
+  color: var(--qcs-muted);
+}
+
+.qcs-empty-action {
+  color: #ffffff;
+  background: var(--qcs-accent);
+  padding: 0.55rem 0.95rem;
+  border-radius: 0.6rem;
+  text-decoration: none;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.qcs-pwa-tools {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--qcs-panel);
+  border: 1px solid var(--qcs-border);
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.16);
+  border-radius: 999px;
+  padding: 0.35rem 0.5rem;
+}
+
+.qcs-tools-btn,
+.qcs-tools-select {
+  border: 1px solid var(--qcs-border);
+  background: transparent;
+  color: var(--qcs-text);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0.4rem 0.65rem;
+  cursor: pointer;
+}
+
+.qcs-tools-label {
+  font-size: 0.72rem;
+  color: var(--qcs-muted);
+}
+
+.qcs-stream-connected {
+  color: #10b981 !important;
+}
+
+.qcs-stream-retry {
+  color: #f59e0b !important;
+}
+
+.qcs-stream-offline {
+  color: #94a3b8 !important;
+}
+
+.qcs-shortcuts-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.65);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 95;
+  padding: 1rem;
+}
+
+.qcs-shortcuts-modal.is-open {
+  display: flex;
+}
+
+.qcs-shortcuts-panel {
+  width: min(420px, 100%);
+  background: var(--qcs-panel);
+  color: var(--qcs-text);
+  border: 1px solid var(--qcs-border);
+  border-radius: 0.95rem;
+  padding: 1.1rem;
+}
+
+.qcs-shortcuts-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.qcs-shortcuts-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qcs-shortcuts-panel li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.34rem 0;
+  border-bottom: 1px solid var(--qcs-border);
+  color: var(--qcs-muted);
+}
+
+.qcs-shortcuts-panel li:last-child {
+  border-bottom: 0;
+}
+
+.qcs-shortcuts-panel kbd {
+  border: 1px solid var(--qcs-border);
+  border-radius: 0.4rem;
+  padding: 0.2rem 0.35rem;
+  color: var(--qcs-text);
+  font-size: 0.74rem;
+}
+
+.qcs-shortcuts-panel button {
+  margin-top: 0.9rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: var(--qcs-accent);
+  color: #ffffff;
+  padding: 0.45rem 0.85rem;
+  cursor: pointer;
+}
+
+@keyframes qcs-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 767px) {
+  .qcs-pwa-tools {
+    right: 0.7rem;
+    bottom: 0.7rem;
+    padding: 0.3rem 0.4rem;
+  }
+
+  .qcs-tools-label {
+    display: none;
+  }
+}

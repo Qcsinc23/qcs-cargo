@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parcel Plus | QCS Cargo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
+  <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
+  <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
+  <script>
+    (function () {
+      const shell = window.QCSPWA || null;
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/parcel-plus'); return; }
+      if (shell) {
+        shell.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+        shell.mountLoading(document.getElementById('app'), 'Loading parcel services...');
+      }
+      const auth = { headers: { Authorization: 'Bearer ' + token } };
+
+      Promise.all([
+        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/parcel/photos', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/parcel/loyalty-summary', auth).then(r => r.ok ? r.json() : null),
+        fetch('/api/v1/locker', auth).then(r => r.ok ? r.json() : null)
+      ]).then(([me, photos, loyalty, locker]) => {
+        if (!me) { window.location.href = '/login'; return; }
+        const list = (locker && locker.data) || [];
+        const ids = list.slice(0, 2).map(x => x.id);
+        const previewFetch = ids.length ? fetch('/api/v1/parcel/consolidation-preview', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locker_package_ids: ids, destination_id: 'guyana' })
+        }).then(r => r.ok ? r.json() : null) : Promise.resolve(null);
+
+        previewFetch.then((preview) => {
+          const photoCards = ((photos && photos.data) || []).slice(0, 4).map(function (pkg) {
+            const firstPhoto = pkg.photos && pkg.photos[0] ? pkg.photos[0].photo_url : '';
+            return '<article class="bg-white rounded-xl border border-slate-200 p-4"><p class="font-medium mb-2">' + (pkg.sender_name || 'Package') + '</p>' +
+              (firstPhoto ? '<img src="' + firstPhoto + '" alt="Package photo" class="rounded-lg border border-slate-200 mb-3" />' : '<p class="text-slate-500">No photo yet</p>') +
+              '<p class="text-sm text-slate-500">Package ' + pkg.locker_package_id + '</p></article>';
+          }).join('');
+          const previewData = preview && preview.data;
+          document.getElementById('app').innerHTML = '<div class="max-w-6xl mx-auto p-8">' +
+            '<div class="flex items-center justify-between gap-4 mb-8"><div><p class="text-slate-500 text-sm uppercase tracking-[0.2em]">Parcel Plus</p><h1 class="text-4xl font-bold">Consolidation, photos, and loyalty</h1></div><a href="/dashboard" class="text-[#2563EB]">Back to dashboard</a></div>' +
+            '<div class="grid lg:grid-cols-3 gap-6 mb-8">' +
+            '<section class="bg-white rounded-xl border border-slate-200 p-6"><h2 class="text-xl font-semibold mb-3">Consolidation preview</h2>' +
+            (previewData ? '<p class="text-slate-600 mb-2">Packages: ' + previewData.package_count + '</p><p class="text-slate-600 mb-2">Estimated savings: ' + previewData.estimated_savings_lbs + ' lbs</p><p class="text-slate-600">Post consolidation billable weight: ' + previewData.post_consolidation_billable_lbs + ' lbs</p>' : '<p class="text-slate-500">Need at least 2 packages for a preview.</p>') +
+            '</section>' +
+            '<section class="bg-white rounded-xl border border-slate-200 p-6"><h2 class="text-xl font-semibold mb-3">Loyalty summary</h2>' +
+            '<p class="text-slate-600 mb-2">Current points: ' + (((loyalty && loyalty.data) || {}).current_points || 0) + '</p>' +
+            '<p class="text-slate-600 mb-2">Tier: ' + ((((loyalty && loyalty.data) || {}).tier) || 'basic') + '</p>' +
+            '<p class="text-slate-600">Next tier at: ' + ((((loyalty && loyalty.data) || {}).next_tier_at) || 500) + ' points</p>' +
+            '</section>' +
+            '<section class="bg-white rounded-xl border border-slate-200 p-6"><h2 class="text-xl font-semibold mb-3">Quick actions</h2>' +
+            '<div class="space-y-2"><a class="block text-[#2563EB]" href="/dashboard/inbox">View package inbox</a><a class="block text-[#2563EB]" href="/dashboard/ship-requests">Create ship request</a><a class="block text-[#2563EB]" href="/dashboard/settings/notifications">Notification preferences</a></div>' +
+            '</section></div>' +
+            '<section><h2 class="text-2xl font-semibold mb-4">Package photos</h2><div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">' + (photoCards || '<p class="text-slate-500">No package photos available.</p>') + '</div></section>' +
+            '</div>';
+        });
+      });
+    })();
+  </script>
+  <script src="/dashboard/mobile-nav.js"></script>
+</body>
+</html>

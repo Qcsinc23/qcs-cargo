@@ -94,10 +94,12 @@ func main() {
 
 	// Serve WASM and Go runtime (from disk so dev can build frontend separately)
 	app.Get("/wasm_exec.js", func(c *fiber.Ctx) error {
+		setAssetCacheHeaders(c, "wasm_exec.js")
 		return c.SendFile("./web/wasm_exec.js", false)
 	})
 	app.Get("/app.wasm", func(c *fiber.Ctx) error {
 		c.Set("Content-Type", "application/wasm")
+		setAssetCacheHeaders(c, "app.wasm")
 		return c.SendFile("./web/app.wasm", false)
 	})
 	// Serve /web/* (images, etc.) from disk so frontend placeholders at /web/images/... resolve
@@ -132,6 +134,8 @@ func main() {
 		}
 		if strings.HasPrefix(path, "dashboard/") || path == "dashboard" || strings.HasPrefix(path, "verify") {
 			c.Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		} else {
+			setAssetCacheHeaders(c, path)
 		}
 		c.Set("Content-Type", contentType(path))
 		return c.Send(data)
@@ -163,6 +167,23 @@ func contentType(path string) string {
 		return "image/svg+xml"
 	default:
 		return "text/html; charset=utf-8"
+	}
+}
+
+func setAssetCacheHeaders(c *fiber.Ctx, path string) {
+	cdnBase := strings.TrimSpace(os.Getenv("CDN_BASE_URL"))
+	if cdnBase != "" {
+		c.Set("X-CDN-Base-URL", cdnBase)
+	}
+	switch {
+	case strings.HasSuffix(path, ".js"), strings.HasSuffix(path, ".css"), strings.HasSuffix(path, ".svg"),
+		strings.HasSuffix(path, ".png"), strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"),
+		strings.HasSuffix(path, ".webp"), strings.HasSuffix(path, ".wasm"), strings.HasSuffix(path, ".ico"):
+		c.Set("Cache-Control", "public, max-age=31536000, immutable")
+	default:
+		if c.Get("Cache-Control") == "" {
+			c.Set("Cache-Control", "public, max-age=300")
+		}
 	}
 }
 

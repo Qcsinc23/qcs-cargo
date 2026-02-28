@@ -19,6 +19,7 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
@@ -26,13 +27,21 @@
   <a href="#main"
     class="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-white focus:rounded focus:outline focus:ring-2 focus:ring-[#2563EB]">Skip
     to main content</a>
-  <div id="dashboard-app">
-    <p class="p-8 text-slate-500">Loading…</p>
-  </div>
+  <div id="dashboard-app"></div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
       const appEl = document.getElementById('dashboard-app');
+      const shell = window.QCSPWA || null;
       const loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard');
+      if (shell) {
+        shell.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+        shell.mountLoading(appEl, shell.t('loading_dashboard'));
+      } else if (appEl) {
+        appEl.innerHTML = '<p class="p-8 text-slate-500">Loading...</p>';
+      }
+
+      let streamHandle = null;
       function showBootstrapError(message) {
         if (!appEl) return;
         appEl.innerHTML = '\
@@ -103,6 +112,7 @@
               <main id="main" class="flex-1 p-8">\
                 <nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li class="text-[#0F172A] font-medium" aria-current="page">Dashboard</li></ol></nav>\
                 <h1 class="text-3xl font-bold text-[#0F172A] mb-8">Dashboard</h1>\
+                <p id="dashboard-stream-status" class="text-xs text-slate-500 mb-4">Realtime updates connecting...</p>\
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">\
                   <a href="/dashboard/inbox" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">\
                     <p class="text-slate-500 text-sm">Packages in Locker</p>\
@@ -161,7 +171,14 @@
               }
             })
             .catch(() => { });
+          if (shell) {
+            streamHandle = shell.openNotificationStream({
+              token: token,
+              statusSelector: '#dashboard-stream-status'
+            });
+          }
           document.getElementById('logout-btn').onclick = () => {
+            if (streamHandle && typeof streamHandle.close === 'function') streamHandle.close();
             fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
           };
         })

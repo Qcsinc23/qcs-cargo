@@ -31,6 +31,8 @@ func RegisterAPIRoutes(app *fiber.App) {
 
 	// Auth routes get stricter rate limiting on top of the global limiter.
 	v1.Use("/auth", middleware.AuthRateLimit)
+	// Optional machine-auth IP controls for X-API-Key requests.
+	v1.Use(middleware.EnforceAPIKeyIPAccess)
 	// CSRF protection for cookie-authenticated mutation requests.
 	v1.Use(middleware.CSRFProtection)
 
@@ -50,7 +52,10 @@ func RegisterAPIRoutes(app *fiber.App) {
 	RegisterAdmin(v1)
 	RegisterWarehouse(v1)
 	RegisterNotifications(v1)
+	RegisterSecurityCompliance(v1)
 	RegisterSessions(v1)
 	RegisterAccount(v1)
+	RegisterParcelFeatures(v1)
+	RegisterPlatformOps(v1)
 	RegisterBlog(v1)
 }
