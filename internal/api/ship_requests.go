@@ -3,12 +3,14 @@ package api
 import (
 	"crypto/rand"
 	"database/sql"
+	"log"
 	"os"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/stripe/stripe-go/v81"
@@ -172,6 +174,8 @@ func shipRequestEstimate(c *fiber.Ctx) error {
 }
 
 func shipRequestPay(c *fiber.Ctx) error {
+	const maxPaymentCents = 5_000_000 // $50,000 safety guardrail
+
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
@@ -187,6 +191,9 @@ func shipRequestPay(c *fiber.Ctx) error {
 	amountCents := int64(sr.Total * 100)
 	if amountCents < 50 {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Minimum charge is $0.50"))
+	}
+	if amountCents > maxPaymentCents {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Payment amount exceeds maximum allowed"))
 	}
 	secretKey := os.Getenv("STRIPE_SECRET_KEY")
 	if secretKey == "" {
@@ -272,6 +279,9 @@ func shipRequestCreate(c *fiber.Ctx) error {
 	if body.DestinationID == "" || body.ServiceType == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "destination_id and service_type required"))
 	}
+	if err := services.ValidateDestination(body.DestinationID); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
 
 	var packageIDs []string
 	if len(body.LockerPackageIDs) > 0 {
@@ -320,7 +330,11 @@ func shipRequestCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("shipRequestCreate rollback failed: %v", rbErr)
+		}
+	}()
 	qtx := db.Queries().WithTx(tx)
 
 	// Prevent double-shipping: check if any package is already in an active ship request

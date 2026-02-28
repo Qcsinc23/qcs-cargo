@@ -11,10 +11,10 @@ import (
 // RegisterAPIRoutes registers all API routes (v1 and Stripe webhook) on the app.
 // Used by cmd/server and by integration tests.
 func RegisterAPIRoutes(app *fiber.App) {
-	apiGroup := app.Group("/api")
+	apiGroup := app.Group("/api", middleware.PropagateRequestID)
 	RegisterStripeWebhook(apiGroup)
 
-	v1 := app.Group("/api/v1")
+	v1 := apiGroup.Group("/v1")
 	limitMiddleware := limiter.New(limiter.Config{
 		Max:        100,
 		Expiration: 1 * time.Minute,
@@ -28,6 +28,12 @@ func RegisterAPIRoutes(app *fiber.App) {
 		}
 		return limitMiddleware(c)
 	})
+
+	// Auth routes get stricter rate limiting on top of the global limiter.
+	v1.Use("/auth", middleware.AuthRateLimit)
+	// CSRF protection for cookie-authenticated mutation requests.
+	v1.Use(middleware.CSRFProtection)
+
 	RegisterHealth(v1)
 	RegisterAuth(v1)
 	RegisterPublic(v1)

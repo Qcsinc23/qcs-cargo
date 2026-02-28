@@ -69,6 +69,18 @@ func bookingCreate(c *fiber.Ctx) error {
 	if body.ServiceType == "" || body.DestinationID == "" || body.ScheduledDate == "" || body.TimeSlot == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "service_type, destination_id, scheduled_date, time_slot required"))
 	}
+	if err := services.ValidateDestination(body.DestinationID); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	// scheduled_date must be today or future (UTC)
+	scheduledDate, err := time.Parse("2006-01-02", body.ScheduledDate)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid scheduled_date format, use YYYY-MM-DD"))
+	}
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if scheduledDate.Before(today) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "scheduled_date cannot be in the past"))
+	}
 
 	userID := c.Locals(middleware.CtxUserID).(string)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -105,6 +117,12 @@ func bookingCreate(c *fiber.Ctx) error {
 		ScheduledDate:       body.ScheduledDate,
 		TimeSlot:            body.TimeSlot,
 		SpecialInstructions: specialInstructions,
+		WeightLbs:           body.WeightLbs,
+		LengthIn:            body.LengthIn,
+		WidthIn:             body.WidthIn,
+		HeightIn:            body.HeightIn,
+		ValueUsd:            body.ValueUSD,
+		AddInsurance:        boolToInt(body.AddInsurance),
 		Subtotal:            price.Subtotal,
 		Discount:            price.Discount,
 		Insurance:           price.Insurance,
@@ -156,29 +174,28 @@ func bookingUpdate(c *fiber.Ctx) error {
 		specialInstructions = sql.NullString{String: *body.SpecialInstructions, Valid: true}
 	}
 
-	// Recalculate price if any pricing field is changed
-	// For simplicity, we use existing values if body field is nil
-	weight := 0.0 // Note: we should probably store these in the DB to properly update
+	// Recalculate price with existing values as defaults for fields not provided
+	weight := existing.WeightLbs
 	if body.WeightLbs != nil {
 		weight = *body.WeightLbs
 	}
-	length := 0.0
+	length := existing.LengthIn
 	if body.LengthIn != nil {
 		length = *body.LengthIn
 	}
-	width := 0.0
+	width := existing.WidthIn
 	if body.WidthIn != nil {
 		width = *body.WidthIn
 	}
-	height := 0.0
+	height := existing.HeightIn
 	if body.HeightIn != nil {
 		height = *body.HeightIn
 	}
-	val := 0.0
+	val := existing.ValueUsd
 	if body.ValueUSD != nil {
 		val = *body.ValueUSD
 	}
-	insure := false
+	insure := existing.AddInsurance != 0
 	if body.AddInsurance != nil {
 		insure = *body.AddInsurance
 	}
@@ -216,6 +233,12 @@ func bookingUpdate(c *fiber.Ctx) error {
 	b, err := db.Queries().UpdateBooking(c.Context(), gen.UpdateBookingParams{
 		Status:              status,
 		SpecialInstructions: specialInstructions,
+		WeightLbs:           weight,
+		LengthIn:            length,
+		WidthIn:             width,
+		HeightIn:            height,
+		ValueUsd:            val,
+		AddInsurance:        boolToInt(insure),
 		Subtotal:            subtotal,
 		Discount:            discount,
 		Insurance:           insCost,
@@ -271,4 +294,11 @@ func genBookingConfirmationCode() string {
 		out[i] = bookingConfirmationChars[int(b[i])%len(bookingConfirmationChars)]
 	}
 	return string(out)
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

@@ -4,11 +4,16 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+)
+
+const (
+	defaultLockerLimit = 20
+	maxLockerLimit     = 100
 )
 
 // RegisterLocker mounts locker routes. All require auth.
@@ -24,7 +29,31 @@ func RegisterLocker(g fiber.Router) {
 func lockerList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 	statusFilter := c.Query("status", "")
-	list, err := db.Queries().ListLockerPackagesByUser(c.Context(), gen.ListLockerPackagesByUserParams{
+
+	limit := int64(c.QueryInt("limit", defaultLockerLimit))
+	if limit <= 0 {
+		limit = defaultLockerLimit
+	}
+	if limit > maxLockerLimit {
+		limit = maxLockerLimit
+	}
+	page := int64(c.QueryInt("page", 1))
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+
+	list, err := db.Queries().ListLockerPackagesByUserPaged(c.Context(), gen.ListLockerPackagesByUserPagedParams{
+		UserID:  userID,
+		Column2: statusFilter,
+		Status:  statusFilter,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list packages"))
+	}
+	total, err := db.Queries().CountLockerPackagesByUserFiltered(c.Context(), gen.CountLockerPackagesByUserFilteredParams{
 		UserID:  userID,
 		Column2: statusFilter,
 		Status:  statusFilter,
@@ -32,7 +61,40 @@ func lockerList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list packages"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	out := make([]fiber.Map, 0, len(list))
+	for _, p := range list {
+		out = append(out, fiber.Map{
+			"id":                       p.ID,
+			"user_id":                  p.UserID,
+			"suite_code":               p.SuiteCode,
+			"booking_id":               p.BookingID,
+			"tracking_inbound":         p.TrackingInbound,
+			"carrier_inbound":          p.CarrierInbound,
+			"sender_name":              p.SenderName,
+			"sender_address":           p.SenderAddress,
+			"weight_lbs":               p.WeightLbs,
+			"length_in":                p.LengthIn,
+			"width_in":                 p.WidthIn,
+			"height_in":                p.HeightIn,
+			"arrival_photo_url":        p.ArrivalPhotoUrl,
+			"condition":                p.Condition,
+			"storage_bay":              p.StorageBay,
+			"status":                   p.Status,
+			"arrived_at":               p.ArrivedAt,
+			"free_storage_expires_at":  p.FreeStorageExpiresAt,
+			"disposed_at":              p.DisposedAt,
+			"created_at":               p.CreatedAt,
+			"updated_at":               p.UpdatedAt,
+			"pending_service_requests": p.PendingServiceRequests,
+		})
+	}
+	return c.JSON(fiber.Map{
+		"data":   out,
+		"page":   page,
+		"limit":  limit,
+		"total":  total,
+		"status": statusFilter,
+	})
 }
 
 func lockerGetByID(c *fiber.Ctx) error {
@@ -161,7 +223,7 @@ func lockerServiceRequest(c *fiber.Ctx) error {
 		"photo": true, "general": true, // legacy
 	}
 	if body.ServiceType == "" || !validTypes[body.ServiceType] {
-		body.ServiceType = "general"
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid service_type"))
 	}
 	reqID := uuid.New().String()
 	now := time.Now().UTC().Format(time.RFC3339)

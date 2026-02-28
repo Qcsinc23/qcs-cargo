@@ -2,11 +2,13 @@ package api
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -62,6 +64,12 @@ func recipientsCreate(c *fiber.Ctx) error {
 	}
 	if body.Name == "" || body.DestinationID == "" || body.Street == "" || body.City == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name, destination_id, street, and city required"))
+	}
+	if err := services.ValidatePhone(body.Phone); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	if err := services.ValidateDestination(body.DestinationID); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	isDefault := 0
 	if body.IsDefault != nil && *body.IsDefault != 0 {
@@ -149,10 +157,16 @@ func recipientsUpdate(c *fiber.Ctx) error {
 	}
 	destID := rec.DestinationID
 	if body.DestinationID != nil && *body.DestinationID != "" {
-		destID = *body.DestinationID
+		destID = strings.TrimSpace(*body.DestinationID)
+	}
+	if err := services.ValidateDestination(destID); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	var phone, apt, deliveryInstructions sql.NullString
 	if body.Phone != nil {
+		if err := services.ValidatePhone(*body.Phone); err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		}
 		phone = nullString(*body.Phone)
 	} else {
 		phone = rec.Phone

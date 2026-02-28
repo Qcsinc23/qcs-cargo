@@ -6,6 +6,12 @@ Unified product per QCS Cargo Unified PRD v3.
 
 - **Repo:** [github.com/Qcsinc23/qcs-cargo](https://github.com/Qcsinc23/qcs-cargo) Stack: Go Fiber API + SQLite/Postgres + WASM PWA frontend (go-app).
 
+## Audit remediation status
+
+- Canonical remediation tracker: `findings_status.md`
+- Current snapshot (2026-02-28): `IMPLEMENTED 75`, `OPEN 45`, `TOTAL 120`
+- Implementation roadmap and tranche sequencing: `plans/IMPLEMENTATION_PLAN.md`
+
 ## Quick start
 
 ```bash
@@ -102,6 +108,9 @@ Dependency update automation is configured with Dependabot for:
 ### API contract notes
 
 - `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
+- `GET /api/v1/destinations` and `GET /api/v1/destinations/:id` are DB-backed via the `destinations` catalog table. A static fallback list is used only if destination DB access fails unexpectedly.
+- `GET /api/v1/locker` supports pagination query params: `limit` (default `20`, max `100`) and `page` (default `1`). Response includes `data`, `page`, `limit`, `total`, and `status`.
+- `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, queue/count metrics, and `generated_at`.
 
 **E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal).
 
@@ -138,7 +147,9 @@ Admin routes live under `/api/v1/admin/` and the UI under `/admin`. Only users w
 
 After updating, log in as that user and open `/admin` to see the admin dashboard and lists (ship requests, locker packages, service queue, unmatched, bookings, users).
 
-## PRD implementation status
+## PRD implementation status (baseline)
+
+This phase checklist reflects baseline PRD delivery history. Audit remediation progress is tracked separately in `findings_status.md`.
 
 - **Phase 0** — Module, Fiber, health, SQLite/WAL, migrations, sqlc, frontend skeleton, models, CI: ✅ done
 - **Phase 1** — Auth + public pages (magic link, suite code, public routes): ✅ done

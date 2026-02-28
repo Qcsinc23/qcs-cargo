@@ -2,9 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
@@ -16,9 +18,15 @@ import (
 const refreshCookieName = "qcs_refresh"
 const refreshCookieMaxAge = 7 * 24 * 3600 // 7 days in seconds
 
+func normalizeAuthEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
 // RegisterAuth mounts auth routes on the given group. Pass the same group to RegisterMe with auth middleware applied.
 func RegisterAuth(g fiber.Router) {
 	g.Post("/auth/register", authRegister)
+	g.Post("/auth/verify-email", authVerifyEmail)
+	g.Post("/auth/resend-verification", authResendVerification)
 	g.Post("/auth/magic-link/request", authMagicLinkRequest)
 	g.Post("/auth/magic-link/verify", authMagicLinkVerify)
 	g.Post("/auth/refresh", authRefresh)
@@ -54,6 +62,7 @@ func authPasswordChange(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update password"))
 	}
+	recordActivity(c.Context(), userID.(string), "auth.password.change", "auth", userID.(string), "")
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Password updated."}})
 }
 
@@ -67,10 +76,21 @@ func authRegister(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
-	if body.Name == "" || body.Email == "" {
+	normalizedEmail := normalizeAuthEmail(body.Email)
+	if body.Name == "" || normalizedEmail == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name and email required"))
 	}
-	user, err := services.Register(c.Context(), body.Name, body.Email, body.Phone, body.Password)
+	// Validate email format
+	if err := services.ValidateEmail(normalizedEmail); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	// Validate password complexity if provided
+	if body.Password != "" {
+		if err := services.ValidatePassword(body.Password); err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		}
+	}
+	user, err := services.Register(c.Context(), body.Name, normalizedEmail, body.Phone, body.Password)
 	if err != nil {
 		if err.Error() == "email already registered" {
 			return c.Status(409).JSON(ErrorResponse{}.withCode("EMAIL_EXISTS", err.Error()))
@@ -78,9 +98,93 @@ func authRegister(c *fiber.Ctx) error {
 		log.Printf("auth register: %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Registration failed"))
 	}
+
+	// Send verification email for newly registered users.
+	if rawToken, err := services.RequestEmailVerification(c.Context(), user.ID); err != nil {
+		log.Printf("auth register: failed to create verification token: %v", err)
+	} else {
+		appURL := os.Getenv("APP_URL")
+		if appURL == "" {
+			appURL = "http://localhost:8080"
+		}
+		link := appURL + "/verify-email?token=" + rawToken
+		if os.Getenv("RESEND_API_KEY") != "" {
+			if err := services.SendVerificationEmail(user.Email, link); err != nil {
+				log.Printf("auth register: verification email send failed: %v", err)
+			}
+		} else {
+			log.Printf("[DEV] Verification link for %s: %s", user.Email, link)
+		}
+	}
+	recordActivity(c.Context(), user.ID, "auth.register", "user", user.ID, "email="+user.Email)
+
 	return c.Status(201).JSON(fiber.Map{
-		"data": userToMap(user),
+		"data": fiber.Map{
+			"user":    userToMap(user),
+			"message": "Account created. Please check your email to verify your account.",
+		},
 	})
+}
+
+func authVerifyEmail(c *fiber.Ctx) error {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := c.BodyParser(&body); err != nil || body.Token == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "token required"))
+	}
+	if err := services.VerifyEmail(c.Context(), body.Token); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("INVALID_TOKEN", err.Error()))
+	}
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Email verified successfully"}})
+}
+
+func authResendVerification(c *fiber.Ctx) error {
+	var body struct {
+		Email string `json:"email"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	normalizedEmail := normalizeAuthEmail(body.Email)
+	if normalizedEmail == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	if err := services.ValidateEmail(normalizedEmail); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+
+	const msg = "If an account with that email exists, a verification email has been sent."
+	q := db.Queries()
+	user, err := q.GetUserByEmail(c.Context(), normalizedEmail)
+	if err != nil {
+		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
+	}
+	if user.EmailVerified != 0 {
+		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
+	}
+
+	rawToken, err := services.RequestEmailVerification(c.Context(), user.ID)
+	if err != nil {
+		log.Printf("auth resend verification: token create failed: %v", err)
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+	}
+
+	appURL := os.Getenv("APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:8080"
+	}
+	link := appURL + "/verify-email?token=" + rawToken
+	if os.Getenv("RESEND_API_KEY") != "" {
+		if err := services.SendVerificationEmail(user.Email, link); err != nil {
+			log.Printf("auth resend verification: email send failed: %v", err)
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+		}
+	} else {
+		log.Printf("[DEV] Verification link for %s: %s", user.Email, link)
+	}
+
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 }
 
 func authMagicLinkRequest(c *fiber.Ctx) error {
@@ -92,14 +196,19 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
-	if body.Email == "" {
+	normalizedEmail := normalizeAuthEmail(body.Email)
+	if normalizedEmail == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	// Validate email format
+	if err := services.ValidateEmail(normalizedEmail); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	// Always return the same response regardless of whether the email exists.
 	// This prevents user enumeration (PRD 3.2.1).
 	const enumSafeMsg = "If an account with that email exists, you will receive a sign-in link shortly."
 	q := db.Queries()
-	user, err := q.GetUserByEmail(c.Context(), body.Email)
+	user, err := q.GetUserByEmail(c.Context(), normalizedEmail)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Do not reveal non-existence — return 200 with same message.
@@ -121,19 +230,19 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 		link += "&redirectTo=" + body.RedirectTo
 	}
 	if os.Getenv("RESEND_API_KEY") != "" {
-		if err := services.SendMagicLink(body.Email, link); err != nil {
-			log.Printf("[Resend] magic link email send failed for %s: %v", body.Email, err)
+		if err := services.SendMagicLink(user.Email, link); err != nil {
+			log.Printf("[Resend] magic link email send failed for %s: %v", normalizedEmail, err)
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[Resend] not configured — magic link not sent. For %s use link (valid 10 min): %s", body.Email, link)
+		log.Printf("[Resend] not configured — magic link not sent. For %s use link (valid 10 min): %s", normalizedEmail, link)
 	}
-	data := fiber.Map{"message": enumSafeMsg}
-	// In local dev, expose link on login page so you don't need to check server logs
+	// Log magic link to server console only in dev mode (never in response)
 	if os.Getenv("APP_ENV") == "dev" || appURL == "http://localhost:8080" {
-		data["magic_link"] = link
+		log.Printf("[DEV] Magic link for %s: %s", normalizedEmail, link)
 	}
-	return c.JSON(fiber.Map{"data": data})
+	recordActivity(c.Context(), user.ID, "auth.magic_link.request", "user", user.ID, "email="+user.Email)
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
 }
 
 // authForgotPassword requests a password-reset token. Always returns 200 (no enumeration).
@@ -141,12 +250,20 @@ func authForgotPassword(c *fiber.Ctx) error {
 	var body struct {
 		Email string `json:"email"`
 	}
-	if err := c.BodyParser(&body); err != nil || body.Email == "" {
+	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	normalizedEmail := normalizeAuthEmail(body.Email)
+	if normalizedEmail == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "email required"))
+	}
+	// Validate email format
+	if err := services.ValidateEmail(normalizedEmail); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	const msg = "If an account with that email exists, you will receive a password reset link."
 	q := db.Queries()
-	user, err := q.GetUserByEmail(c.Context(), body.Email)
+	user, err := q.GetUserByEmail(c.Context(), normalizedEmail)
 	if err != nil {
 		// Return 200 regardless — prevent enumeration
 		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
@@ -161,18 +278,26 @@ func authForgotPassword(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
 	if os.Getenv("RESEND_API_KEY") != "" {
-		if err := services.SendPasswordResetLink(body.Email, link); err != nil {
+		if err := services.SendPasswordResetLink(user.Email, link); err != nil {
 			log.Printf("password reset email send: %v", err)
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[DEV] Password reset link for %s: %s", body.Email, link)
+		log.Printf("[DEV] Password reset link for %s: %s", normalizedEmail, link)
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 }
 
 // authResetPassword consumes a reset token and updates the user's password.
 func authResetPassword(c *fiber.Ctx) error {
+	lockKey := "auth:password_reset:" + c.IP()
+	if locked, until := middleware.CheckAuthAttemptLockout(lockKey); locked {
+		return c.Status(429).JSON(ErrorResponse{}.withCode(
+			"RATE_LIMITED",
+			"Too many failed attempts. Try again after "+until.UTC().Format(time.RFC3339),
+		))
+	}
+
 	var body struct {
 		Token    string `json:"token"`
 		Password string `json:"password"`
@@ -183,16 +308,27 @@ func authResetPassword(c *fiber.Ctx) error {
 	if body.Token == "" || body.Password == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "token and password required"))
 	}
-	if len(body.Password) < 8 {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "password must be at least 8 characters"))
+	// Validate password complexity
+	if err := services.ValidatePassword(body.Password); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	if err := services.ResetPassword(c.Context(), body.Token, body.Password); err != nil {
+		middleware.RecordAuthAttemptFailure(lockKey)
 		return c.Status(400).JSON(ErrorResponse{}.withCode("INVALID_TOKEN", err.Error()))
 	}
+	middleware.ClearAuthAttemptFailures(lockKey)
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Password updated. You can now sign in."}})
 }
 
 func authMagicLinkVerify(c *fiber.Ctx) error {
+	lockKey := "auth:magic_link_verify:" + c.IP()
+	if locked, until := middleware.CheckAuthAttemptLockout(lockKey); locked {
+		return c.Status(429).JSON(ErrorResponse{}.withCode(
+			"RATE_LIMITED",
+			"Too many failed attempts. Try again after "+until.UTC().Format(time.RFC3339),
+		))
+	}
+
 	var body struct {
 		Token string `json:"token"`
 	}
@@ -201,10 +337,16 @@ func authMagicLinkVerify(c *fiber.Ctx) error {
 	}
 	user, accessToken, refreshToken, err := services.VerifyMagicLink(c.Context(), body.Token)
 	if err != nil {
+		middleware.RecordAuthAttemptFailure(lockKey)
+		if errors.Is(err, services.ErrEmailNotVerified) {
+			return c.Status(403).JSON(ErrorResponse{}.withCode("EMAIL_NOT_VERIFIED", "Please verify your email before signing in."))
+		}
 		log.Printf("[auth] magic-link verify failed: %v", err)
 		return c.Status(401).JSON(ErrorResponse{}.withCode("INVALID_LINK", err.Error()))
 	}
 	log.Printf("[auth] magic-link verify success user_id=%s", user.ID)
+	middleware.ClearAuthAttemptFailures(lockKey)
+	recordActivity(c.Context(), user.ID, "auth.magic_link.verify", "user", user.ID, "")
 	setRefreshCookie(c, refreshToken)
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
@@ -235,7 +377,25 @@ func authRefresh(c *fiber.Ctx) error {
 
 func authLogout(c *fiber.Ctx) error {
 	refreshToken := c.Cookies(refreshCookieName)
-	_ = services.Logout(c.Context(), refreshToken)
+	authUserID := ""
+
+	// Best-effort access token revocation (blacklist by JTI)
+	auth := c.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		if claims, err := services.ValidateAccessTokenClaims(strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))); err == nil {
+			authUserID = claims.UserID
+			if claims.ID != "" && claims.ExpiresAt != nil {
+				_ = services.BlacklistToken(c.Context(), claims.ID, claims.ExpiresAt.Time)
+			}
+		}
+	}
+
+	if err := services.Logout(c.Context(), refreshToken); err != nil {
+		log.Printf("auth logout: %v", err)
+	}
+	if authUserID != "" {
+		recordActivity(c.Context(), authUserID, "auth.logout", "user", authUserID, "")
+	}
 	clearRefreshCookie(c)
 	return c.SendStatus(204)
 }
@@ -248,7 +408,7 @@ func setRefreshCookie(c *fiber.Ctx, token string) {
 		MaxAge:   refreshCookieMaxAge,
 		HTTPOnly: true,
 		Secure:   os.Getenv("APP_URL") != "" && strings.HasPrefix(os.Getenv("APP_URL"), "https"),
-		SameSite: "Lax",
+		SameSite: "Strict",
 	})
 }
 

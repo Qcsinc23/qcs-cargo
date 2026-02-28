@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/google/uuid"
 )
 
 // DefaultDailyStorageFeeAmount is the per-day storage fee in USD after free period (PRD).
@@ -21,15 +21,18 @@ const DefaultDailyStorageFeeAmount = 1.50
 // SendStorageFeeCharged when Resend is configured. Uses the global db connection.
 func RunStorageFeeJob(ctx context.Context) error {
 	conn := db.DB()
-	today := time.Now().UTC().Format("2006-01-02")
+	nowUTC := time.Now().UTC()
+	nowTimestamp := nowUTC.Format(time.RFC3339)
+	today := nowUTC.Format("2006-01-02")
 
 	rows, err := conn.QueryContext(ctx, `
-		SELECT id, user_id, sender_name, weight_lbs
-		FROM locker_packages
-		WHERE status = 'stored'
-		  AND date(free_storage_expires_at) < date(?)
-		ORDER BY id
-	`, today)
+			SELECT id, user_id, sender_name, weight_lbs
+			FROM locker_packages
+			WHERE status = 'stored'
+			  AND free_storage_expires_at IS NOT NULL
+			  AND free_storage_expires_at < ?
+			ORDER BY id
+		`, nowTimestamp)
 	if err != nil {
 		return fmt.Errorf("storage fee job query: %w", err)
 	}

@@ -10,6 +10,24 @@ import (
 	"database/sql"
 )
 
+const countTokenBlacklistByJti = `-- name: CountTokenBlacklistByJti :one
+SELECT COUNT(*)
+FROM token_blacklist
+WHERE token_jti = ? AND expires_at > ?
+`
+
+type CountTokenBlacklistByJtiParams struct {
+	TokenJti  string `json:"token_jti"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+func (q *Queries) CountTokenBlacklistByJti(ctx context.Context, arg CountTokenBlacklistByJtiParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countTokenBlacklistByJti, arg.TokenJti, arg.ExpiresAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createMagicLink = `-- name: CreateMagicLink :one
 INSERT INTO magic_links (id, user_id, token_hash, redirect_to, used, expires_at, created_at)
 VALUES (?, ?, ?, ?, 0, ?, ?)
@@ -120,10 +138,32 @@ func (q *Queries) CreateSession(ctx context.Context, arg CreateSessionParams) (S
 	return i, err
 }
 
+const createTokenBlacklist = `-- name: CreateTokenBlacklist :exec
+INSERT INTO token_blacklist (id, token_jti, expires_at, created_at)
+VALUES (?, ?, ?, ?)
+`
+
+type CreateTokenBlacklistParams struct {
+	ID        string `json:"id"`
+	TokenJti  string `json:"token_jti"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (q *Queries) CreateTokenBlacklist(ctx context.Context, arg CreateTokenBlacklistParams) error {
+	_, err := q.db.ExecContext(ctx, createTokenBlacklist,
+		arg.ID,
+		arg.TokenJti,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+	)
+	return err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
-RETURNING id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, status, created_at, updated_at
+RETURNING id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -165,11 +205,23 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
+		&i.EmailVerificationToken,
+		&i.EmailVerificationSentAt,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const deleteExpiredTokenBlacklist = `-- name: DeleteExpiredTokenBlacklist :exec
+DELETE FROM token_blacklist
+WHERE expires_at <= ?
+`
+
+func (q *Queries) DeleteExpiredTokenBlacklist(ctx context.Context, expiresAt string) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredTokenBlacklist, expiresAt)
+	return err
 }
 
 const deleteSession = `-- name: DeleteSession :exec
@@ -278,6 +330,39 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 	return i, err
 }
 
+const getUserByEmailVerificationToken = `-- name: GetUserByEmailVerificationToken :one
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
+WHERE email_verification_token = ?
+`
+
+func (q *Queries) GetUserByEmailVerificationToken(ctx context.Context, emailVerificationToken sql.NullString) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmailVerificationToken, emailVerificationToken)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.Role,
+		&i.AvatarUrl,
+		&i.PasswordHash,
+		&i.SuiteCode,
+		&i.AddressStreet,
+		&i.AddressCity,
+		&i.AddressState,
+		&i.AddressZip,
+		&i.StoragePlan,
+		&i.FreeStorageDays,
+		&i.EmailVerified,
+		&i.EmailVerificationToken,
+		&i.EmailVerificationSentAt,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listSessionsByUser = `-- name: ListSessionsByUser :many
 SELECT id, user_id, ip_address, user_agent, expires_at, created_at
 FROM sessions
@@ -343,6 +428,48 @@ UPDATE password_resets SET used = 1 WHERE id = ?
 
 func (q *Queries) MarkPasswordResetUsed(ctx context.Context, id string) error {
 	_, err := q.db.ExecContext(ctx, markPasswordResetUsed, id)
+	return err
+}
+
+const setEmailVerificationToken = `-- name: SetEmailVerificationToken :exec
+UPDATE users
+SET email_verification_token = ?, email_verification_sent_at = ?, updated_at = ?
+WHERE id = ?
+`
+
+type SetEmailVerificationTokenParams struct {
+	EmailVerificationToken  sql.NullString `json:"email_verification_token"`
+	EmailVerificationSentAt sql.NullString `json:"email_verification_sent_at"`
+	UpdatedAt               string         `json:"updated_at"`
+	ID                      string         `json:"id"`
+}
+
+func (q *Queries) SetEmailVerificationToken(ctx context.Context, arg SetEmailVerificationTokenParams) error {
+	_, err := q.db.ExecContext(ctx, setEmailVerificationToken,
+		arg.EmailVerificationToken,
+		arg.EmailVerificationSentAt,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
+const setEmailVerified = `-- name: SetEmailVerified :exec
+UPDATE users
+SET email_verified = 1,
+    email_verification_token = NULL,
+    email_verification_sent_at = NULL,
+    updated_at = ?
+WHERE id = ?
+`
+
+type SetEmailVerifiedParams struct {
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) SetEmailVerified(ctx context.Context, arg SetEmailVerifiedParams) error {
+	_, err := q.db.ExecContext(ctx, setEmailVerified, arg.UpdatedAt, arg.ID)
 	return err
 }
 

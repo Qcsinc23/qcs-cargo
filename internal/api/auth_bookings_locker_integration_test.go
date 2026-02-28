@@ -126,11 +126,20 @@ func TestLockerListAndServiceRequestValidation_WithAuth(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	var listResp struct {
-		Data []map[string]interface{} `json:"data"`
+		Data  []map[string]interface{} `json:"data"`
+		Page  int                      `json:"page"`
+		Limit int                      `json:"limit"`
+		Total int                      `json:"total"`
 	}
 	err = json.NewDecoder(resp.Body).Decode(&listResp)
 	require.NoError(t, err)
 	assert.GreaterOrEqual(t, len(listResp.Data), 1)
+	assert.Equal(t, 1, listResp.Page)
+	assert.Equal(t, 20, listResp.Limit)
+	assert.GreaterOrEqual(t, listResp.Total, len(listResp.Data))
+	for _, row := range listResp.Data {
+		assert.Equal(t, "stored", row["status"])
+	}
 
 	payload := []byte(`{"service_type":"invalid-type"}`)
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/locker/"+testdata.PkgAliceStored1+"/service-request", bytes.NewReader(payload))
@@ -141,4 +150,69 @@ func TestLockerListAndServiceRequestValidation_WithAuth(t *testing.T) {
 	defer resp.Body.Close()
 
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+}
+
+func TestLockerList_PaginationAndLimitBounds(t *testing.T) {
+	app := setupTestApp(t)
+	accessToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/locker?limit=1&page=1", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var page1 struct {
+		Data  []map[string]interface{} `json:"data"`
+		Page  int                      `json:"page"`
+		Limit int                      `json:"limit"`
+		Total int                      `json:"total"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&page1))
+	require.Len(t, page1.Data, 1)
+	assert.Equal(t, 1, page1.Page)
+	assert.Equal(t, 1, page1.Limit)
+	assert.GreaterOrEqual(t, page1.Total, 1)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/locker?limit=999&page=1", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var bounded struct {
+		Data  []map[string]interface{} `json:"data"`
+		Page  int                      `json:"page"`
+		Limit int                      `json:"limit"`
+		Total int                      `json:"total"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&bounded))
+	assert.Equal(t, 100, bounded.Limit)
+	assert.Equal(t, 1, bounded.Page)
+	assert.GreaterOrEqual(t, bounded.Total, len(bounded.Data))
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/locker?status=service_pending&limit=5&page=1", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var filtered struct {
+		Data   []map[string]interface{} `json:"data"`
+		Page   int                      `json:"page"`
+		Limit  int                      `json:"limit"`
+		Total  int                      `json:"total"`
+		Status string                   `json:"status"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&filtered))
+	assert.Equal(t, 1, filtered.Page)
+	assert.Equal(t, 5, filtered.Limit)
+	assert.Equal(t, "service_pending", filtered.Status)
+	require.GreaterOrEqual(t, filtered.Total, len(filtered.Data))
+	for _, row := range filtered.Data {
+		assert.Equal(t, "service_pending", row["status"])
+	}
 }

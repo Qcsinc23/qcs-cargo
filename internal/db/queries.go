@@ -8,6 +8,20 @@ var queries *gen.Queries
 
 // Queries returns the sqlc Queries instance. Call after Connect().
 func Queries() *gen.Queries {
+	mu.RLock()
+	c := conn
+	q := queries
+	mu.RUnlock()
+
+	if c == nil {
+		panic("db: Connect must be called first")
+	}
+	if q != nil {
+		return q
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
 	if conn == nil {
 		panic("db: Connect must be called first")
 	}

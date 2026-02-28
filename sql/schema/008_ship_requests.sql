@@ -20,7 +20,21 @@ CREATE TABLE ship_requests (
     staging_bay TEXT,
     manifest_id TEXT,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    status_constraint_guard INTEGER NOT NULL DEFAULT 1 CHECK (
+        status IN (
+            'draft',
+            'pending_customs',
+            'pending_payment',
+            'paid',
+            'processing',
+            'staged',
+            'shipped',
+            'delivered',
+            'cancelled',
+            'expired'
+        )
+    )
 );
 
 CREATE TABLE ship_request_items (

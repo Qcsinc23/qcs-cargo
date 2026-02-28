@@ -159,7 +159,12 @@ type AdminSearchLockerPackagesRow struct {
 
 // Global search: locker_packages by suite_code or sender_name. Limit 5.
 func (q *Queries) AdminSearchLockerPackages(ctx context.Context, arg AdminSearchLockerPackagesParams) ([]AdminSearchLockerPackagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, adminSearchLockerPackages, arg.SuiteCode, arg.SenderName, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, adminSearchLockerPackages,
+		arg.SuiteCode,
+		arg.SenderName,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -203,9 +208,7 @@ func (q *Queries) AdminSearchLockerPackages(ctx context.Context, arg AdminSearch
 }
 
 const adminSearchShipRequests = `-- name: AdminSearchShipRequests :many
-SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
-       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
-       payment_status, stripe_payment_intent_id, customs_status, created_at, updated_at
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type, consolidate, special_instructions, subtotal, service_fees, insurance, discount, total, payment_status, stripe_payment_intent_id, customs_status, consolidated_weight_lbs, staging_bay, manifest_id, created_at, updated_at, status_constraint_guard
 FROM ship_requests
 WHERE confirmation_code LIKE ?
 ORDER BY created_at DESC
@@ -218,38 +221,16 @@ type AdminSearchShipRequestsParams struct {
 	Offset           int64  `json:"offset"`
 }
 
-type AdminSearchShipRequestsRow struct {
-	ID                    string         `json:"id"`
-	UserID                string         `json:"user_id"`
-	ConfirmationCode      string         `json:"confirmation_code"`
-	Status                string         `json:"status"`
-	DestinationID         string         `json:"destination_id"`
-	RecipientID           sql.NullString `json:"recipient_id"`
-	ServiceType           string         `json:"service_type"`
-	Consolidate           int            `json:"consolidate"`
-	SpecialInstructions   sql.NullString `json:"special_instructions"`
-	Subtotal              float64        `json:"subtotal"`
-	ServiceFees           float64        `json:"service_fees"`
-	Insurance             float64        `json:"insurance"`
-	Discount              float64        `json:"discount"`
-	Total                 float64        `json:"total"`
-	PaymentStatus         sql.NullString `json:"payment_status"`
-	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
-	CustomsStatus         sql.NullString `json:"customs_status"`
-	CreatedAt             string         `json:"created_at"`
-	UpdatedAt             string         `json:"updated_at"`
-}
-
 // Global search: ship_requests by confirmation_code. Limit 5.
-func (q *Queries) AdminSearchShipRequests(ctx context.Context, arg AdminSearchShipRequestsParams) ([]AdminSearchShipRequestsRow, error) {
+func (q *Queries) AdminSearchShipRequests(ctx context.Context, arg AdminSearchShipRequestsParams) ([]ShipRequest, error) {
 	rows, err := q.db.QueryContext(ctx, adminSearchShipRequests, arg.ConfirmationCode, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []AdminSearchShipRequestsRow
+	var items []ShipRequest
 	for rows.Next() {
-		var i AdminSearchShipRequestsRow
+		var i ShipRequest
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -268,8 +249,12 @@ func (q *Queries) AdminSearchShipRequests(ctx context.Context, arg AdminSearchSh
 			&i.PaymentStatus,
 			&i.StripePaymentIntentID,
 			&i.CustomsStatus,
+			&i.ConsolidatedWeightLbs,
+			&i.StagingBay,
+			&i.ManifestID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.StatusConstraintGuard,
 		); err != nil {
 			return nil, err
 		}
@@ -301,7 +286,13 @@ type AdminSearchUsersParams struct {
 
 // Global search: users by name, email, or suite_code. Limit 5.
 func (q *Queries) AdminSearchUsers(ctx context.Context, arg AdminSearchUsersParams) ([]User, error) {
-	rows, err := q.db.QueryContext(ctx, adminSearchUsers, arg.Name, arg.Email, arg.SuiteCode, arg.Limit, arg.Offset)
+	rows, err := q.db.QueryContext(ctx, adminSearchUsers,
+		arg.Name,
+		arg.Email,
+		arg.SuiteCode,
+		arg.Limit,
+		arg.Offset,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -397,6 +388,77 @@ func (q *Queries) AdminStorageReport(ctx context.Context) (AdminStorageReportRow
 		&i.TotalWeight,
 		&i.PackagesExpiringSoon,
 		&i.StorageFeesCollectedToday,
+	)
+	return i, err
+}
+
+const adminSystemHealthCounts = `-- name: AdminSystemHealthCounts :one
+SELECT
+  (SELECT COUNT(*) FROM users) AS users_count,
+  (SELECT COUNT(*) FROM locker_packages) AS locker_packages_count,
+  (SELECT COUNT(*) FROM ship_requests) AS ship_requests_count,
+  (SELECT COUNT(*) FROM bookings) AS bookings_count,
+  (SELECT COUNT(*) FROM service_requests WHERE status = 'pending') AS pending_service_requests,
+  (SELECT COUNT(*) FROM ship_requests WHERE status IN ('pending_customs', 'pending_payment', 'paid', 'processing', 'staged')) AS pending_ship_requests,
+  (SELECT COUNT(*) FROM unmatched_packages WHERE status = 'pending') AS unmatched_pending_count
+`
+
+type AdminSystemHealthCountsRow struct {
+	UsersCount             int64 `json:"users_count"`
+	LockerPackagesCount    int64 `json:"locker_packages_count"`
+	ShipRequestsCount      int64 `json:"ship_requests_count"`
+	BookingsCount          int64 `json:"bookings_count"`
+	PendingServiceRequests int64 `json:"pending_service_requests"`
+	PendingShipRequests    int64 `json:"pending_ship_requests"`
+	UnmatchedPendingCount  int64 `json:"unmatched_pending_count"`
+}
+
+// Admin system-health snapshot counters.
+func (q *Queries) AdminSystemHealthCounts(ctx context.Context) (AdminSystemHealthCountsRow, error) {
+	row := q.db.QueryRowContext(ctx, adminSystemHealthCounts)
+	var i AdminSystemHealthCountsRow
+	err := row.Scan(
+		&i.UsersCount,
+		&i.LockerPackagesCount,
+		&i.ShipRequestsCount,
+		&i.BookingsCount,
+		&i.PendingServiceRequests,
+		&i.PendingShipRequests,
+		&i.UnmatchedPendingCount,
+	)
+	return i, err
+}
+
+const adminSystemHealthSnapshot = `-- name: AdminSystemHealthSnapshot :one
+SELECT
+  (SELECT COUNT(*) FROM users) AS users_count,
+  (SELECT COUNT(*) FROM locker_packages) AS locker_packages_count,
+  (SELECT COUNT(*) FROM locker_packages WHERE status = 'stored') AS stored_packages_count,
+  (SELECT COUNT(*) FROM service_requests WHERE status = 'pending') AS pending_service_requests_count,
+  (SELECT COUNT(*) FROM unmatched_packages WHERE status = 'pending') AS pending_unmatched_packages_count,
+  (SELECT COUNT(*) FROM ship_requests WHERE payment_status IS NULL OR payment_status != 'paid') AS pending_ship_requests_count
+`
+
+type AdminSystemHealthSnapshotRow struct {
+	UsersCount                    int64 `json:"users_count"`
+	LockerPackagesCount           int64 `json:"locker_packages_count"`
+	StoredPackagesCount           int64 `json:"stored_packages_count"`
+	PendingServiceRequestsCount   int64 `json:"pending_service_requests_count"`
+	PendingUnmatchedPackagesCount int64 `json:"pending_unmatched_packages_count"`
+	PendingShipRequestsCount      int64 `json:"pending_ship_requests_count"`
+}
+
+// System health snapshot for admin monitoring dashboard.
+func (q *Queries) AdminSystemHealthSnapshot(ctx context.Context) (AdminSystemHealthSnapshotRow, error) {
+	row := q.db.QueryRowContext(ctx, adminSystemHealthSnapshot)
+	var i AdminSystemHealthSnapshotRow
+	err := row.Scan(
+		&i.UsersCount,
+		&i.LockerPackagesCount,
+		&i.StoredPackagesCount,
+		&i.PendingServiceRequestsCount,
+		&i.PendingUnmatchedPackagesCount,
+		&i.PendingShipRequestsCount,
 	)
 	return i, err
 }

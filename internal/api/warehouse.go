@@ -4,6 +4,7 @@ package api
 
 import (
 	"database/sql"
+	"log"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
@@ -81,7 +82,11 @@ func warehouseLockerReceive(c *fiber.Ctx) error {
 	}
 	now := time.Now().UTC()
 	nowStr := now.Format(time.RFC3339)
-	expiresAt := now.AddDate(0, 0, 30).Format(time.RFC3339)
+	freeDays := user.FreeStorageDays
+	if freeDays <= 0 {
+		freeDays = 30
+	}
+	expiresAt := now.AddDate(0, 0, freeDays).Format(time.RFC3339)
 	id := uuid.New().String()
 	arg := gen.CreateLockerPackageParams{
 		ID:                   id,
@@ -113,7 +118,9 @@ func warehouseLockerReceive(c *fiber.Ctx) error {
 		if body.SenderName != nil && *body.SenderName != "" {
 			sender = *body.SenderName
 		}
-		_ = services.SendPackageArrived(user.Email, sender, pkg.WeightLbs.Float64)
+		if err := services.SendPackageArrived(user.Email, sender, pkg.WeightLbs.Float64); err != nil {
+			log.Printf("[warehouse] package arrival email failed for user %s locker_package %s: %v", user.ID, pkg.ID, err)
+		}
 	}
 
 	return c.Status(201).JSON(fiber.Map{"data": pkg})
@@ -248,7 +255,11 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 	}
 	now := time.Now().UTC()
 	nowStr := now.Format(time.RFC3339)
-	expiresAt := now.AddDate(0, 0, 30).Format(time.RFC3339)
+	freeDays := user.FreeStorageDays
+	if freeDays <= 0 {
+		freeDays = 30
+	}
+	expiresAt := now.AddDate(0, 0, freeDays).Format(time.RFC3339)
 	bookingIDNull := sql.NullString{String: body.BookingID, Valid: true}
 	tx, err := db.DB().BeginTx(c.Context(), nil)
 	if err != nil {
@@ -300,7 +311,9 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 		if body.WeightLbs != nil {
 			weight = *body.WeightLbs
 		}
-		_ = services.SendPackageArrived(user.Email, sender, weight)
+		if err := services.SendPackageArrived(user.Email, sender, weight); err != nil {
+			log.Printf("[warehouse] booking-receive email failed for booking %s user %s: %v", body.BookingID, user.ID, err)
+		}
 	}
 
 	return c.Status(201).JSON(fiber.Map{"data": created})

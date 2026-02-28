@@ -87,6 +87,26 @@ func (q *Queries) AdminListLockerPackages(ctx context.Context, arg AdminListLock
 	return items, nil
 }
 
+const countLockerPackagesByUserFiltered = `-- name: CountLockerPackagesByUserFiltered :one
+SELECT COUNT(*) AS count
+FROM locker_packages
+WHERE user_id = ?
+  AND (? = '' OR status = ?)
+`
+
+type CountLockerPackagesByUserFilteredParams struct {
+	UserID  string      `json:"user_id"`
+	Column2 interface{} `json:"column_2"`
+	Status  string      `json:"status"`
+}
+
+func (q *Queries) CountLockerPackagesByUserFiltered(ctx context.Context, arg CountLockerPackagesByUserFilteredParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLockerPackagesByUserFiltered, arg.UserID, arg.Column2, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createLockerPackage = `-- name: CreateLockerPackage :one
 INSERT INTO locker_packages (
     id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name,
@@ -334,18 +354,11 @@ SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, s
        status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
 FROM locker_packages
 WHERE user_id = ?
-  AND (? = '' OR status = ?)
 ORDER BY arrived_at DESC
 `
 
-type ListLockerPackagesByUserParams struct {
-	UserID  string      `json:"user_id"`
-	Column2 interface{} `json:"column_2"`
-	Status  string      `json:"status"`
-}
-
-func (q *Queries) ListLockerPackagesByUser(ctx context.Context, arg ListLockerPackagesByUserParams) ([]LockerPackage, error) {
-	rows, err := q.db.QueryContext(ctx, listLockerPackagesByUser, arg.UserID, arg.Column2, arg.Status)
+func (q *Queries) ListLockerPackagesByUser(ctx context.Context, userID string) ([]LockerPackage, error) {
+	rows, err := q.db.QueryContext(ctx, listLockerPackagesByUser, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -375,6 +388,172 @@ func (q *Queries) ListLockerPackagesByUser(ctx context.Context, arg ListLockerPa
 			&i.DisposedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLockerPackagesByUserByStatus = `-- name: ListLockerPackagesByUserByStatus :many
+SELECT id, user_id, suite_code, booking_id, tracking_inbound, carrier_inbound, sender_name, sender_address,
+       weight_lbs, length_in, width_in, height_in, arrival_photo_url, condition, storage_bay,
+       status, arrived_at, free_storage_expires_at, disposed_at, created_at, updated_at
+FROM locker_packages
+WHERE user_id = ?
+  AND status = ?
+ORDER BY arrived_at DESC
+`
+
+type ListLockerPackagesByUserByStatusParams struct {
+	UserID string `json:"user_id"`
+	Status string `json:"status"`
+}
+
+func (q *Queries) ListLockerPackagesByUserByStatus(ctx context.Context, arg ListLockerPackagesByUserByStatusParams) ([]LockerPackage, error) {
+	rows, err := q.db.QueryContext(ctx, listLockerPackagesByUserByStatus, arg.UserID, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LockerPackage
+	for rows.Next() {
+		var i LockerPackage
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SuiteCode,
+			&i.BookingID,
+			&i.TrackingInbound,
+			&i.CarrierInbound,
+			&i.SenderName,
+			&i.SenderAddress,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ArrivalPhotoUrl,
+			&i.Condition,
+			&i.StorageBay,
+			&i.Status,
+			&i.ArrivedAt,
+			&i.FreeStorageExpiresAt,
+			&i.DisposedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLockerPackagesByUserPaged = `-- name: ListLockerPackagesByUserPaged :many
+SELECT
+    lp.id, lp.user_id, lp.suite_code, lp.booking_id, lp.tracking_inbound, lp.carrier_inbound, lp.sender_name, lp.sender_address,
+    lp.weight_lbs, lp.length_in, lp.width_in, lp.height_in, lp.arrival_photo_url, lp.condition, lp.storage_bay,
+    lp.status, lp.arrived_at, lp.free_storage_expires_at, lp.disposed_at, lp.created_at, lp.updated_at,
+    COUNT(sr.id) AS pending_service_requests
+FROM locker_packages lp
+LEFT JOIN service_requests sr
+    ON sr.locker_package_id = lp.id
+   AND sr.user_id = lp.user_id
+   AND sr.status = 'pending'
+WHERE lp.user_id = ?
+  AND (? = '' OR lp.status = ?)
+GROUP BY
+    lp.id, lp.user_id, lp.suite_code, lp.booking_id, lp.tracking_inbound, lp.carrier_inbound, lp.sender_name, lp.sender_address,
+    lp.weight_lbs, lp.length_in, lp.width_in, lp.height_in, lp.arrival_photo_url, lp.condition, lp.storage_bay,
+    lp.status, lp.arrived_at, lp.free_storage_expires_at, lp.disposed_at, lp.created_at, lp.updated_at
+ORDER BY lp.arrived_at DESC
+LIMIT ? OFFSET ?
+`
+
+type ListLockerPackagesByUserPagedParams struct {
+	UserID  string      `json:"user_id"`
+	Column2 interface{} `json:"column_2"`
+	Status  string      `json:"status"`
+	Limit   int64       `json:"limit"`
+	Offset  int64       `json:"offset"`
+}
+
+type ListLockerPackagesByUserPagedRow struct {
+	ID                     string          `json:"id"`
+	UserID                 string          `json:"user_id"`
+	SuiteCode              string          `json:"suite_code"`
+	BookingID              sql.NullString  `json:"booking_id"`
+	TrackingInbound        sql.NullString  `json:"tracking_inbound"`
+	CarrierInbound         sql.NullString  `json:"carrier_inbound"`
+	SenderName             sql.NullString  `json:"sender_name"`
+	SenderAddress          sql.NullString  `json:"sender_address"`
+	WeightLbs              sql.NullFloat64 `json:"weight_lbs"`
+	LengthIn               sql.NullFloat64 `json:"length_in"`
+	WidthIn                sql.NullFloat64 `json:"width_in"`
+	HeightIn               sql.NullFloat64 `json:"height_in"`
+	ArrivalPhotoUrl        sql.NullString  `json:"arrival_photo_url"`
+	Condition              sql.NullString  `json:"condition"`
+	StorageBay             sql.NullString  `json:"storage_bay"`
+	Status                 string          `json:"status"`
+	ArrivedAt              sql.NullString  `json:"arrived_at"`
+	FreeStorageExpiresAt   sql.NullString  `json:"free_storage_expires_at"`
+	DisposedAt             sql.NullString  `json:"disposed_at"`
+	CreatedAt              string          `json:"created_at"`
+	UpdatedAt              string          `json:"updated_at"`
+	PendingServiceRequests int64           `json:"pending_service_requests"`
+}
+
+func (q *Queries) ListLockerPackagesByUserPaged(ctx context.Context, arg ListLockerPackagesByUserPagedParams) ([]ListLockerPackagesByUserPagedRow, error) {
+	rows, err := q.db.QueryContext(ctx, listLockerPackagesByUserPaged,
+		arg.UserID,
+		arg.Column2,
+		arg.Status,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLockerPackagesByUserPagedRow
+	for rows.Next() {
+		var i ListLockerPackagesByUserPagedRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.SuiteCode,
+			&i.BookingID,
+			&i.TrackingInbound,
+			&i.CarrierInbound,
+			&i.SenderName,
+			&i.SenderAddress,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ArrivalPhotoUrl,
+			&i.Condition,
+			&i.StorageBay,
+			&i.Status,
+			&i.ArrivedAt,
+			&i.FreeStorageExpiresAt,
+			&i.DisposedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.PendingServiceRequests,
 		); err != nil {
 			return nil, err
 		}

@@ -14,6 +14,8 @@ CREATE TABLE users (
     storage_plan TEXT NOT NULL DEFAULT 'free',
     free_storage_days INTEGER NOT NULL DEFAULT 30,
     email_verified INTEGER NOT NULL DEFAULT 0,
+    email_verification_token TEXT,
+    email_verification_sent_at TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL

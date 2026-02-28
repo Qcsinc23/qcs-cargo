@@ -12,7 +12,9 @@ import (
 
 const adminListBookings = `-- name: AdminListBookings :many
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 ORDER BY scheduled_date DESC, created_at DESC
@@ -44,6 +46,12 @@ func (q *Queries) AdminListBookings(ctx context.Context, arg AdminListBookingsPa
 			&i.ScheduledDate,
 			&i.TimeSlot,
 			&i.SpecialInstructions,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ValueUsd,
+			&i.AddInsurance,
 			&i.Subtotal,
 			&i.Discount,
 			&i.Insurance,
@@ -68,7 +76,9 @@ func (q *Queries) AdminListBookings(ctx context.Context, arg AdminListBookingsPa
 
 const adminListBookingsToday = `-- name: AdminListBookingsToday :many
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE scheduled_date = ?
@@ -96,6 +106,12 @@ func (q *Queries) AdminListBookingsToday(ctx context.Context, scheduledDate stri
 			&i.ScheduledDate,
 			&i.TimeSlot,
 			&i.SpecialInstructions,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ValueUsd,
+			&i.AddInsurance,
 			&i.Subtotal,
 			&i.Discount,
 			&i.Insurance,
@@ -121,13 +137,16 @@ func (q *Queries) AdminListBookingsToday(ctx context.Context, scheduledDate stri
 const createBooking = `-- name: CreateBooking :one
 INSERT INTO bookings (
     id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-    scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
-    created_at, updated_at
+    scheduled_date, time_slot, special_instructions,
+    weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+    subtotal, discount, insurance, total, created_at, updated_at
 ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-          scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+          scheduled_date, time_slot, special_instructions,
+          weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+          subtotal, discount, insurance, total,
           payment_status, stripe_payment_intent_id, created_at, updated_at
 `
 
@@ -142,6 +161,12 @@ type CreateBookingParams struct {
 	ScheduledDate       string         `json:"scheduled_date"`
 	TimeSlot            string         `json:"time_slot"`
 	SpecialInstructions sql.NullString `json:"special_instructions"`
+	WeightLbs           float64        `json:"weight_lbs"`
+	LengthIn            float64        `json:"length_in"`
+	WidthIn             float64        `json:"width_in"`
+	HeightIn            float64        `json:"height_in"`
+	ValueUsd            float64        `json:"value_usd"`
+	AddInsurance        int            `json:"add_insurance"`
 	Subtotal            float64        `json:"subtotal"`
 	Discount            float64        `json:"discount"`
 	Insurance           float64        `json:"insurance"`
@@ -162,6 +187,12 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (B
 		arg.ScheduledDate,
 		arg.TimeSlot,
 		arg.SpecialInstructions,
+		arg.WeightLbs,
+		arg.LengthIn,
+		arg.WidthIn,
+		arg.HeightIn,
+		arg.ValueUsd,
+		arg.AddInsurance,
 		arg.Subtotal,
 		arg.Discount,
 		arg.Insurance,
@@ -181,6 +212,12 @@ func (q *Queries) CreateBooking(ctx context.Context, arg CreateBookingParams) (B
 		&i.ScheduledDate,
 		&i.TimeSlot,
 		&i.SpecialInstructions,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ValueUsd,
+		&i.AddInsurance,
 		&i.Subtotal,
 		&i.Discount,
 		&i.Insurance,
@@ -209,7 +246,9 @@ func (q *Queries) DeleteBooking(ctx context.Context, arg DeleteBookingParams) er
 
 const getBookingByID = `-- name: GetBookingByID :one
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE id = ? AND user_id = ?
@@ -234,6 +273,12 @@ func (q *Queries) GetBookingByID(ctx context.Context, arg GetBookingByIDParams) 
 		&i.ScheduledDate,
 		&i.TimeSlot,
 		&i.SpecialInstructions,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ValueUsd,
+		&i.AddInsurance,
 		&i.Subtotal,
 		&i.Discount,
 		&i.Insurance,
@@ -248,7 +293,9 @@ func (q *Queries) GetBookingByID(ctx context.Context, arg GetBookingByIDParams) 
 
 const getBookingByIDOnly = `-- name: GetBookingByIDOnly :one
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE id = ?
@@ -268,6 +315,12 @@ func (q *Queries) GetBookingByIDOnly(ctx context.Context, id string) (Booking, e
 		&i.ScheduledDate,
 		&i.TimeSlot,
 		&i.SpecialInstructions,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ValueUsd,
+		&i.AddInsurance,
 		&i.Subtotal,
 		&i.Discount,
 		&i.Insurance,
@@ -282,7 +335,9 @@ func (q *Queries) GetBookingByIDOnly(ctx context.Context, id string) (Booking, e
 
 const listBookingsByUser = `-- name: ListBookingsByUser :many
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE user_id = ?
@@ -309,6 +364,12 @@ func (q *Queries) ListBookingsByUser(ctx context.Context, userID string) ([]Book
 			&i.ScheduledDate,
 			&i.TimeSlot,
 			&i.SpecialInstructions,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ValueUsd,
+			&i.AddInsurance,
 			&i.Subtotal,
 			&i.Discount,
 			&i.Insurance,
@@ -333,7 +394,9 @@ func (q *Queries) ListBookingsByUser(ctx context.Context, userID string) ([]Book
 
 const listBookingsToday = `-- name: ListBookingsToday :many
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-       scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE date(scheduled_date) = date('now')
@@ -360,6 +423,12 @@ func (q *Queries) ListBookingsToday(ctx context.Context) ([]Booking, error) {
 			&i.ScheduledDate,
 			&i.TimeSlot,
 			&i.SpecialInstructions,
+			&i.WeightLbs,
+			&i.LengthIn,
+			&i.WidthIn,
+			&i.HeightIn,
+			&i.ValueUsd,
+			&i.AddInsurance,
 			&i.Subtotal,
 			&i.Discount,
 			&i.Insurance,
@@ -384,17 +453,26 @@ func (q *Queries) ListBookingsToday(ctx context.Context) ([]Booking, error) {
 
 const updateBooking = `-- name: UpdateBooking :one
 UPDATE bookings
-SET status = ?, special_instructions = ?, subtotal = ?, discount = ?, insurance = ?, total = ?,
-    payment_status = ?, updated_at = ?
+SET status = ?, special_instructions = ?,
+    weight_lbs = ?, length_in = ?, width_in = ?, height_in = ?, value_usd = ?, add_insurance = ?,
+    subtotal = ?, discount = ?, insurance = ?, total = ?, payment_status = ?, updated_at = ?
 WHERE id = ? AND user_id = ?
 RETURNING id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
-          scheduled_date, time_slot, special_instructions, subtotal, discount, insurance, total,
+          scheduled_date, time_slot, special_instructions,
+          weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+          subtotal, discount, insurance, total,
           payment_status, stripe_payment_intent_id, created_at, updated_at
 `
 
 type UpdateBookingParams struct {
 	Status              string         `json:"status"`
 	SpecialInstructions sql.NullString `json:"special_instructions"`
+	WeightLbs           float64        `json:"weight_lbs"`
+	LengthIn            float64        `json:"length_in"`
+	WidthIn             float64        `json:"width_in"`
+	HeightIn            float64        `json:"height_in"`
+	ValueUsd            float64        `json:"value_usd"`
+	AddInsurance        int            `json:"add_insurance"`
 	Subtotal            float64        `json:"subtotal"`
 	Discount            float64        `json:"discount"`
 	Insurance           float64        `json:"insurance"`
@@ -409,6 +487,12 @@ func (q *Queries) UpdateBooking(ctx context.Context, arg UpdateBookingParams) (B
 	row := q.db.QueryRowContext(ctx, updateBooking,
 		arg.Status,
 		arg.SpecialInstructions,
+		arg.WeightLbs,
+		arg.LengthIn,
+		arg.WidthIn,
+		arg.HeightIn,
+		arg.ValueUsd,
+		arg.AddInsurance,
 		arg.Subtotal,
 		arg.Discount,
 		arg.Insurance,
@@ -430,6 +514,12 @@ func (q *Queries) UpdateBooking(ctx context.Context, arg UpdateBookingParams) (B
 		&i.ScheduledDate,
 		&i.TimeSlot,
 		&i.SpecialInstructions,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ValueUsd,
+		&i.AddInsurance,
 		&i.Subtotal,
 		&i.Discount,
 		&i.Insurance,

@@ -16,4 +16,6 @@ COPY --from=builder /app/sql/migrations /app/sql/migrations
 ENV PORT=8080
 WORKDIR /app
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -q -O /dev/null "http://127.0.0.1:${PORT}/api/v1/health" || exit 1
 CMD ["./qcs-server"]

@@ -43,6 +43,12 @@ type Booking struct {
 	ScheduledDate         string         `json:"scheduled_date"`
 	TimeSlot              string         `json:"time_slot"`
 	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	WeightLbs             float64        `json:"weight_lbs"`
+	LengthIn              float64        `json:"length_in"`
+	WidthIn               float64        `json:"width_in"`
+	HeightIn              float64        `json:"height_in"`
+	ValueUsd              float64        `json:"value_usd"`
+	AddInsurance          int            `json:"add_insurance"`
 	Subtotal              float64        `json:"subtotal"`
 	Discount              float64        `json:"discount"`
 	Insurance             float64        `json:"insurance"`
@@ -51,6 +57,20 @@ type Booking struct {
 	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
 	CreatedAt             string         `json:"created_at"`
 	UpdatedAt             string         `json:"updated_at"`
+}
+
+type Destination struct {
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	Code           string  `json:"code"`
+	Capital        string  `json:"capital"`
+	UsdPerLb       float64 `json:"usd_per_lb"`
+	TransitDaysMin int     `json:"transit_days_min"`
+	TransitDaysMax int     `json:"transit_days_max"`
+	IsActive       int     `json:"is_active"`
+	SortOrder      int     `json:"sort_order"`
+	CreatedAt      string  `json:"created_at"`
+	UpdatedAt      string  `json:"updated_at"`
 }
 
 type InboundTracking struct {
@@ -219,6 +239,7 @@ type ShipRequest struct {
 	ManifestID            sql.NullString  `json:"manifest_id"`
 	CreatedAt             string          `json:"created_at"`
 	UpdatedAt             string          `json:"updated_at"`
+	StatusConstraintGuard int             `json:"status_constraint_guard"`
 }
 
 type ShipRequestItem struct {
@@ -271,6 +292,13 @@ type Template struct {
 	CreatedAt     string         `json:"created_at"`
 }
 
+type TokenBlacklist struct {
+	ID        string `json:"id"`
+	TokenJti  string `json:"token_jti"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
 type UnmatchedPackage struct {
 	ID              string          `json:"id"`
 	Carrier         sql.NullString  `json:"carrier"`
@@ -287,24 +315,26 @@ type UnmatchedPackage struct {
 }
 
 type User struct {
-	ID              string         `json:"id"`
-	Name            string         `json:"name"`
-	Email           string         `json:"email"`
-	Phone           sql.NullString `json:"phone"`
-	Role            string         `json:"role"`
-	AvatarUrl       sql.NullString `json:"avatar_url"`
-	PasswordHash    sql.NullString `json:"password_hash"`
-	SuiteCode       sql.NullString `json:"suite_code"`
-	AddressStreet   sql.NullString `json:"address_street"`
-	AddressCity     sql.NullString `json:"address_city"`
-	AddressState    sql.NullString `json:"address_state"`
-	AddressZip      sql.NullString `json:"address_zip"`
-	StoragePlan     string         `json:"storage_plan"`
-	FreeStorageDays int            `json:"free_storage_days"`
-	EmailVerified   int            `json:"email_verified"`
-	Status          string         `json:"status"`
-	CreatedAt       string         `json:"created_at"`
-	UpdatedAt       string         `json:"updated_at"`
+	ID                      string         `json:"id"`
+	Name                    string         `json:"name"`
+	Email                   string         `json:"email"`
+	Phone                   sql.NullString `json:"phone"`
+	Role                    string         `json:"role"`
+	AvatarUrl               sql.NullString `json:"avatar_url"`
+	PasswordHash            sql.NullString `json:"password_hash"`
+	SuiteCode               sql.NullString `json:"suite_code"`
+	AddressStreet           sql.NullString `json:"address_street"`
+	AddressCity             sql.NullString `json:"address_city"`
+	AddressState            sql.NullString `json:"address_state"`
+	AddressZip              sql.NullString `json:"address_zip"`
+	StoragePlan             string         `json:"storage_plan"`
+	FreeStorageDays         int            `json:"free_storage_days"`
+	EmailVerified           int            `json:"email_verified"`
+	EmailVerificationToken  sql.NullString `json:"email_verification_token"`
+	EmailVerificationSentAt sql.NullString `json:"email_verification_sent_at"`
+	Status                  string         `json:"status"`
+	CreatedAt               string         `json:"created_at"`
+	UpdatedAt               string         `json:"updated_at"`
 }
 
 type WarehouseBay struct {

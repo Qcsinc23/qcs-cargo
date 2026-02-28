@@ -3,10 +3,10 @@ package api
 import (
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/gofiber/fiber/v2"
 )
 
 // RegisterAccount mounts POST /account/delete. Requires auth.
@@ -28,5 +28,6 @@ func accountDelete(c *fiber.Ctx) error {
 	}
 	// Optionally revoke all sessions so they are logged out
 	_ = db.Queries().DeleteSessionsByUser(c.Context(), userID)
+	recordActivity(c.Context(), userID, "auth.account.delete", "user", userID, "status=deleted")
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Account marked for deletion."}})
 }

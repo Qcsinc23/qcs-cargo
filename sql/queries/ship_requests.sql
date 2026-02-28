@@ -106,4 +106,5 @@ LIMIT ? OFFSET ?;
 -- name: GetActiveShipRequestCountByPackageID :one
 SELECT COUNT(*) FROM ship_request_items sri
 JOIN ship_requests sr ON sri.ship_request_id = sr.id
-WHERE sri.locker_package_id = ? AND sr.status != 'cancelled';
+WHERE sri.locker_package_id = ?
+  AND sr.status NOT IN ('delivered', 'cancelled', 'expired');

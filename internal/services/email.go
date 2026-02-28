@@ -2,12 +2,16 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"sync"
 
 	"github.com/resend/resend-go/v3"
 )
 
 const supportEmail = "support@qcs-cargo.com"
+
+var missingResendKeyLogOnce sync.Once
 
 // fromAddress returns the sender email for transactional mail. Prefers FROM_EMAIL env; otherwise Resend sandbox.
 func fromAddress() string {
@@ -21,6 +25,9 @@ func fromAddress() string {
 func resendClient() *resend.Client {
 	key := os.Getenv("RESEND_API_KEY")
 	if key == "" {
+		missingResendKeyLogOnce.Do(func() {
+			log.Print("[email] RESEND_API_KEY not set; email sends are no-op")
+		})
 		return nil
 	}
 	return resend.NewClient(key)
@@ -88,6 +95,25 @@ func SendPasswordResetLink(to, link string) error {
 	subject := "Reset your QCS Cargo password"
 	html := fmt.Sprintf(`<p>You requested a password reset. Click the link below to set a new password. This link expires in 1 hour.</p><p><a href="%s">Reset password</a></p><p>If you didn't request this, you can ignore this email.</p>`, link)
 	text := fmt.Sprintf("Reset your password (valid 1 hour): %s", link)
+	_, err := client.Emails.Send(&resend.SendEmailRequest{
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
+		Subject: subject,
+		Html:    html,
+		Text:    text,
+	})
+	return err
+}
+
+// SendVerificationEmail sends the account verification link to the user.
+func SendVerificationEmail(to, link string) error {
+	client := resendClient()
+	if client == nil {
+		return nil
+	}
+	subject := "Verify your QCS Cargo email"
+	html := fmt.Sprintf(`<p>Welcome to QCS Cargo. Please verify your email address by clicking the link below. This link expires in 24 hours.</p><p><a href="%s">Verify email</a></p><p>If you didn't create this account, you can ignore this email.</p>`, link)
+	text := fmt.Sprintf("Verify your email (valid 24 hours): %s", link)
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},

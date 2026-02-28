@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,4 +106,130 @@ func TestAdminSearch_PaginatesResults(t *testing.T) {
 	assert.Equal(t, 1, page1.Limit)
 	assert.Equal(t, 1, page2.Limit)
 	assert.NotEqual(t, page1.Users[0]["id"], page2.Users[0]["id"])
+}
+
+func TestAdminSearch_ShipRequestMappingContract(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/search?q=QCS-PAID-001&limit=5&page=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		ShipRequests []map[string]interface{} `json:"ship_requests"`
+		Page         int                      `json:"page"`
+		Limit        int                      `json:"limit"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	require.NotEmpty(t, body.ShipRequests)
+
+	sr := body.ShipRequests[0]
+	assert.Equal(t, "QCS-PAID-001", sr["confirmation_code"])
+	assert.Equal(t, "paid", sr["status"])
+	assert.Equal(t, "guyana", sr["destination_id"])
+	assert.Equal(t, "standard", sr["service_type"])
+	assert.NotEmpty(t, sr["id"])
+	assert.NotEmpty(t, sr["user_id"])
+	assert.NotEmpty(t, sr["recipient_id"])
+	assert.Equal(t, 1, body.Page)
+	assert.Equal(t, 5, body.Limit)
+}
+
+func TestAdminSearch_LimitIsBoundedToMax(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/search?q=a&limit=999&page=1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Users []map[string]interface{} `json:"users"`
+		Limit int                      `json:"limit"`
+		Page  int                      `json:"page"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, 100, body.Limit)
+	assert.Equal(t, 1, body.Page)
+	assert.LessOrEqual(t, len(body.Users), 100)
+}
+
+func TestAdminSystemHealth_ReturnsMonitoringSnapshot(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system-health", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, "operational", body.Data["status"])
+	assert.Equal(t, true, body.Data["db_ok"])
+	assert.Equal(t, "/metrics", body.Data["metrics_endpoint"])
+	_, hasUsers := body.Data["users"]
+	assert.True(t, hasUsers)
+	_, hasPendingShip := body.Data["pending_ship_count"]
+	assert.True(t, hasPendingShip)
+	_, hasGeneratedAt := body.Data["generated_at"]
+	assert.True(t, hasGeneratedAt)
+}
+
+func TestAdminSystemHealth_RequiresAdminAuth(t *testing.T) {
+	app := setupTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system-health", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestAdminDestinations_ListAndUpdate(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/destinations", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var listed struct {
+		Data []map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&listed))
+	require.GreaterOrEqual(t, len(listed.Data), 5)
+
+	payload := strings.NewReader(`{"usd_per_lb":3.65,"transit_days_min":4,"transit_days_max":6,"sort_order":11}`)
+	req = httptest.NewRequest(http.MethodPatch, "/api/v1/admin/destinations/guyana", payload)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var updated struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&updated))
+	assert.Equal(t, "guyana", updated.Data["id"])
+	assert.Equal(t, 3.65, updated.Data["usd_per_lb"])
+	assert.Equal(t, float64(4), updated.Data["transit_days_min"])
+	assert.Equal(t, float64(6), updated.Data["transit_days_max"])
 }

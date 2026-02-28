@@ -4,8 +4,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
 )
 
 // CtxUserID is the key for user ID in Locals.
@@ -30,13 +30,33 @@ func RequireAuth(c *fiber.Ctx) error {
 		})
 	}
 	token := strings.TrimSpace(auth[len(prefix):])
-	userID, email, role, err := services.ValidateAccessToken(token)
+	claims, err := services.ValidateAccessTokenClaims(token)
 	if err != nil {
 		log.Printf("[auth] %s %s RequireAuth: token invalid or expired (%v)", c.Method(), c.Path(), err)
 		return c.Status(401).JSON(fiber.Map{
 			"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "Invalid or expired token"},
 		})
 	}
+
+	// Check token revocation blacklist.
+	if claims.ID != "" {
+		blacklisted, err := services.IsTokenBlacklisted(c.Context(), claims.ID)
+		if err != nil {
+			log.Printf("[auth] %s %s RequireAuth: blacklist check error (%v)", c.Method(), c.Path(), err)
+			return c.Status(503).JSON(fiber.Map{
+				"error": fiber.Map{"code": "AUTH_CHECK_UNAVAILABLE", "message": "Authentication temporarily unavailable"},
+			})
+		}
+		if blacklisted {
+			return c.Status(401).JSON(fiber.Map{
+				"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "Token has been revoked"},
+			})
+		}
+	}
+
+	userID := claims.UserID
+	email := claims.Email
+	role := claims.Role
 	log.Printf("[auth] %s %s RequireAuth: ok user_id=%s", c.Method(), c.Path(), userID)
 	c.Locals(CtxUserID, userID)
 	c.Locals(CtxUserEmail, email)

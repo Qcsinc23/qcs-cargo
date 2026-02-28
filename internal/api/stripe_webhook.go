@@ -6,12 +6,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/stripe/stripe-go/v81"
-	"github.com/stripe/stripe-go/v81/webhook"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
+	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/webhook"
 )
 
 // RegisterStripeWebhook mounts POST /webhooks/stripe. Must be mounted on a router that serves /api (e.g. app.Group("/api")).
@@ -23,8 +23,8 @@ func RegisterStripeWebhook(g fiber.Router) {
 func stripeWebhookHandler(c *fiber.Ctx) error {
 	secret := os.Getenv("STRIPE_WEBHOOK_SECRET")
 	if secret == "" {
-		log.Print("[stripe webhook] STRIPE_WEBHOOK_SECRET not set")
-		return c.Status(500).SendString("Webhook not configured")
+		log.Print("[stripe webhook] STRIPE_WEBHOOK_SECRET not set; rejecting webhook with 503")
+		return c.Status(fiber.StatusServiceUnavailable).SendString("Webhook not configured")
 	}
 	payload := c.Body()
 	sig := c.Get("Stripe-Signature")
@@ -78,7 +78,9 @@ func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, paymentIntentID string) e
 	// Lifecycle email: payment success
 	u, err := db.Queries().GetUserByID(c.Context(), sr.UserID)
 	if err == nil {
-		_ = services.SendShipRequestPaid(u.Email, sr.ConfirmationCode)
+		if err := services.SendShipRequestPaid(u.Email, sr.ConfirmationCode); err != nil {
+			log.Printf("[stripe webhook] send payment success email failed for ship_request %s user %s: %v", sr.ID, sr.UserID, err)
+		}
 	}
 	return nil
 }

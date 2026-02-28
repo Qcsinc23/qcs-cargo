@@ -18,7 +18,7 @@
 | INC-001 | INC | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
 | INC-002 | INC | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; integration+e2e | implemented 2026-02-28 wave4 |
 | INC-003 | INC | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run Admin -count=1; go test ./...; go test -race ./... | implemented 2026-02-28 wave5 (admin search pagination + bounded queries) |
-| INC-004 | INC | TBD | OPEN | - | - | - |
+| INC-004 | INC | TBD | IMPLEMENTED | codex | go test ./internal/db -count=1; go test ./...; go test -race ./... | implemented 2026-02-28 wave6 (db reconnect/reset support; removed sync.Once isolation blocker) |
 | INC-005 | INC | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
 | INC-006 | INC | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
 | INC-007 | INC | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
@@ -81,17 +81,17 @@
 | MISS-021 | MISS | TBD | OPEN | - | - | - |
 | MISS-022 | MISS | TBD | OPEN | - | - | - |
 | MISS-023 | MISS | TBD | OPEN | - | - | - |
-| MISS-024 | MISS | TBD | OPEN | - | - | - |
+| MISS-024 | MISS | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run AdminSystemHealth -count=1; go test ./internal/api -count=1 | implemented 2026-02-28 wave7 (admin system-health monitoring endpoint) |
 | MISS-025 | MISS | TBD | OPEN | - | - | - |
 | MISS-026 | MISS | TBD | OPEN | - | - | - |
 | MISS-027 | MISS | TBD | OPEN | - | - | - |
 | MISS-028 | MISS | TBD | OPEN | - | - | - |
-| MISS-029 | MISS | TBD | OPEN | - | - | - |
+| MISS-029 | MISS | TBD | IMPLEMENTED | codex | go test ./cmd/server -count=1; go test ./...; e2e playwright | implemented 2026-02-28 wave6 (Fiber response compression middleware enabled) |
 | MISS-030 | MISS | TBD | OPEN | - | - | - |
 | MISS-031 | MISS | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
 | MISS-032 | MISS | TBD | OPEN | - | - | - |
 | MISS-033 | MISS | TBD | OPEN | - | - | - |
-| MISS-034 | MISS | TBD | OPEN | - | - | - |
+| MISS-034 | MISS | TBD | IMPLEMENTED | codex | dependabot config added; CI/go tests green | implemented 2026-02-28 wave6 (Dependabot for gomod, npm/e2e, GitHub Actions) |
 | MISS-035 | MISS | TBD | OPEN | - | - | - |
 | MISS-036 | MISS | TBD | OPEN | - | - | - |
 | MISS-037 | MISS | TBD | OPEN | - | - | - |
@@ -110,13 +110,13 @@
 | MISS-050 | MISS | TBD | OPEN | - | - | - |
 | MISS-051 | MISS | TBD | OPEN | - | - | - |
 | MISS-052 | MISS | TBD | OPEN | - | - | - |
-| CQ-001 | CQ | TBD | OPEN | - | - | - |
-| CQ-002 | CQ | TBD | OPEN | - | - | - |
-| CQ-003 | CQ | TBD | OPEN | - | - | - |
-| CQ-004 | CQ | TBD | OPEN | - | - | - |
+| CQ-001 | CQ | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run Admin -count=1; go test ./... | implemented 2026-02-28 wave6 (removed manual ship-request mapping in admin search) |
+| CQ-002 | CQ | TBD | IMPLEMENTED | codex | go test ./internal/services -count=1; go test ./... | implemented 2026-02-28 wave6 (RefreshSession now returns DB user row directly) |
+| CQ-003 | CQ | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run PublicDestinations -count=1; go test ./internal/services -count=1 | implemented 2026-02-28 wave7 (public destinations moved to DB-backed catalog with fallback) |
+| CQ-004 | CQ | TBD | IMPLEMENTED | codex | go test ./internal/api -run Error -count=1; go test ./... | implemented 2026-02-28 wave6 (clear error response constructor pattern; behavior preserved) |
 | CQ-005 | CQ | TBD | IMPLEMENTED | codex | go test ./internal/calc ./internal/services -count=1; go test ./... | implemented 2026-02-28 wave5 (pricing magic numbers replaced with constants) |
 | CQ-006 | CQ | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
-| CQ-007 | CQ | TBD | OPEN | - | - | - |
-| CQ-008 | CQ | TBD | OPEN | - | - | - |
-| CQ-009 | CQ | TBD | OPEN | - | - | - |
-| CQ-010 | CQ | TBD | OPEN | - | - | - |
+| CQ-007 | CQ | TBD | IMPLEMENTED | codex | CI go-version-policy job + README policy; go test ./... | implemented 2026-02-28 wave6 (explicit go.mod-directed toolchain policy) |
+| CQ-008 | CQ | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run LockerList -count=1; go test ./internal/api -count=1 | implemented 2026-02-28 wave7 (locker list paginated aggregate query with pending-service counts) |
+| CQ-009 | CQ | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run Admin -count=1; go test ./... | implemented 2026-02-28 wave6 (admin search bounded by pagination/limit with tests) |
+| CQ-010 | CQ | TBD | IMPLEMENTED | codex | go test ./cmd/server -count=1; go test ./... | implemented 2026-02-28 wave6 (extracted static-route resolution helper + tests) |

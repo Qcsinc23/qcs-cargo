@@ -140,6 +140,60 @@ func TestRefreshSession_ExpiredSessionReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "session expired or invalid")
 }
 
+func TestRefreshSession_ReturnsCurrentUserRowFields(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+	t.Setenv("RESEND_API_KEY", "re_test_fake")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	_, err := conn.Exec(`
+		UPDATE users
+		SET avatar_url = ?,
+		    address_street = ?,
+		    address_city = ?,
+		    address_state = ?,
+		    address_zip = ?,
+		    storage_plan = ?,
+		    free_storage_days = ?,
+		    status = ?,
+		    updated_at = ?
+		WHERE id = ?
+	`,
+		"https://cdn.example.com/avatar.png",
+		"101 Main St",
+		"Georgetown",
+		"Region 4",
+		"00000",
+		"premium",
+		45,
+		"active",
+		time.Now().UTC().Format(time.RFC3339),
+		testdata.CustomerAliceID,
+	)
+	require.NoError(t, err)
+
+	raw, err := services.RequestMagicLink(context.Background(), testdata.CustomerAliceID, "")
+	require.NoError(t, err)
+	_, _, refreshToken, err := services.VerifyMagicLink(context.Background(), raw)
+	require.NoError(t, err)
+
+	user, accessToken, err := services.RefreshSession(context.Background(), refreshToken)
+	require.NoError(t, err)
+	assert.NotEmpty(t, accessToken)
+	assert.Equal(t, testdata.CustomerAliceID, user.ID)
+	assert.Equal(t, "premium", user.StoragePlan)
+	assert.Equal(t, 45, user.FreeStorageDays)
+	assert.Equal(t, "active", user.Status)
+	assert.True(t, user.AvatarUrl.Valid)
+	assert.Equal(t, "https://cdn.example.com/avatar.png", user.AvatarUrl.String)
+	assert.True(t, user.AddressStreet.Valid)
+	assert.Equal(t, "101 Main St", user.AddressStreet.String)
+	assert.True(t, user.AddressCity.Valid)
+	assert.Equal(t, "Georgetown", user.AddressCity.String)
+}
+
 func TestLogout_ValidRefreshTokenDeletesSession(t *testing.T) {
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("APP_ENV", "test")

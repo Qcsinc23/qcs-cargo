@@ -6,6 +6,7 @@ package api
 
 import (
 	"database/sql"
+	"os"
 	"strings"
 	"time"
 
@@ -41,6 +42,9 @@ func RegisterAdmin(g fiber.Router) {
 	admin.Get("/reports/revenue", adminReportsRevenue)
 	admin.Get("/reports/shipments", adminReportsShipments)
 	admin.Get("/reports/customers", adminReportsCustomers)
+	admin.Get("/destinations", adminDestinationsList)
+	admin.Patch("/destinations/:id", adminDestinationUpdate)
+	admin.Get("/system-health", adminSystemHealth)
 }
 
 func pagination(c *fiber.Ctx) (limit, offset int64) {
@@ -158,6 +162,170 @@ func adminReportsCustomers(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": fiber.Map{"count": count}})
 }
 
+func adminDestinationsList(c *fiber.Ctx) error {
+	list, err := db.Queries().ListDestinationsAdmin(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load destinations"))
+	}
+	out := make([]fiber.Map, 0, len(list))
+	for _, d := range list {
+		out = append(out, fiber.Map{
+			"id":               d.ID,
+			"name":             d.Name,
+			"code":             d.Code,
+			"capital":          d.Capital,
+			"usd_per_lb":       d.UsdPerLb,
+			"transit_days_min": d.TransitDaysMin,
+			"transit_days_max": d.TransitDaysMax,
+			"is_active":        d.IsActive == 1,
+			"sort_order":       d.SortOrder,
+			"updated_at":       d.UpdatedAt,
+		})
+	}
+	return c.JSON(fiber.Map{"data": out})
+}
+
+func adminDestinationUpdate(c *fiber.Ctx) error {
+	id := strings.ToLower(strings.TrimSpace(c.Params("id")))
+	if id == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
+	}
+	var body struct {
+		Name           *string  `json:"name"`
+		Code           *string  `json:"code"`
+		Capital        *string  `json:"capital"`
+		USDPerLb       *float64 `json:"usd_per_lb"`
+		TransitDaysMin *int     `json:"transit_days_min"`
+		TransitDaysMax *int     `json:"transit_days_max"`
+		IsActive       *bool    `json:"is_active"`
+		SortOrder      *int     `json:"sort_order"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
+	}
+	current, err := db.Queries().GetActiveDestinationByID(c.Context(), id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			all, listErr := db.Queries().ListDestinationsAdmin(c.Context())
+			if listErr != nil {
+				return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load destination"))
+			}
+			var found bool
+			for _, d := range all {
+				if d.ID == id {
+					current = d
+					found = true
+					break
+				}
+			}
+			if !found {
+				return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Destination not found"))
+			}
+		} else {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load destination"))
+		}
+	}
+
+	name := current.Name
+	if body.Name != nil && strings.TrimSpace(*body.Name) != "" {
+		name = strings.TrimSpace(*body.Name)
+	}
+	code := current.Code
+	if body.Code != nil && strings.TrimSpace(*body.Code) != "" {
+		code = strings.ToUpper(strings.TrimSpace(*body.Code))
+	}
+	capital := current.Capital
+	if body.Capital != nil && strings.TrimSpace(*body.Capital) != "" {
+		capital = strings.TrimSpace(*body.Capital)
+	}
+	rate := current.UsdPerLb
+	if body.USDPerLb != nil {
+		rate = *body.USDPerLb
+	}
+	transitMin := current.TransitDaysMin
+	if body.TransitDaysMin != nil {
+		transitMin = *body.TransitDaysMin
+	}
+	transitMax := current.TransitDaysMax
+	if body.TransitDaysMax != nil {
+		transitMax = *body.TransitDaysMax
+	}
+	isActive := current.IsActive
+	if body.IsActive != nil {
+		isActive = boolToInt(*body.IsActive)
+	}
+	sortOrder := current.SortOrder
+	if body.SortOrder != nil {
+		sortOrder = *body.SortOrder
+	}
+	if transitMin <= 0 || transitMax <= 0 || transitMin > transitMax || rate <= 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid destination fields"))
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := db.Queries().UpdateDestinationAdmin(c.Context(), gen.UpdateDestinationAdminParams{
+		Name:           name,
+		Code:           code,
+		Capital:        capital,
+		UsdPerLb:       rate,
+		TransitDaysMin: transitMin,
+		TransitDaysMax: transitMax,
+		IsActive:       isActive,
+		SortOrder:      sortOrder,
+		UpdatedAt:      now,
+		ID:             id,
+	}); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update destination"))
+	}
+	adminID := c.Locals(middleware.CtxUserID).(string)
+	recordActivity(c.Context(), adminID, "admin.destination.update", "destination", id, "")
+	return c.JSON(fiber.Map{"data": fiber.Map{
+		"id":               id,
+		"name":             name,
+		"code":             code,
+		"capital":          capital,
+		"usd_per_lb":       rate,
+		"transit_days_min": transitMin,
+		"transit_days_max": transitMax,
+		"is_active":        isActive == 1,
+		"sort_order":       sortOrder,
+		"updated_at":       now,
+	}})
+}
+
+// adminSystemHealth returns lightweight operational status for admin monitoring views.
+func adminSystemHealth(c *fiber.Ctx) error {
+	dbOK := db.Ping() == nil
+	stripeConfigured := os.Getenv("STRIPE_SECRET_KEY") != ""
+	resendConfigured := os.Getenv("RESEND_API_KEY") != ""
+
+	counts, err := db.Queries().AdminSystemHealthSnapshot(c.Context())
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load system health"))
+	}
+
+	status := "operational"
+	if !dbOK {
+		status = "degraded"
+	}
+
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
+			"status":             status,
+			"db_ok":              dbOK,
+			"stripe_configured":  stripeConfigured,
+			"resend_configured":  resendConfigured,
+			"metrics_endpoint":   "/metrics",
+			"users":              counts.UsersCount,
+			"locker_packages":    counts.LockerPackagesCount,
+			"stored_packages":    counts.StoredPackagesCount,
+			"service_queue":      counts.PendingServiceRequestsCount,
+			"unmatched_packages": counts.PendingUnmatchedPackagesCount,
+			"pending_ship_count": counts.PendingShipRequestsCount,
+			"generated_at":       time.Now().UTC().Format(time.RFC3339),
+		},
+	})
+}
+
 func adminSearch(c *fiber.Ctx) error {
 	q := strings.TrimSpace(c.Query("q", ""))
 	limit, offset := pagination(c)
@@ -210,12 +378,25 @@ func adminSearch(c *fiber.Ctx) error {
 	srMaps := make([]fiber.Map, 0, len(srs))
 	for _, row := range srs {
 		sr := gen.ShipRequest{
-			ID: row.ID, UserID: row.UserID, ConfirmationCode: row.ConfirmationCode, Status: row.Status,
-			DestinationID: row.DestinationID, RecipientID: row.RecipientID, ServiceType: row.ServiceType,
-			Consolidate: row.Consolidate, SpecialInstructions: row.SpecialInstructions,
-			Subtotal: row.Subtotal, ServiceFees: row.ServiceFees, Insurance: row.Insurance, Discount: row.Discount, Total: row.Total,
-			PaymentStatus: row.PaymentStatus, StripePaymentIntentID: row.StripePaymentIntentID, CustomsStatus: row.CustomsStatus,
-			CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+			ID:                    row.ID,
+			UserID:                row.UserID,
+			ConfirmationCode:      row.ConfirmationCode,
+			Status:                row.Status,
+			DestinationID:         row.DestinationID,
+			RecipientID:           row.RecipientID,
+			ServiceType:           row.ServiceType,
+			Consolidate:           row.Consolidate,
+			SpecialInstructions:   row.SpecialInstructions,
+			Subtotal:              row.Subtotal,
+			ServiceFees:           row.ServiceFees,
+			Insurance:             row.Insurance,
+			Discount:              row.Discount,
+			Total:                 row.Total,
+			PaymentStatus:         row.PaymentStatus,
+			StripePaymentIntentID: row.StripePaymentIntentID,
+			CustomsStatus:         row.CustomsStatus,
+			CreatedAt:             row.CreatedAt,
+			UpdatedAt:             row.UpdatedAt,
 		}
 		srMaps = append(srMaps, shipRequestToMap(sr))
 	}

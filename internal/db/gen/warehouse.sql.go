@@ -227,15 +227,40 @@ type ListShipQueuePaidParams struct {
 	Offset int64 `json:"offset"`
 }
 
-func (q *Queries) ListShipQueuePaid(ctx context.Context, arg ListShipQueuePaidParams) ([]ShipRequest, error) {
+type ListShipQueuePaidRow struct {
+	ID                    string          `json:"id"`
+	UserID                string          `json:"user_id"`
+	ConfirmationCode      string          `json:"confirmation_code"`
+	Status                string          `json:"status"`
+	DestinationID         string          `json:"destination_id"`
+	RecipientID           sql.NullString  `json:"recipient_id"`
+	ServiceType           string          `json:"service_type"`
+	Consolidate           int             `json:"consolidate"`
+	SpecialInstructions   sql.NullString  `json:"special_instructions"`
+	Subtotal              float64         `json:"subtotal"`
+	ServiceFees           float64         `json:"service_fees"`
+	Insurance             float64         `json:"insurance"`
+	Discount              float64         `json:"discount"`
+	Total                 float64         `json:"total"`
+	PaymentStatus         sql.NullString  `json:"payment_status"`
+	StripePaymentIntentID sql.NullString  `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString  `json:"customs_status"`
+	ConsolidatedWeightLbs sql.NullFloat64 `json:"consolidated_weight_lbs"`
+	StagingBay            sql.NullString  `json:"staging_bay"`
+	ManifestID            sql.NullString  `json:"manifest_id"`
+	CreatedAt             string          `json:"created_at"`
+	UpdatedAt             string          `json:"updated_at"`
+}
+
+func (q *Queries) ListShipQueuePaid(ctx context.Context, arg ListShipQueuePaidParams) ([]ListShipQueuePaidRow, error) {
 	rows, err := q.db.QueryContext(ctx, listShipQueuePaid, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ShipRequest
+	var items []ListShipQueuePaidRow
 	for rows.Next() {
-		var i ShipRequest
+		var i ListShipQueuePaidRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,

@@ -3,6 +3,23 @@ INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, stor
 VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
 RETURNING *;
 
+-- name: SetEmailVerificationToken :exec
+UPDATE users
+SET email_verification_token = ?, email_verification_sent_at = ?, updated_at = ?
+WHERE id = ?;
+
+-- name: GetUserByEmailVerificationToken :one
+SELECT * FROM users
+WHERE email_verification_token = ?;
+
+-- name: SetEmailVerified :exec
+UPDATE users
+SET email_verified = 1,
+    email_verification_token = NULL,
+    email_verification_sent_at = NULL,
+    updated_at = ?
+WHERE id = ?;
+
 -- name: CreateSession :one
 INSERT INTO sessions (id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -53,3 +70,15 @@ UPDATE password_resets SET used = 1 WHERE id = ?;
 -- name: UpdateUserPassword :exec
 UPDATE users SET updated_at = ? WHERE id = ?;
 
+-- name: CreateTokenBlacklist :exec
+INSERT INTO token_blacklist (id, token_jti, expires_at, created_at)
+VALUES (?, ?, ?, ?);
+
+-- name: CountTokenBlacklistByJti :one
+SELECT COUNT(*)
+FROM token_blacklist
+WHERE token_jti = ? AND expires_at > ?;
+
+-- name: DeleteExpiredTokenBlacklist :exec
+DELETE FROM token_blacklist
+WHERE expires_at <= ?;
