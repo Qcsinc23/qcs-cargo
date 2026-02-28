@@ -87,7 +87,7 @@
             '<p class="mt-8 text-slate-600 text-sm">Use this address when shopping at US stores. Include your suite code (' + suiteCode + ') so we can match packages to you.</p>' +
             '<p class="mt-4 text-slate-600 text-sm"><a href="/dashboard/inbound" class="text-[#2563EB]">Track incoming packages</a></p>' +
             '</main></div>';
-          document.getElementById('app').innerHTML = sidebar + main;
+          document.getElementById('app').innerHTML = sidebar(user, 'mailbox') + main;
 
           // Securely set dynamic text content to prevent XSS
           const addressEl = document.querySelector('main .bg-white p');

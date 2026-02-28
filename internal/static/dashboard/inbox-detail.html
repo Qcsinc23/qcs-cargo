@@ -127,7 +127,7 @@
           '<div id="services-card" class="bg-white rounded-xl border border-slate-200 p-6 mb-6">' + servicesHtml + '</div>' +
           '<p id="request-msg" class="text-sm text-slate-500 hidden"></p>' +
           '</main></div>';
-        document.getElementById('app').innerHTML = sidebar + main;
+        document.getElementById('app').innerHTML = sidebar(user, 'inbox') + main;
         document.getElementById('logout-btn').onclick = () => {
           fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
         };
