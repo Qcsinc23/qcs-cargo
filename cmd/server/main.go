@@ -14,6 +14,7 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 	"github.com/Qcsinc23/qcs-cargo/internal/static"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
@@ -41,67 +42,6 @@ func main() {
 
 	webRoot := static.Web
 
-	staticOrIndex := func(path string) ([]byte, error) {
-		if path == "" || path == "/" {
-			path = "index.html"
-		}
-		if path == "dashboard" || path == "dashboard/" {
-			path = "dashboard/index.html"
-		} else if path == "admin" || path == "admin/" {
-			path = "admin/index.html"
-		} else if strings.HasPrefix(path, "admin/") {
-			// /admin/ship-requests -> admin/ship-requests.html; /admin/users/123 -> admin/users.html; /admin/common.js -> admin/common.js
-			rest := path[len("admin/"):]
-			if rest != "" {
-				if strings.Contains(rest, "/") {
-					// e.g. users/123 -> serve admin/users.html
-					segment := rest[:strings.Index(rest, "/")]
-					path = "admin/" + segment + ".html"
-				} else if !strings.Contains(rest, ".") {
-					path = "admin/" + rest + ".html"
-				}
-				// else rest is e.g. common.js -> path stays admin/common.js
-			}
-		} else if path == "warehouse" || path == "warehouse/" {
-			path = "warehouse/index.html"
-		} else if strings.HasPrefix(path, "warehouse/") {
-			rest := path[len("warehouse/"):]
-			if rest != "" && !strings.Contains(rest, "/") && !strings.Contains(rest, ".") {
-				segment := strings.TrimSuffix(rest, "/")
-				switch segment {
-				case "index", "locker-receive", "receiving", "service-queue", "ship-queue", "packages", "staging", "manifests", "exceptions":
-					path = "warehouse/" + segment + ".html"
-				}
-			}
-		} else if strings.HasPrefix(path, "dashboard/inbox/") && len(path) > len("dashboard/inbox/") {
-			path = "dashboard/inbox-detail.html"
-		} else if strings.HasPrefix(path, "dashboard/ship-requests/") {
-			rest := path[len("dashboard/ship-requests/"):]
-			if rest != "" && !strings.Contains(rest, "/") {
-				path = "dashboard/ship-request-detail.html"
-			} else if strings.HasSuffix(rest, "/customs") || rest == "customs" {
-				path = "dashboard/customs.html"
-			} else if strings.HasSuffix(rest, "/pay") {
-				path = "dashboard/pay.html"
-			} else if strings.HasSuffix(rest, "/confirmation") {
-				path = "dashboard/confirmation.html"
-			}
-		} else if strings.HasPrefix(path, "dashboard/inbound/") && len(path) > len("dashboard/inbound/") {
-			path = "dashboard/inbound-detail.html"
-		} else if path == "dashboard/bookings/new" || path == "dashboard/bookings/new/" {
-			path = "dashboard/booking-wizard.html"
-		} else if strings.HasPrefix(path, "dashboard/bookings/") && len(path) > len("dashboard/bookings/") {
-			rest := path[len("dashboard/bookings/"):]
-			if rest != "" && !strings.Contains(rest, "/") {
-				path = "dashboard/booking-detail.html"
-			}
-		}
-		if path != "" && !strings.HasSuffix(path, ".html") && !strings.Contains(path, ".") {
-			path = path + ".html"
-		}
-		return fs.ReadFile(webRoot, path)
-	}
-
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: os.Getenv("PORT") == "",
 		ErrorHandler:          api.ErrorHandler,
@@ -111,6 +51,7 @@ func main() {
 	app.Use(middleware.MetricsMiddleware)
 	app.Use(logger.New(logger.Config{Format: "${time} ${status} ${method} ${path} ${latency} ${requestid}\n"}))
 	app.Use(middleware.SecurityHeaders) // Add security headers after logger
+	app.Use(compress.New())             // Safe-default response compression for API and static responses
 
 	// CORS: ALLOWED_ORIGINS required in production; empty = allow all in dev
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
@@ -183,7 +124,7 @@ func main() {
 			c.Set("Content-Type", "application/javascript")
 			return c.Send(data)
 		}
-		data, err := staticOrIndex(path)
+		data, err := readStaticAsset(webRoot, path)
 		if err != nil {
 			data, _ = fs.ReadFile(webRoot, "index.html")
 			c.Set("Content-Type", "text/html; charset=utf-8")
