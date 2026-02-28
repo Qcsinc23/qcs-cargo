@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Verify Email | QCS Cargo</title>
+  <meta name="description" content="Verify your QCS Cargo account email address." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/public.css" />
+</head>
+<body>
+  <main class="page" style="min-height:100vh; display:flex; align-items:center; justify-content:center;" aria-live="polite">
+    <section class="section-card center" style="max-width:520px; width:100%;">
+      <p class="eyebrow" style="margin-bottom:6px;">Account Verification</p>
+      <h1 class="page-title" style="font-size:2rem;">Verifying your account...</h1>
+      <p id="status" class="lead" style="margin:0 auto;">Checking your verification link.</p>
+      <div class="actions" style="margin-top:16px; justify-content:center;">
+        <a class="btn btn-light" href="/login">Back to Sign In</a>
+        <a class="btn btn-primary" href="/register">Create Account</a>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const token = params.get('token');
+      const status = document.getElementById('status');
+
+      function safeParseJSON(response) {
+        return response.text().then((text) => {
+          if (!text) return {};
+          try {
+            return JSON.parse(text);
+          } catch (_) {
+            return { raw: text };
+          }
+        });
+      }
+
+      if (!token) {
+        status.textContent = 'Missing token. Please use the verification link from your email.';
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      fetch('/api/v1/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+        signal: controller.signal
+      })
+        .then((response) => safeParseJSON(response).then((payload) => ({ response, payload })))
+        .then(({ response, payload }) => {
+          if (response.ok) {
+            status.textContent = 'Email verified. Redirecting to sign in...';
+            setTimeout(() => {
+              window.location.replace('/login?verified=1');
+            }, 1200);
+            return;
+          }
+          status.textContent = payload.error?.message || 'This verification link is invalid or expired.';
+        })
+        .catch((err) => {
+          if (err && err.name === 'AbortError') {
+            status.textContent = 'Verification is taking too long. Please try the link again.';
+            return;
+          }
+          status.textContent = 'Network error. Please try again.';
+        })
+        .finally(() => clearTimeout(timeout));
+    })();
+  </script>
+</body>
+</html>
