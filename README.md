@@ -22,6 +22,12 @@ make run
 
 **Dev seed:** `./scripts/seed-dev.sh` (requires `qcs-migrate` and `sqlite3`).
 
+## Go Version Policy
+
+- CI uses the Go version declared in `go.mod` (`go` directive) as the source of truth.
+- The workflow contains a `go-version-policy` job that resolves `go.mod` version and validates toolchain setup before test jobs run.
+- Keep local and CI toolchains aligned with `go.mod` to avoid drift.
+
 ## Build WASM frontend (optional)
 
 ```bash
@@ -87,6 +93,11 @@ See **[docs/TESTING_AND_INTEGRATIONS.md](docs/TESTING_AND_INTEGRATIONS.md)** for
 - Test file organization and go-app component testing
 
 Implement tests and CI steps according to that doc as features are added.
+
+Dependency update automation is configured with Dependabot for:
+- Go modules (`/`)
+- npm dependencies in `e2e/`
+- GitHub Actions workflows
 
 ### API contract notes
 

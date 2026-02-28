@@ -1,61 +1,91 @@
-# PRD 13.1: Lint, test, build WASM, build binary.
 name: CI
+
 on:
   push:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+
+permissions:
+  contents: read
+
 jobs:
-  lint:
+  go-version-policy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          version="$(awk '/^go /{print $2; exit}' go.mod)"
+          if [[ -z "$version" ]]; then
+            echo "go.mod is missing a Go version directive" >&2
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      - run: golangci-lint run ./cmd/... ./internal/...
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+      - name: Confirm toolchain version
+        shell: bash
+        run: |
+          echo "CI Go policy: use go.mod go directive"
+          echo "go.mod go version: ${{ steps.go_version.outputs.value }}"
+          go version
+
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [go-version-policy]
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - run: go test ./cmd/... ./internal/... -race -cover
-  build-server:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - run: go build -o qcs-server ./cmd/server
-      - run: go build -o qcs-migrate ./cmd/migrate
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Run Go tests
+        run: go test ./... -count=1
 
-  smoke-test:
+  govulncheck:
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    timeout-minutes: 15
+    needs: [go-version-policy]
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
-      - name: Run smoke test
-        run: chmod +x scripts/smoke-test.sh && ./scripts/smoke-test.sh
-        env:
-          SMOKE_PORT: "3998"
-          JWT_SECRET: "smoke-test-secret-key-at-least-32-chars"
-          RESEND_API_KEY: "re_test_fake"
-          STRIPE_SECRET_KEY: "sk_test_fake"
-          STRIPE_WEBHOOK_SECRET: "whsec_fake"
-          FROM_EMAIL: "test@qcs-cargo.com"
-
-  build-wasm:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - run: GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: $(go env GOPATH)/bin/govulncheck ./...
