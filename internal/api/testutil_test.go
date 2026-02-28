@@ -6,10 +6,10 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/api"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/testdata"
+	"github.com/gofiber/fiber/v2"
 )
 
 func init() {
@@ -20,6 +20,7 @@ func init() {
 	_ = os.Setenv("RESEND_API_KEY", "re_test_fake")
 	_ = os.Setenv("FROM_EMAIL", "test@qcs-cargo.com")
 	_ = os.Setenv("APP_URL", "http://localhost:3000")
+	_ = os.Setenv("QCS_OBSERVABILITY_DISABLED", "1")
 }
 
 // setupTestApp creates a Fiber app with all API routes, backed by a seeded

@@ -6,8 +6,8 @@
 **Total Findings in Scope:** 120
 
 **Execution Progress Snapshot (2026-02-28):**
-- **Implemented:** 75
-- **Open:** 45
+- **Implemented:** 79
+- **Open:** 41
 - **Source of truth:** [`findings_status.md`](../findings_status.md)
 
 ---

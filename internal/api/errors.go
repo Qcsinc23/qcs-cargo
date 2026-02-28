@@ -4,7 +4,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
+	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -56,9 +59,38 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	er = newErrorResponse("INTERNAL_ERROR", "An unexpected error occurred")
 
 	if code >= 500 {
-		log.Printf("[%s] %s: %v", c.Get("X-Request-ID"), er.Error.Code, err)
+		requestID := errorRequestID(c)
+		log.Printf("[%s] %s: %v", requestID, er.Error.Code, err)
+
+		statusCopy := code
+		userID, _ := c.Locals(middleware.CtxUserID).(string)
+		services.Observability().RecordError(err, services.ObservabilityEvent{
+			Category:   "error",
+			EventName:  "api.server_error",
+			UserID:     userID,
+			RequestID:  requestID,
+			Path:       strings.TrimSpace(c.Path()),
+			Method:     strings.TrimSpace(c.Method()),
+			StatusCode: &statusCopy,
+			Metadata: map[string]any{
+				"error_type": http.StatusText(code),
+			},
+		})
 	}
 	return c.Status(code).JSON(er)
+}
+
+func errorRequestID(c *fiber.Ctx) string {
+	if value := strings.TrimSpace(c.GetRespHeader(fiber.HeaderXRequestID)); value != "" {
+		return value
+	}
+	if value := strings.TrimSpace(c.Get(fiber.HeaderXRequestID)); value != "" {
+		return value
+	}
+	if localValue, ok := c.Locals("requestid").(string); ok {
+		return strings.TrimSpace(localValue)
+	}
+	return ""
 }
 
 func httpStatusToCode(status int) string {

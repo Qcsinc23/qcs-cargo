@@ -18,6 +18,14 @@ import (
 
 const defaultLimit = 20
 const maxLimit = 100
+const defaultInsightsWindowDays = 7
+const minInsightsWindowDays = 1
+const maxInsightsWindowDays = 90
+const defaultInsightsSlowMS = 500
+const minInsightsSlowMS = 50
+const maxInsightsSlowMS = 10000
+const defaultInsightsSlowLimit = 5
+const maxInsightsSlowLimit = 20
 
 // RegisterAdmin mounts admin routes under /admin. All require auth + admin role. PRD §6.9, §11.
 func RegisterAdmin(g fiber.Router) {
@@ -45,6 +53,7 @@ func RegisterAdmin(g fiber.Router) {
 	admin.Get("/destinations", adminDestinationsList)
 	admin.Patch("/destinations/:id", adminDestinationUpdate)
 	admin.Get("/system-health", adminSystemHealth)
+	admin.Get("/insights", adminInsights)
 }
 
 func pagination(c *fiber.Ctx) (limit, offset int64) {
@@ -322,6 +331,126 @@ func adminSystemHealth(c *fiber.Ctx) error {
 			"unmatched_packages": counts.PendingUnmatchedPackagesCount,
 			"pending_ship_count": counts.PendingShipRequestsCount,
 			"generated_at":       time.Now().UTC().Format(time.RFC3339),
+		},
+	})
+}
+
+// adminInsights returns operational observability summaries for admin dashboards.
+func adminInsights(c *fiber.Ctx) error {
+	windowDays := c.QueryInt("window_days", c.QueryInt("window", defaultInsightsWindowDays))
+	if windowDays < minInsightsWindowDays {
+		windowDays = minInsightsWindowDays
+	}
+	if windowDays > maxInsightsWindowDays {
+		windowDays = maxInsightsWindowDays
+	}
+
+	slowMS := c.QueryInt("slow_ms", defaultInsightsSlowMS)
+	if slowMS < minInsightsSlowMS {
+		slowMS = minInsightsSlowMS
+	}
+	if slowMS > maxInsightsSlowMS {
+		slowMS = maxInsightsSlowMS
+	}
+
+	slowLimit := c.QueryInt("slow_limit", defaultInsightsSlowLimit)
+	if slowLimit <= 0 {
+		slowLimit = defaultInsightsSlowLimit
+	}
+	if slowLimit > maxInsightsSlowLimit {
+		slowLimit = maxInsightsSlowLimit
+	}
+
+	now := time.Now().UTC()
+	since := now.AddDate(0, 0, -windowDays).Format(time.RFC3339)
+	until := now.Format(time.RFC3339)
+
+	analytics, err := db.Queries().ObservabilityAnalyticsSummary(c.Context(), gen.ObservabilityAnalyticsSummaryParams{
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load analytics summary"))
+	}
+
+	performance, err := db.Queries().ObservabilityPerformanceSummary(c.Context(), gen.ObservabilityPerformanceSummaryParams{
+		DurationMs:  sql.NullFloat64{Float64: float64(slowMS), Valid: true},
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load performance summary"))
+	}
+
+	topSlowRoutes, err := db.Queries().ObservabilityTopSlowRoutes(c.Context(), gen.ObservabilityTopSlowRoutesParams{
+		CreatedAt:   since,
+		CreatedAt_2: until,
+		Limit:       int64(slowLimit),
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load top slow routes"))
+	}
+
+	errorSummary, err := db.Queries().ObservabilityErrorSummary(c.Context(), gen.ObservabilityErrorSummaryParams{
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load error summary"))
+	}
+
+	business, err := db.Queries().ObservabilityBusinessMetricsSummary(c.Context(), gen.ObservabilityBusinessMetricsSummaryParams{
+		CreatedAt:   since,
+		CreatedAt_2: until,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load business summary"))
+	}
+
+	topSlow := make([]fiber.Map, 0, len(topSlowRoutes))
+	for _, row := range topSlowRoutes {
+		if row.AvgDurationMs < float64(slowMS) {
+			continue
+		}
+		topSlow = append(topSlow, fiber.Map{
+			"path":            row.Path,
+			"method":          row.Method,
+			"request_count":   row.RequestCount,
+			"avg_duration_ms": row.AvgDurationMs,
+			"max_duration_ms": row.MaxDurationMs,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"data": fiber.Map{
+			"window_days":  windowDays,
+			"generated_at": time.Now().UTC().Format(time.RFC3339),
+			"analytics": fiber.Map{
+				"total_events":        analytics.TotalEvents,
+				"unique_users":        analytics.UniqueUsers,
+				"unique_routes":       analytics.UniqueRoutes,
+				"avg_events_per_user": analytics.AvgEventsPerUser,
+			},
+			"performance": fiber.Map{
+				"slow_threshold_ms": slowMS,
+				"avg_duration_ms":   performance.AvgDurationMs,
+				"max_duration_ms":   performance.MaxDurationMs,
+				"slow_requests":     performance.SlowRequests,
+				"total_requests":    performance.TotalRequests,
+				"top_slow_routes":   topSlow,
+			},
+			"errors": fiber.Map{
+				"total_errors":      errorSummary.TotalErrors,
+				"affected_requests": errorSummary.AffectedRequests,
+				"server_errors":     errorSummary.ServerErrors,
+				"client_errors":     errorSummary.ClientErrors,
+			},
+			"business": fiber.Map{
+				"total_events": business.TotalEvents,
+				"unique_users": business.UniqueUsers,
+				"total_value":  business.TotalValue,
+				"avg_value":    business.AvgValue,
+			},
 		},
 	})
 }

@@ -11,7 +11,7 @@ import (
 // RegisterAPIRoutes registers all API routes (v1 and Stripe webhook) on the app.
 // Used by cmd/server and by integration tests.
 func RegisterAPIRoutes(app *fiber.App) {
-	apiGroup := app.Group("/api", middleware.PropagateRequestID)
+	apiGroup := app.Group("/api", middleware.PropagateRequestID, middleware.APIObservability)
 	RegisterStripeWebhook(apiGroup)
 
 	v1 := apiGroup.Group("/v1")

@@ -4,13 +4,18 @@ package testdata
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 )
+
+var testDBCounter uint64
 
 // migrationsDir returns the path to sql/migrations, from repo root or package dir.
 func migrationsDir() string {
@@ -26,7 +31,10 @@ func migrationsDir() string {
 // migrations applied. The database is closed when the test ends.
 func NewTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	conn, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	id := atomic.AddUint64(&testDBCounter, 1)
+	dsn := fmt.Sprintf("file:qcs_test_%s_%d?mode=memory&cache=shared", name, id)
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("failed to connect to test db: %v", err)
 	}

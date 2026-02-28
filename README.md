@@ -9,7 +9,7 @@ Unified product per QCS Cargo Unified PRD v3.
 ## Audit remediation status
 
 - Canonical remediation tracker: `findings_status.md`
-- Current snapshot (2026-02-28): `IMPLEMENTED 75`, `OPEN 45`, `TOTAL 120`
+- Current snapshot (2026-02-28): `IMPLEMENTED 79`, `OPEN 41`, `TOTAL 120`
 - Implementation roadmap and tranche sequencing: `plans/IMPLEMENTATION_PLAN.md`
 
 ## Quick start
@@ -68,8 +68,16 @@ This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.
 | `MIGRATIONS_DIR` | Migration directory for migrate binary (default: `sql/migrations`) |
 | `STRIPE_SECRET_KEY` | Stripe secret key (sk_live_/sk_test_) for PaymentIntents |
 | `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (pk_live_/pk_test_) for pay page |
+| `RESEND_API_KEY` | Resend API key for transactional email; also surfaced as a boolean config flag in admin system-health |
 
 See `.env.example` for a full list.
+
+### Observability endpoints and config
+
+- `GET /metrics` exposes Prometheus metrics (text exposition format) for scraping.
+- `GET /api/v1/admin/system-health` (admin-only) returns operational counters and observability pointers, including `metrics_endpoint`, `generated_at`, `stripe_configured`, and `resend_configured`.
+- `GET /api/v1/admin/insights` (admin-only) returns analytics/performance/error/business summaries from `observability_events`. Query params: `window_days` (1-90), `slow_ms` (50-10000), `slow_limit` (1-20).
+- Observability config flags in `system-health` derive from environment presence checks for `STRIPE_SECRET_KEY` and `RESEND_API_KEY` (secrets are not returned).
 
 ## Production (qcs-cargo.com)
 
@@ -110,9 +118,9 @@ Dependency update automation is configured with Dependabot for:
 - `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
 - `GET /api/v1/destinations` and `GET /api/v1/destinations/:id` are DB-backed via the `destinations` catalog table. A static fallback list is used only if destination DB access fails unexpectedly.
 - `GET /api/v1/locker` supports pagination query params: `limit` (default `20`, max `100`) and `page` (default `1`). Response includes `data`, `page`, `limit`, `total`, and `status`.
-- `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, queue/count metrics, and `generated_at`.
+- `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, `metrics_endpoint`, queue/count metrics, and `generated_at`.
 
-**E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal).
+**E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal). In local smoke mode, set `RESEND_API_KEY` empty so verification/magic-link email sends operate as no-op.
 
 ## Commands
 

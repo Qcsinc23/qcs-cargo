@@ -160,6 +160,21 @@ type NotificationPref struct {
 	UpdatedAt        string `json:"updated_at"`
 }
 
+type ObservabilityEvent struct {
+	ID           string          `json:"id"`
+	Category     string          `json:"category"`
+	EventName    string          `json:"event_name"`
+	UserID       sql.NullString  `json:"user_id"`
+	RequestID    sql.NullString  `json:"request_id"`
+	Path         sql.NullString  `json:"path"`
+	Method       sql.NullString  `json:"method"`
+	StatusCode   sql.NullInt64   `json:"status_code"`
+	DurationMs   sql.NullFloat64 `json:"duration_ms"`
+	Value        sql.NullFloat64 `json:"value"`
+	MetadataJson sql.NullString  `json:"metadata_json"`
+	CreatedAt    string          `json:"created_at"`
+}
+
 type PasswordReset struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`

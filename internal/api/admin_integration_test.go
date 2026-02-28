@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/Qcsinc23/qcs-cargo/internal/testdata"
 	"github.com/golang-jwt/jwt/v5"
@@ -39,6 +40,41 @@ func mustAdminAccessToken(t *testing.T) string {
 	signed, err := token.SignedString([]byte(secret)[:32])
 	require.NoError(t, err)
 	return signed
+}
+
+func seedObservabilityInsightsEvents(t *testing.T) {
+	t.Helper()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	events := []struct {
+		category   string
+		eventName  string
+		userID     interface{}
+		requestID  interface{}
+		path       interface{}
+		method     interface{}
+		statusCode interface{}
+		durationMS interface{}
+		value      interface{}
+	}{
+		{"analytics", "page_view", testdata.AdminID, "req-analytics-1", "/api/v1/admin/dashboard", "GET", 200, 45.0, nil},
+		{"analytics", "search_used", testdata.CustomerAliceID, "req-analytics-2", "/api/v1/admin/search", "GET", 200, 52.0, nil},
+		{"performance", "http_request", testdata.AdminID, "req-perf-1", "/api/v1/admin/search", "GET", 200, 180.0, nil},
+		{"performance", "http_request", testdata.AdminID, "req-perf-2", "/api/v1/admin/ship-requests", "GET", 502, 1325.0, nil},
+		{"performance", "http_request", testdata.AdminID, "req-perf-3", "/api/v1/admin/ship-requests", "GET", 200, 880.0, nil},
+		{"error", "db_timeout", testdata.AdminID, "req-err-1", "/api/v1/admin/search", "GET", 500, nil, nil},
+		{"error", "validation_failed", testdata.CustomerAliceID, "req-err-2", "/api/v1/ship-requests", "POST", 422, nil, nil},
+		{"business", "ship_request_paid", testdata.CustomerAliceID, "req-biz-1", "/api/v1/ship-requests", "POST", 200, nil, 17.50},
+	}
+
+	for _, e := range events {
+		_, err := db.DB().Exec(`
+			INSERT INTO observability_events (
+				id, category, event_name, user_id, request_id, path, method, status_code, duration_ms, value, metadata_json, created_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, uuid.NewString(), e.category, e.eventName, e.userID, e.requestID, e.path, e.method, e.statusCode, e.durationMS, e.value, "{}", now)
+		require.NoError(t, err)
+	}
 }
 
 func TestAdminSearch_EmptyQueryReturnsEmptyCollections(t *testing.T) {
@@ -232,4 +268,93 @@ func TestAdminDestinations_ListAndUpdate(t *testing.T) {
 	assert.Equal(t, 3.65, updated.Data["usd_per_lb"])
 	assert.Equal(t, float64(4), updated.Data["transit_days_min"])
 	assert.Equal(t, float64(6), updated.Data["transit_days_max"])
+}
+
+func TestAdminInsights_ReturnsConsolidatedSummaries(t *testing.T) {
+	app := setupTestApp(t)
+	seedObservabilityInsightsEvents(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/insights?window_days=30&slow_ms=400&slow_limit=3", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, float64(30), body.Data["window_days"])
+	_, hasGeneratedAt := body.Data["generated_at"]
+	assert.True(t, hasGeneratedAt)
+
+	analytics, ok := body.Data["analytics"].(map[string]interface{})
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, analytics["total_events"], float64(1))
+	_, hasUniqueUsers := analytics["unique_users"]
+	assert.True(t, hasUniqueUsers)
+
+	performance, ok := body.Data["performance"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, float64(400), performance["slow_threshold_ms"])
+	_, hasTotalRequests := performance["total_requests"]
+	assert.True(t, hasTotalRequests)
+	topSlow, ok := performance["top_slow_routes"].([]interface{})
+	require.True(t, ok)
+	require.NotEmpty(t, topSlow)
+	firstSlow, ok := topSlow[0].(map[string]interface{})
+	require.True(t, ok)
+	assert.NotEmpty(t, firstSlow["path"])
+	_, hasMethod := firstSlow["method"]
+	assert.True(t, hasMethod)
+	_, hasRequestCount := firstSlow["request_count"]
+	assert.True(t, hasRequestCount)
+	_, hasAvgDuration := firstSlow["avg_duration_ms"]
+	assert.True(t, hasAvgDuration)
+
+	errors, ok := body.Data["errors"].(map[string]interface{})
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, errors["total_errors"], float64(1))
+	_, hasServerErrors := errors["server_errors"]
+	assert.True(t, hasServerErrors)
+	_, hasClientErrors := errors["client_errors"]
+	assert.True(t, hasClientErrors)
+
+	business, ok := body.Data["business"].(map[string]interface{})
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, business["total_events"], float64(1))
+	_, hasTotalValue := business["total_value"]
+	assert.True(t, hasTotalValue)
+	_, hasAvgValue := business["avg_value"]
+	assert.True(t, hasAvgValue)
+}
+
+func TestAdminInsights_WindowDaysBounded(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/insights?window_days=999", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var body struct {
+		Data map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
+	assert.Equal(t, float64(90), body.Data["window_days"])
+}
+
+func TestAdminInsights_RequiresAdminAuth(t *testing.T) {
+	app := setupTestApp(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/insights", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

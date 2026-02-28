@@ -98,10 +98,10 @@
 | MISS-038 | MISS | TBD | OPEN | - | - | - |
 | MISS-039 | MISS | TBD | OPEN | - | - | - |
 | MISS-040 | MISS | TBD | OPEN | - | - | - |
-| MISS-041 | MISS | TBD | OPEN | - | - | - |
-| MISS-042 | MISS | TBD | OPEN | - | - | - |
-| MISS-043 | MISS | TBD | OPEN | - | - | - |
-| MISS-044 | MISS | TBD | OPEN | - | - | - |
+| MISS-041 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -race ./...; go test -tags=integration ./internal/api -count=1; DATABASE_URL=file:/tmp/qcs_wave8_clean.db?_journal_mode=WAL MIGRATION_DIRECTION=up/down go run ./cmd/migrate | implemented 2026-02-28 wave8 (error telemetry pipeline + optional Sentry capture + admin insights error summary) |
+| MISS-042 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -tags=integration ./internal/api -run AdminInsights -count=1; cd e2e && npx playwright test | implemented 2026-02-28 wave8 (analytics event capture and admin insights analytics aggregation) |
+| MISS-043 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -race ./...; go test -tags=integration ./internal/api -run AdminInsights -count=1 | implemented 2026-02-28 wave8 (API request duration instrumentation with slow-route APM summaries) |
+| MISS-044 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -tags=integration ./internal/api -run AdminInsights -count=1 | implemented 2026-02-28 wave8 (business metrics event recording and aggregate reporting in admin insights) |
 | MISS-045 | MISS | TBD | OPEN | - | - | - |
 | MISS-046 | MISS | TBD | OPEN | - | - | - |
 | MISS-047 | MISS | TBD | OPEN | - | - | - |
