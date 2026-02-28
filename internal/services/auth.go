@@ -207,7 +207,14 @@ func VerifyMagicLink(ctx context.Context, rawToken string) (user gen.User, acces
 		return gen.User{}, "", "", ErrAccountInactive
 	}
 	if user.EmailVerified == 0 {
-		return gen.User{}, "", "", ErrEmailNotVerified
+		if err := q.SetEmailVerified(ctx, gen.SetEmailVerifiedParams{
+			UpdatedAt: now,
+			ID:        user.ID,
+		}); err != nil {
+			return gen.User{}, "", "", fmt.Errorf("VerifyMagicLink: auto-verify email: %w", err)
+		}
+		user.EmailVerified = 1
+		log.Printf("[auth] auto-verified email for user_id=%s via magic link", user.ID)
 	}
 	if err := q.MarkMagicLinkUsed(ctx, link.ID); err != nil {
 		return gen.User{}, "", "", err

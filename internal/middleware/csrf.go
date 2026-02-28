@@ -21,6 +21,9 @@ func CSRFProtection(c *fiber.Ctx) error {
 	if strings.HasPrefix(c.Path(), "/api/webhooks/") {
 		return c.Next()
 	}
+	if strings.HasPrefix(c.Path(), "/api/v1/auth/") {
+		return c.Next()
+	}
 
 	origin := strings.TrimSpace(c.Get("Origin"))
 	if origin != "" {

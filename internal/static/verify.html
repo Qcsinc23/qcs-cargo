@@ -97,10 +97,12 @@
             clearLegacyCaches().finally(() => { setTimeout(doRedirect, 100); });
             setTimeout(doRedirect, 4000);
           } else {
+            document.querySelector('.page-title').textContent = 'Sign-in failed';
             status.textContent = j.error?.message || (r.ok ? 'Invalid or expired link.' : 'Could not complete sign-in.');
           }
         })
         .catch((err) => {
+          document.querySelector('.page-title').textContent = 'Sign-in failed';
           if (err && err.name === 'AbortError') {
             status.textContent = 'Sign-in is taking too long. Please try the link again.';
             return;
