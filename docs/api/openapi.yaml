@@ -1,0 +1,1328 @@
+openapi: 3.1.0
+info:
+  title: QCS Cargo Core API
+  version: 1.0.0
+  summary: Core API surface for auth, customer operations, tracking, sessions, and admin monitoring.
+  description: |
+    Practical OpenAPI spec for MISS-037 based on current handler behavior in `internal/api`.
+    All endpoints are under `/api/v1`.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.qcs-cargo.com
+    description: Production (example)
+tags:
+  - name: Health
+    description: Runtime liveness and degradation checks.
+  - name: Auth
+    description: Registration, email verification, magic-link auth, and logout.
+  - name: Bookings
+    description: Customer booking management.
+  - name: Ship Requests
+    description: Customer ship-request creation and listing.
+  - name: Tracking
+    description: Public shipment and confirmation-code lookup.
+  - name: Admin
+    description: Admin-only operational monitoring and insights.
+  - name: Sessions
+    description: Session listing and revocation.
+  - name: Account
+    description: Account lifecycle actions.
+paths:
+  /api/v1/health:
+    get:
+      tags: [Health]
+      summary: Service health check
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: API is reachable. `status` may be `ok` or `degraded`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register user account
+      operationId: postAuthRegister
+      security: []
+      description: Creates a customer account and triggers email verification flow.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRegisterRequest'
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthRegisterResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                emailExists:
+                  value:
+                    error:
+                      code: EMAIL_EXISTS
+                      message: email already registered
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/magic-link/request:
+    post:
+      tags: [Auth]
+      summary: Request magic-link sign-in email
+      operationId: postAuthMagicLinkRequest
+      security: []
+      description: |
+        Login-equivalent step 1. Returns the same success message even when the email does not exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MagicLinkRequestRequest'
+      responses:
+        '200':
+          description: Request accepted (enumeration-safe)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/magic-link/verify:
+    post:
+      tags: [Auth]
+      summary: Verify magic-link token and create session
+      operationId: postAuthMagicLinkVerify
+      security: []
+      description: |
+        Login-equivalent step 2. Returns access token and sets refresh cookie (`qcs_refresh`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MagicLinkVerifyRequest'
+      responses:
+        '200':
+          description: Signed in
+          headers:
+            Set-Cookie:
+              description: HttpOnly refresh token cookie `qcs_refresh`
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid or expired magic link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidLink:
+                  value:
+                    error:
+                      code: INVALID_LINK
+                      message: invalid or expired magic link
+        '403':
+          description: Email not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                emailNotVerified:
+                  value:
+                    error:
+                      code: EMAIL_NOT_VERIFIED
+                      message: Please verify your email before signing in.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout current session
+      operationId: postAuthLogout
+      description: |
+        Revokes refresh session (if cookie exists), best-effort blacklists access token (if bearer token provided),
+        and clears `qcs_refresh` cookie.
+      security:
+        - bearerAuth: []
+        - refreshCookie: []
+      responses:
+        '204':
+          description: Logged out
+          headers:
+            Set-Cookie:
+              description: Clears `qcs_refresh`
+              schema:
+                type: string
+        '403':
+          description: CSRF check failed when refresh cookie is present and origin/referer is not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                csrfFailed:
+                  value:
+                    error:
+                      code: CSRF_FAILED
+                      message: Origin not allowed
+
+  /api/v1/auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify email with token
+      operationId: postAuthVerifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidToken:
+                  value:
+                    error:
+                      code: INVALID_TOKEN
+                      message: token invalid or expired
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /api/v1/auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Resend verification email
+      operationId: postAuthResendVerification
+      security: []
+      description: Always returns a generic success message for unknown/already-verified emails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        '200':
+          description: Request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/bookings:
+    get:
+      tags: [Bookings]
+      summary: List bookings for current user
+      operationId: getBookings
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Bookings]
+      summary: Create booking
+      operationId: postBookings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingCreateResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/ship-requests:
+    get:
+      tags: [Ship Requests]
+      summary: List ship requests for current user
+      operationId: getShipRequests
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of ship requests
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipRequestListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Ship Requests]
+      summary: Create ship request
+      operationId: postShipRequests
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipRequestCreateRequest'
+      responses:
+        '201':
+          description: Ship request created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipRequestCreateResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          description: Package already attached to an active ship request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                packageConflict:
+                  value:
+                    error:
+                      code: CONFLICT
+                      message: Package <id> is already associated with an active ship request
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/track/{trackingNumber}:
+    get:
+      tags: [Tracking]
+      summary: Public tracking lookup
+      operationId: getTrackByTrackingNumber
+      security: []
+      parameters:
+        - name: trackingNumber
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Shipment tracking number or ship request confirmation code.
+      responses:
+        '200':
+          description: Tracking result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackLookupResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          description: No matching shipment/request found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: NOT_FOUND
+                      message: No shipment found with that tracking number
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/system-health:
+    get:
+      tags: [Admin]
+      summary: Admin operational health snapshot
+      operationId: getAdminSystemHealth
+      description: Requires authenticated admin role.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Monitoring snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSystemHealthResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/insights:
+    get:
+      tags: [Admin]
+      summary: Admin observability insights
+      operationId: getAdminInsights
+      description: Requires authenticated admin role. Query params are clamped server-side.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: window_days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            minimum: 1
+            maximum: 90
+          description: Analysis window in days.
+        - name: slow_ms
+          in: query
+          schema:
+            type: integer
+            default: 500
+            minimum: 50
+            maximum: 10000
+          description: Slow-request threshold in milliseconds.
+        - name: slow_limit
+          in: query
+          schema:
+            type: integer
+            default: 5
+            minimum: 1
+            maximum: 20
+          description: Max slow routes returned.
+      responses:
+        '200':
+          description: Insights summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminInsightsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/sessions:
+    get:
+      tags: [Sessions]
+      summary: List active sessions for current user
+      operationId: getSessions
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Sessions]
+      summary: Revoke all sessions for current user
+      operationId: deleteSessions
+      description: Deletes all sessions, or all except `keep_session_id` when provided.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevokeSessionsRequest'
+      responses:
+        '204':
+          description: Sessions revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/sessions/{id}:
+    delete:
+      tags: [Sessions]
+      summary: Revoke one session for current user
+      operationId: deleteSessionById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Session ID to revoke.
+      responses:
+        '204':
+          description: Session revoked
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          description: Session not found for current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notFound:
+                  value:
+                    error:
+                      code: NOT_FOUND
+                      message: Session not found
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/account/delete:
+    post:
+      tags: [Account]
+      summary: Mark current account as deleted
+      operationId: postAccountDelete
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Account marked for deletion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Access token in `Authorization: Bearer <token>`."
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: qcs_refresh
+      description: |
+        HttpOnly refresh-session cookie used by auth refresh/logout flows.
+        For state-changing requests with this cookie, middleware enforces allowed Origin/Referer (CSRF protection).
+
+  responses:
+    ValidationError:
+      description: Request body/params failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation:
+              value:
+                error:
+                  code: VALIDATION_ERROR
+                  message: Invalid body
+
+    Unauthenticated:
+      description: Missing, invalid, expired, or revoked token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            unauthenticated:
+              value:
+                error:
+                  code: UNAUTHENTICATED
+                  message: Authorization required
+
+    Forbidden:
+      description: Authenticated but not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            forbidden:
+              value:
+                error:
+                  code: FORBIDDEN
+                  message: Admin access required
+
+    RateLimited:
+      description: Too many auth attempts or temporary auth lockout
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            limited:
+              value:
+                error:
+                  code: RATE_LIMITED
+                  message: Too many requests from this IP. Please try again later.
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            internal:
+              value:
+                error:
+                  code: INTERNAL_ERROR
+                  message: An unexpected error occurred
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              description: Optional structured details
+
+    MessageResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [message]
+          properties:
+            message:
+              type: string
+
+    HealthResponse:
+      type: object
+      required: [status, db, uptime]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        db:
+          type: string
+          enum: [ok, error]
+        uptime:
+          type: string
+          description: Human-readable duration string.
+
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - email
+        - role
+        - suite_code
+        - storage_plan
+        - free_storage_days
+        - email_verified
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        role:
+          type: string
+          enum: [customer, staff, admin]
+        avatar_url:
+          type: string
+        suite_code:
+          type: string
+        address_street:
+          type: string
+        address_city:
+          type: string
+        address_state:
+          type: string
+        address_zip:
+          type: string
+        storage_plan:
+          type: string
+        free_storage_days:
+          type: integer
+        email_verified:
+          type: boolean
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AuthRegisterRequest:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          description: Optional. If provided, must satisfy password policy.
+
+    AuthRegisterResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [user, message]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            message:
+              type: string
+
+    MagicLinkRequestRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          description: Ignored by backend today.
+        redirectTo:
+          type: string
+          description: Optional post-login redirect path.
+
+    MagicLinkVerifyRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    VerifyEmailRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+
+    ResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    AuthSessionResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [user, access_token, expires_in]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            access_token:
+              type: string
+            expires_in:
+              type: integer
+              description: Access-token lifetime in seconds.
+
+    Booking:
+      type: object
+      required:
+        - id
+        - user_id
+        - confirmation_code
+        - status
+        - service_type
+        - destination_id
+        - scheduled_date
+        - time_slot
+        - weight_lbs
+        - length_in
+        - width_in
+        - height_in
+        - value_usd
+        - add_insurance
+        - subtotal
+        - discount
+        - insurance
+        - total
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        confirmation_code:
+          type: string
+        status:
+          type: string
+        service_type:
+          type: string
+        destination_id:
+          type: string
+        recipient_id:
+          type: [string, 'null']
+        scheduled_date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+        special_instructions:
+          type: [string, 'null']
+        weight_lbs:
+          type: number
+        length_in:
+          type: number
+        width_in:
+          type: number
+        height_in:
+          type: number
+        value_usd:
+          type: number
+        add_insurance:
+          type: integer
+          enum: [0, 1]
+        subtotal:
+          type: number
+        discount:
+          type: number
+        insurance:
+          type: number
+        total:
+          type: number
+        payment_status:
+          type: [string, 'null']
+        stripe_payment_intent_id:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BookingListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+
+    BookingCreateRequest:
+      type: object
+      required: [service_type, destination_id, scheduled_date, time_slot]
+      properties:
+        service_type:
+          type: string
+        destination_id:
+          type: string
+        recipient_id:
+          type: string
+          format: uuid
+        scheduled_date:
+          type: string
+          format: date
+        time_slot:
+          type: string
+        special_instructions:
+          type: string
+        weight_lbs:
+          type: number
+        length_in:
+          type: number
+        width_in:
+          type: number
+        height_in:
+          type: number
+        value_usd:
+          type: number
+        add_insurance:
+          type: boolean
+
+    BookingCreateResponse:
+      type: object
+      required: [status, data]
+      properties:
+        status:
+          type: string
+          const: success
+        data:
+          $ref: '#/components/schemas/Booking'
+
+    ShipRequest:
+      type: object
+      required:
+        - id
+        - user_id
+        - confirmation_code
+        - status
+        - destination_id
+        - service_type
+        - consolidate
+        - subtotal
+        - service_fees
+        - insurance
+        - discount
+        - total
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        confirmation_code:
+          type: string
+        status:
+          type: string
+        destination_id:
+          type: string
+        recipient_id:
+          type: [string, 'null']
+        service_type:
+          type: string
+        consolidate:
+          type: integer
+          enum: [0, 1]
+        special_instructions:
+          type: [string, 'null']
+        subtotal:
+          type: number
+        service_fees:
+          type: number
+        insurance:
+          type: number
+        discount:
+          type: number
+        total:
+          type: number
+        payment_status:
+          type: [string, 'null']
+        stripe_payment_intent_id:
+          type: [string, 'null']
+        customs_status:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ShipRequestListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipRequest'
+
+    ShipRequestCreateItem:
+      type: object
+      required: [locker_package_id]
+      properties:
+        locker_package_id:
+          type: string
+          format: uuid
+        customs_description:
+          type: string
+        customs_value:
+          type: number
+        customs_quantity:
+          type: integer
+        customs_hs_code:
+          type: string
+        customs_country_of_origin:
+          type: string
+        customs_weight_lbs:
+          type: number
+
+    ShipRequestCreateRequest:
+      type: object
+      required: [destination_id, service_type]
+      properties:
+        destination_id:
+          type: string
+        service_type:
+          type: string
+        recipient_id:
+          type: string
+          format: uuid
+        consolidate:
+          type: boolean
+        special_instructions:
+          type: string
+        locker_package_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipRequestCreateItem'
+      description: Provide either `locker_package_ids` or `items`.
+
+    ShipRequestCreateResponse:
+      type: object
+      required: [status, data]
+      properties:
+        status:
+          type: string
+          const: success
+        data:
+          type: object
+          required: [id, confirmation_code]
+          properties:
+            id:
+              type: string
+              format: uuid
+            confirmation_code:
+              type: string
+
+    ShipmentTrackingData:
+      type: object
+      required: [id, destination_id, status, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        destination_id:
+          type: string
+        manifest_id:
+          type: string
+        ship_request_id:
+          type: string
+        tracking_number:
+          type: string
+        status:
+          type: string
+        total_weight:
+          type: number
+        package_count:
+          type: integer
+        carrier:
+          type: string
+        estimated_delivery:
+          type: string
+        actual_delivery:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ShipRequestTrackingData:
+      type: object
+      required:
+        - id
+        - tracking_number
+        - confirmation_code
+        - status
+        - destination_id
+        - service_type
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        tracking_number:
+          type: string
+        confirmation_code:
+          type: string
+        status:
+          type: string
+        destination_id:
+          type: string
+        service_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TrackLookupResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/ShipmentTrackingData'
+            - $ref: '#/components/schemas/ShipRequestTrackingData'
+
+    AdminSystemHealthResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required:
+            - status
+            - db_ok
+            - stripe_configured
+            - resend_configured
+            - metrics_endpoint
+            - users
+            - locker_packages
+            - stored_packages
+            - service_queue
+            - unmatched_packages
+            - pending_ship_count
+            - generated_at
+          properties:
+            status:
+              type: string
+              enum: [operational, degraded]
+            db_ok:
+              type: boolean
+            stripe_configured:
+              type: boolean
+            resend_configured:
+              type: boolean
+            metrics_endpoint:
+              type: string
+            users:
+              type: integer
+            locker_packages:
+              type: integer
+            stored_packages:
+              type: integer
+            service_queue:
+              type: integer
+            unmatched_packages:
+              type: integer
+            pending_ship_count:
+              type: integer
+            generated_at:
+              type: string
+              format: date-time
+
+    InsightsSlowRoute:
+      type: object
+      required: [path, method, request_count, avg_duration_ms, max_duration_ms]
+      properties:
+        path:
+          type: string
+        method:
+          type: string
+        request_count:
+          type: integer
+        avg_duration_ms:
+          type: number
+        max_duration_ms:
+          type: number
+
+    AdminInsightsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [window_days, generated_at, analytics, performance, errors, business]
+          properties:
+            window_days:
+              type: integer
+            generated_at:
+              type: string
+              format: date-time
+            analytics:
+              type: object
+              required: [total_events, unique_users, unique_routes, avg_events_per_user]
+              properties:
+                total_events:
+                  type: integer
+                unique_users:
+                  type: integer
+                unique_routes:
+                  type: integer
+                avg_events_per_user:
+                  type: number
+            performance:
+              type: object
+              required: [slow_threshold_ms, avg_duration_ms, max_duration_ms, slow_requests, total_requests, top_slow_routes]
+              properties:
+                slow_threshold_ms:
+                  type: integer
+                avg_duration_ms:
+                  type: number
+                max_duration_ms:
+                  type: number
+                slow_requests:
+                  type: integer
+                total_requests:
+                  type: integer
+                top_slow_routes:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/InsightsSlowRoute'
+            errors:
+              type: object
+              required: [total_errors, affected_requests, server_errors, client_errors]
+              properties:
+                total_errors:
+                  type: integer
+                affected_requests:
+                  type: integer
+                server_errors:
+                  type: integer
+                client_errors:
+                  type: integer
+            business:
+              type: object
+              required: [total_events, unique_users, total_value, avg_value]
+              properties:
+                total_events:
+                  type: integer
+                unique_users:
+                  type: integer
+                total_value:
+                  type: number
+                avg_value:
+                  type: number
+
+    Session:
+      type: object
+      required: [id, user_id, expires_at, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    SessionListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+
+    RevokeSessionsRequest:
+      type: object
+      properties:
+        keep_session_id:
+          type: string
+          format: uuid
+          description: Keep this session active and revoke all others.

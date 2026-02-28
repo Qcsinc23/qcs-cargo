@@ -94,10 +94,10 @@
 | MISS-034 | MISS | TBD | IMPLEMENTED | codex | dependabot config added; CI/go tests green | implemented 2026-02-28 wave6 (Dependabot for gomod, npm/e2e, GitHub Actions) |
 | MISS-035 | MISS | TBD | OPEN | - | - | - |
 | MISS-036 | MISS | TBD | OPEN | - | - | - |
-| MISS-037 | MISS | TBD | OPEN | - | - | - |
-| MISS-038 | MISS | TBD | OPEN | - | - | - |
-| MISS-039 | MISS | TBD | OPEN | - | - | - |
-| MISS-040 | MISS | TBD | OPEN | - | - | - |
+| MISS-037 | MISS | TBD | IMPLEMENTED | codex | npx --yes @apidevtools/swagger-cli validate docs/api/openapi.yaml; go test ./... -count=1 | implemented 2026-02-28 wave9 (OpenAPI 3.1 spec + API docs usage guide) |
+| MISS-038 | MISS | TBD | IMPLEMENTED | codex | test -f docs/adr/README.md; go test ./... -count=1 | implemented 2026-02-28 wave9 (ADR index + foundational architecture decisions) |
+| MISS-039 | MISS | TBD | IMPLEMENTED | codex | test -f docs/database/SCHEMA.md; go test ./... -count=1 | implemented 2026-02-28 wave9 (database schema reference with constraints, indexes, relationships) |
+| MISS-040 | MISS | TBD | IMPLEMENTED | codex | test -f CHANGELOG.md; go test ./... -count=1 | implemented 2026-02-28 wave9 (Keep a Changelog baseline and maintenance policy) |
 | MISS-041 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -race ./...; go test -tags=integration ./internal/api -count=1; DATABASE_URL=file:/tmp/qcs_wave8_clean.db?_journal_mode=WAL MIGRATION_DIRECTION=up/down go run ./cmd/migrate | implemented 2026-02-28 wave8 (error telemetry pipeline + optional Sentry capture + admin insights error summary) |
 | MISS-042 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -tags=integration ./internal/api -run AdminInsights -count=1; cd e2e && npx playwright test | implemented 2026-02-28 wave8 (analytics event capture and admin insights analytics aggregation) |
 | MISS-043 | MISS | TBD | IMPLEMENTED | codex | go test ./... -count=1; go test -race ./...; go test -tags=integration ./internal/api -run AdminInsights -count=1 | implemented 2026-02-28 wave8 (API request duration instrumentation with slow-route APM summaries) |

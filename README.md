@@ -9,8 +9,22 @@ Unified product per QCS Cargo Unified PRD v3.
 ## Audit remediation status
 
 - Canonical remediation tracker: `findings_status.md`
-- Current snapshot (2026-02-28): `IMPLEMENTED 79`, `OPEN 41`, `TOTAL 120`
+- Current snapshot (2026-02-28): `IMPLEMENTED 83`, `OPEN 37`, `TOTAL 120`
 - Implementation roadmap and tranche sequencing: `plans/IMPLEMENTATION_PLAN.md`
+- Change history: [CHANGELOG.md](CHANGELOG.md)
+
+## Changelog policy
+
+- Keep `CHANGELOG.md` in Keep a Changelog format with date-based entries.
+- Update `## [Unreleased]` during active work and move items to a dated section when a remediation wave is completed.
+- Keep entries concise and focused on externally meaningful behavior, contracts, and operational changes.
+
+## Architecture and API docs
+
+- OpenAPI spec: [docs/api/openapi.yaml](docs/api/openapi.yaml)
+- API docs usage and rendering: [docs/api/README.md](docs/api/README.md)
+- Architecture decisions (ADR): [docs/adr/README.md](docs/adr/README.md)
+- Database schema reference: [docs/database/SCHEMA.md](docs/database/SCHEMA.md)
 
 ## Quick start
 
