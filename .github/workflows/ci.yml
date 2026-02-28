@@ -24,6 +24,9 @@ jobs:
             echo "go.mod is missing a Go version directive" >&2
             exit 1
           fi
+          if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+            version="${BASH_REMATCH[1]}"
+          fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@v5
         with:
@@ -49,6 +52,9 @@ jobs:
           if [[ -f go.mod ]]; then
             version="$(awk '/^go /{print $2; exit}' go.mod)"
             if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
               echo "value=$version" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -75,6 +81,9 @@ jobs:
           if [[ -f go.mod ]]; then
             version="$(awk '/^go /{print $2; exit}' go.mod)"
             if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
               echo "value=$version" >> "$GITHUB_OUTPUT"
               exit 0
             fi

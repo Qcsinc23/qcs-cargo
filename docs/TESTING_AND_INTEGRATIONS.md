@@ -2,7 +2,7 @@
 
 **Purpose:** This document provides exact implementation instructions for the QCS Cargo testing infrastructure. It is designed to be consumed by an AI coding agent building the application defined in the Unified PRD v3.0.
 
-**Stack context:** Go 1.22+ · Fiber v2 · go-app (WASM) · modernc.org/sqlite · sqlc · goose · Stripe · Resend · Playwright
+**Stack context:** Go 1.25+ · Fiber v2 · go-app (WASM) · modernc.org/sqlite · sqlc · goose · Stripe · Resend · Playwright
 
 **Repo note:** When implementing code from this doc, use module path `github.com/Qcsinc23/qcs-cargo` (replace any `github.com/qcs-cargo/app` in examples). Reference this file when adding integration tests, CI, E2E, or test data seeding.
 
