@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +8,12 @@
   <meta name="description" content="Track QCS Cargo shipments by tracking number." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="/public.css" />
 </head>
+
 <body>
   <a href="#main" class="skip-link">Skip to main content</a>
   <header class="site-header">
@@ -35,18 +39,20 @@
         <h1>Check shipment status in seconds.</h1>
         <p class="lead">Enter your QCS tracking number, ship request code, or booking reference.</p>
         <form id="track-form" class="actions" style="margin-top:14px;">
-          <input id="track-input" class="text-mono" type="text" placeholder="QCS-2026-001234" required style="min-width:280px;" />
+          <input id="track-input" class="text-mono" type="text" placeholder="QCS-2026-001234" required
+            style="min-width:280px;" />
           <button type="submit" class="btn btn-primary">Track</button>
         </form>
       </div>
       <div class="hero-media reveal delay-2">
-        <img src="/web/images/public/hero-track.svg" alt="Tracking route and status nodes illustration" />
+        <img src="/web/images/public/hero-track.png" alt="Real-time shipment tracking on a mobile device" />
       </div>
     </section>
 
     <section class="section section-card reveal delay-1">
       <div id="result"></div>
-      <p class="text-small" style="margin-top:12px;">For full shipment history and account-level notifications, <a href="/login">sign in</a>.</p>
+      <p class="text-small" style="margin-top:12px;">For full shipment history and account-level notifications, <a
+          href="/login">sign in</a>.</p>
     </section>
   </main>
 
@@ -122,4 +128,5 @@
     }
   </script>
 </body>
+
 </html>

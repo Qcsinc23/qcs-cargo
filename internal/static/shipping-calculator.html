@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,9 +8,12 @@
   <meta name="description" content="Estimate shipping cost with destination, weight, dimensions, and service level." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="/public.css" />
 </head>
+
 <body>
   <a href="#main" class="skip-link">Skip to main content</a>
   <header class="site-header">
@@ -36,7 +40,8 @@
         <p class="lead">Enter weight, destination, and dimensions to preview billable weight and estimated cost.</p>
       </div>
       <div class="hero-media reveal delay-2">
-        <img src="/web/images/public/hero-calculator.svg" alt="Calculator and shipping estimate interface" />
+        <img src="/web/images/public/hero-calculator-new.png"
+          alt="Digital shipping scale showing precise package weight" />
       </div>
     </section>
 
@@ -76,16 +81,21 @@
           </div>
 
           <div class="form-grid" style="margin-top:10px;">
-            <div class="form-field"><label for="len">Length (in)</label><input id="len" type="number" min="0" step="0.1" /></div>
-            <div class="form-field"><label for="wid">Width (in)</label><input id="wid" type="number" min="0" step="0.1" /></div>
-            <div class="form-field"><label for="hgt">Height (in)</label><input id="hgt" type="number" min="0" step="0.1" /></div>
+            <div class="form-field"><label for="len">Length (in)</label><input id="len" type="number" min="0"
+                step="0.1" /></div>
+            <div class="form-field"><label for="wid">Width (in)</label><input id="wid" type="number" min="0"
+                step="0.1" /></div>
+            <div class="form-field"><label for="hgt">Height (in)</label><input id="hgt" type="number" min="0"
+                step="0.1" /></div>
           </div>
 
           <div class="form-field" style="margin-top:10px;">
-            <label><input id="insurance" type="checkbox" style="width:auto; min-height:auto; margin-right:8px;" />Add insurance (declared value / 100)</label>
+            <label><input id="insurance" type="checkbox" style="width:auto; min-height:auto; margin-right:8px;" />Add
+              insurance (declared value / 100)</label>
           </div>
 
-          <button type="button" class="btn btn-primary" onclick="calculate()" style="margin-top:12px; width:100%;">Calculate</button>
+          <button type="button" class="btn btn-primary" onclick="calculate()"
+            style="margin-top:12px; width:100%;">Calculate</button>
         </form>
 
         <div class="card">
@@ -93,11 +103,13 @@
           <div id="placeholder" class="text-small">Fill in the form and run the estimate.</div>
           <div id="result" style="display:none;">
             <div id="breakdown" class="text-small" style="display:grid; gap:8px;"></div>
-            <div style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px; display:flex; justify-content:space-between; font-weight:700;">
+            <div
+              style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px; display:flex; justify-content:space-between; font-weight:700;">
               <span>Estimated total</span>
               <span id="total"></span>
             </div>
-            <p class="text-small" style="margin-top:10px;">Final charge is confirmed after intake. Customs clearance fee ($35) is separate.</p>
+            <p class="text-small" style="margin-top:10px;">Final charge is confirmed after intake. Customs clearance fee
+              ($35) is separate.</p>
             <a href="/register" class="btn btn-accent" style="margin-top:10px; width:100%;">Get Free Address</a>
           </div>
         </div>
@@ -167,4 +179,5 @@
     }
   </script>
 </body>
+
 </html>
