@@ -11,6 +11,7 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/api"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/jobs"
+	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 	"github.com/Qcsinc23/qcs-cargo/internal/static"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -107,16 +108,26 @@ func main() {
 	})
 
 	app.Use(requestid.New())
+	app.Use(middleware.MetricsMiddleware)
 	app.Use(logger.New(logger.Config{Format: "${time} ${status} ${method} ${path} ${latency} ${requestid}\n"}))
+	app.Use(middleware.SecurityHeaders) // Add security headers after logger
 
-	// CORS: ALLOWED_ORIGINS empty = allow all (dev); comma-separated list in production
+	// CORS: ALLOWED_ORIGINS required in production; empty = allow all in dev
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	isProduction := strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+
+	if isProduction && allowedOrigins == "" {
+		log.Fatal("ALLOWED_ORIGINS must be set in production (comma-separated list of allowed domains)")
+	}
+
 	corsConfig := cors.Config{
 		AllowMethods: "GET,POST,PATCH,PUT,DELETE,OPTIONS",
 		AllowHeaders: "Authorization,Content-Type",
+		AllowOrigins: allowedOrigins,
 	}
-	if allowedOrigins != "" {
-		corsConfig.AllowOrigins = allowedOrigins
+	if allowedOrigins == "" {
+		// Dev mode: allow all
+		corsConfig.AllowOrigins = "*"
 	}
 	app.Use(cors.New(corsConfig))
 
@@ -150,6 +161,8 @@ func main() {
 	})
 	// Serve /web/* (images, etc.) from disk so frontend placeholders at /web/images/... resolve
 	app.Static("/web", "./web")
+	// Prometheus scraping endpoint (public, no auth).
+	app.Get("/metrics", middleware.MetricsHandler)
 	// Static and SPA fallback from embed (do not serve HTML for unknown API paths)
 	app.Get("/*", func(c *fiber.Ctx) error {
 		path := c.Params("*")

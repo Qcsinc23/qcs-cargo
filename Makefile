@@ -1,5 +1,5 @@
 # QCS Cargo — PRD 13.1 build commands
-.PHONY: build run migrate test test-unit test-integration test-e2e ci lint wasm deps smoke
+.PHONY: build run migrate test test-unit test-integration test-e2e loadtest loadtest-auth ci lint wasm deps smoke
 
 deps:
 	go mod download
@@ -26,6 +26,14 @@ test-integration:
 
 test-e2e:
 	cd e2e && npx playwright test
+
+loadtest:
+	@if ! command -v k6 >/dev/null 2>&1; then echo "k6 is not installed. Install k6 to run load tests."; exit 1; fi
+	k6 run loadtest/basic.js --env BASE_URL=$${BASE_URL:-http://localhost:8080}
+
+loadtest-auth:
+	@if ! command -v k6 >/dev/null 2>&1; then echo "k6 is not installed. Install k6 to run load tests."; exit 1; fi
+	k6 run loadtest/auth-rate-limit.js --env BASE_URL=$${BASE_URL:-http://localhost:8080}
 
 ci: lint test-unit test-integration smoke
 

@@ -19,6 +19,12 @@ func RunMigrations(dir string) error {
 	return Migrate(DB(), dir)
 }
 
+// RunMigrationsDown executes down migrations in reverse lexicographic order on the
+// global DB. If steps <= 0, all recorded migrations are rolled back.
+func RunMigrationsDown(dir string, steps int) error {
+	return RollbackMigrations(DB(), dir, steps)
+}
+
 // Migrate runs all *.sql migration files in dir against the given connection.
 // Used by tests (e.g. testdata.NewTestDB) to migrate an in-memory DB.
 func Migrate(conn *sql.DB, dir string) error {
@@ -90,6 +96,65 @@ func Migrate(conn *sql.DB, dir string) error {
 	return nil
 }
 
+// RollbackMigrations applies down blocks in reverse order for already-recorded
+// migrations. If steps <= 0, all recorded migrations are rolled back.
+func RollbackMigrations(conn *sql.DB, dir string, steps int) error {
+	if err := ensureSchemaMigrationsTable(conn); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+
+	rolledBack := 0
+	for i := len(names) - 1; i >= 0; i-- {
+		name := names[i]
+		applied, err := migrationRecorded(conn, name)
+		if err != nil {
+			return err
+		}
+		if !applied {
+			continue
+		}
+
+		path := filepath.Join(dir, name)
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		down := extractGooseDown(string(raw))
+		if strings.TrimSpace(down) == "" {
+			return fmt.Errorf("migration %s has no down block", name)
+		}
+
+		for j, stmt := range splitStatements(down) {
+			stmt = strings.TrimSpace(stmt)
+			if stmt == "" {
+				continue
+			}
+			if _, err := conn.Exec(stmt); err != nil {
+				return fmt.Errorf("rollback %s statement %d: %w", name, j+1, err)
+			}
+		}
+		if err := deleteMigrationRecord(conn, name); err != nil {
+			return err
+		}
+		rolledBack++
+		if steps > 0 && rolledBack >= steps {
+			break
+		}
+	}
+	return nil
+}
+
 func ensureSchemaMigrationsTable(conn *sql.DB) error {
 	_, err := conn.Exec(`
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -117,6 +182,11 @@ func recordMigration(conn *sql.DB, name string) error {
 		name,
 		time.Now().UTC().Format(time.RFC3339Nano),
 	)
+	return err
+}
+
+func deleteMigrationRecord(conn *sql.DB, name string) error {
+	_, err := conn.Exec("DELETE FROM "+schemaMigrationsTable+" WHERE name = ?", name)
 	return err
 }
 
@@ -234,6 +304,22 @@ func extractGooseUp(content string) string {
 			break
 		}
 		if inUp {
+			out = append(out, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
+func extractGooseDown(content string) string {
+	lines := strings.Split(content, "\n")
+	var out []string
+	inDown := false
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "-- +goose Down" {
+			inDown = true
+			continue
+		}
+		if inDown {
 			out = append(out, line)
 		}
 	}

@@ -49,7 +49,7 @@ WHERE payment_status IS NULL OR payment_status != 'paid';
 SELECT * FROM users
 WHERE name LIKE ? OR email LIKE ? OR (suite_code IS NOT NULL AND suite_code LIKE ?)
 ORDER BY name
-LIMIT 5;
+LIMIT ? OFFSET ?;
 
 -- Global search: ship_requests by confirmation_code. Limit 5.
 -- name: AdminSearchShipRequests :many
@@ -59,7 +59,7 @@ SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, ser
 FROM ship_requests
 WHERE confirmation_code LIKE ?
 ORDER BY created_at DESC
-LIMIT 5;
+LIMIT ? OFFSET ?;
 
 -- Global search: locker_packages by suite_code or sender_name. Limit 5.
 -- name: AdminSearchLockerPackages :many
@@ -69,4 +69,4 @@ SELECT id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name, 
 FROM locker_packages
 WHERE suite_code LIKE ? OR (sender_name IS NOT NULL AND sender_name LIKE ?)
 ORDER BY arrived_at DESC
-LIMIT 5;
+LIMIT ? OFFSET ?;

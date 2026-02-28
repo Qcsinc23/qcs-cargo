@@ -17,6 +17,7 @@ make run
 ```
 
 - **Health:** [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
+- **Metrics:** [http://localhost:8080/metrics](http://localhost:8080/metrics) (Prometheus scrape endpoint)
 - **App:** [http://localhost:8080](http://localhost:8080)
 
 **Dev seed:** `./scripts/seed-dev.sh` (requires `qcs-migrate` and `sqlite3`).
@@ -78,6 +79,7 @@ See **[docs/TESTING_AND_INTEGRATIONS.md](docs/TESTING_AND_INTEGRATIONS.md)** for
 - Test data seeding (`internal/testdata/`)
 - Unit tests (pricing, storage, validation)
 - Integration tests (API with in-memory SQLite): `go test ./internal/api/... -tags=integration -count=1` (optionally `DATABASE_URL=file::memory:?cache=shared`)
+- Integration coverage now includes auth (`/auth/magic-link/verify`, `/auth/logout` contract), bookings (`/bookings` create/list), and locker flows (`/locker` list and service-request validation)
 - Stripe payment and webhook testing
 - Storage fee cron job tests
 - Playwright E2E and offline warehouse tests
@@ -85,6 +87,10 @@ See **[docs/TESTING_AND_INTEGRATIONS.md](docs/TESTING_AND_INTEGRATIONS.md)** for
 - Test file organization and go-app component testing
 
 Implement tests and CI steps according to that doc as features are added.
+
+### API contract notes
+
+- `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
 
 **E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal).
 
@@ -97,6 +103,8 @@ Implement tests and CI steps according to that doc as features are added.
 - `make test-unit` — unit tests only (`./internal/...`, no integration)  
 - `make test-integration` — API integration tests (in-memory SQLite)  
 - `make test-e2e` — Playwright E2E tests (`e2e/`)  
+- `make loadtest` — k6 load test (`loadtest/basic.js`) against `http://localhost:8080`  
+- `make loadtest-auth` — k6 auth burst/rate-limit scenario (`loadtest/auth-rate-limit.js`)  
 - `make ci` — lint, test-unit, test-integration, smoke  
 - `make smoke` — smoke test (build, migrate, start, curl health/destinations/auth)  
 - `make stripe-verify` — verify Stripe config (app API + optional Stripe CLI)  

@@ -160,24 +160,49 @@ func adminReportsCustomers(c *fiber.Ctx) error {
 
 func adminSearch(c *fiber.Ctx) error {
 	q := strings.TrimSpace(c.Query("q", ""))
+	limit, offset := pagination(c)
+	page := c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+
 	if q == "" {
 		return c.JSON(fiber.Map{
 			"users":           []fiber.Map{},
 			"ship_requests":   []fiber.Map{},
 			"locker_packages": []fiber.Map{},
+			"page":            page,
+			"limit":           limit,
 		})
 	}
 	pattern := "%" + q + "%"
-	users, _ := db.Queries().AdminSearchUsers(c.Context(), gen.AdminSearchUsersParams{
+	users, err := db.Queries().AdminSearchUsers(c.Context(), gen.AdminSearchUsersParams{
 		Name:      pattern,
 		Email:     pattern,
 		SuiteCode: sql.NullString{String: pattern, Valid: true},
+		Limit:     limit,
+		Offset:    offset,
 	})
-	srs, _ := db.Queries().AdminSearchShipRequests(c.Context(), pattern)
-	pkgs, _ := db.Queries().AdminSearchLockerPackages(c.Context(), gen.AdminSearchLockerPackagesParams{
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to search users"))
+	}
+	srs, err := db.Queries().AdminSearchShipRequests(c.Context(), gen.AdminSearchShipRequestsParams{
+		ConfirmationCode: pattern,
+		Limit:            limit,
+		Offset:           offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to search ship requests"))
+	}
+	pkgs, err := db.Queries().AdminSearchLockerPackages(c.Context(), gen.AdminSearchLockerPackagesParams{
 		SuiteCode:  pattern,
 		SenderName: sql.NullString{String: pattern, Valid: true},
+		Limit:      limit,
+		Offset:     offset,
 	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to search locker packages"))
+	}
 	userMaps := make([]fiber.Map, 0, len(users))
 	for _, u := range users {
 		userMaps = append(userMaps, userToMap(u))
@@ -211,6 +236,8 @@ func adminSearch(c *fiber.Ctx) error {
 		"users":           userMaps,
 		"ship_requests":   srMaps,
 		"locker_packages": pkgMaps,
+		"page":            page,
+		"limit":           limit,
 	})
 }
 
@@ -355,6 +382,8 @@ func adminShipRequestUpdateStatus(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update status"))
 	}
 	sr, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
+	adminID := c.Locals(middleware.CtxUserID).(string)
+	recordActivity(c.Context(), adminID, "admin.ship_request.status_update", "ship_request", id, "status="+body.Status)
 	return c.JSON(fiber.Map{"data": sr})
 }
 
@@ -414,6 +443,7 @@ func adminServiceRequestUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update service request"))
 	}
 	updated, _ := db.Queries().GetServiceRequestByID(c.Context(), id)
+	recordActivity(c.Context(), adminID, "admin.service_request.update", "service_request", id, "action="+body.Action)
 	return c.JSON(fiber.Map{"data": updated})
 }
 
@@ -450,6 +480,7 @@ func adminUnmatchedPackageUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load package"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	adminID := c.Locals(middleware.CtxUserID).(string)
 	var status string
 	matchedUserID := sql.NullString{}
 	resolutionNotes := sql.NullString{}
@@ -481,6 +512,7 @@ func adminUnmatchedPackageUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update unmatched package"))
 	}
 	updated, _ := db.Queries().GetUnmatchedPackageByID(c.Context(), id)
+	recordActivity(c.Context(), adminID, "admin.unmatched_package.update", "unmatched_package", id, "action="+body.Action)
 	return c.JSON(fiber.Map{"data": updated})
 }
 
@@ -640,5 +672,7 @@ func adminUserUpdate(c *fiber.Ctx) error {
 		}
 		u, _ = db.Queries().GetUserByID(c.Context(), id)
 	}
+	adminID := c.Locals(middleware.CtxUserID).(string)
+	recordActivity(c.Context(), adminID, "admin.user.update", "user", id, "role="+role+",status="+status)
 	return c.JSON(fiber.Map{"data": userToMap(u)})
 }

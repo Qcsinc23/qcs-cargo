@@ -124,12 +124,14 @@ SELECT id, user_id, suite_code, tracking_inbound, carrier_inbound, sender_name, 
 FROM locker_packages
 WHERE suite_code LIKE ? OR (sender_name IS NOT NULL AND sender_name LIKE ?)
 ORDER BY arrived_at DESC
-LIMIT 5
+LIMIT ? OFFSET ?
 `
 
 type AdminSearchLockerPackagesParams struct {
 	SuiteCode  string         `json:"suite_code"`
 	SenderName sql.NullString `json:"sender_name"`
+	Limit      int64          `json:"limit"`
+	Offset     int64          `json:"offset"`
 }
 
 type AdminSearchLockerPackagesRow struct {
@@ -157,7 +159,7 @@ type AdminSearchLockerPackagesRow struct {
 
 // Global search: locker_packages by suite_code or sender_name. Limit 5.
 func (q *Queries) AdminSearchLockerPackages(ctx context.Context, arg AdminSearchLockerPackagesParams) ([]AdminSearchLockerPackagesRow, error) {
-	rows, err := q.db.QueryContext(ctx, adminSearchLockerPackages, arg.SuiteCode, arg.SenderName)
+	rows, err := q.db.QueryContext(ctx, adminSearchLockerPackages, arg.SuiteCode, arg.SenderName, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -207,8 +209,14 @@ SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, ser
 FROM ship_requests
 WHERE confirmation_code LIKE ?
 ORDER BY created_at DESC
-LIMIT 5
+LIMIT ? OFFSET ?
 `
+
+type AdminSearchShipRequestsParams struct {
+	ConfirmationCode string `json:"confirmation_code"`
+	Limit            int64  `json:"limit"`
+	Offset           int64  `json:"offset"`
+}
 
 type AdminSearchShipRequestsRow struct {
 	ID                    string         `json:"id"`
@@ -233,8 +241,8 @@ type AdminSearchShipRequestsRow struct {
 }
 
 // Global search: ship_requests by confirmation_code. Limit 5.
-func (q *Queries) AdminSearchShipRequests(ctx context.Context, confirmationCode string) ([]AdminSearchShipRequestsRow, error) {
-	rows, err := q.db.QueryContext(ctx, adminSearchShipRequests, confirmationCode)
+func (q *Queries) AdminSearchShipRequests(ctx context.Context, arg AdminSearchShipRequestsParams) ([]AdminSearchShipRequestsRow, error) {
+	rows, err := q.db.QueryContext(ctx, adminSearchShipRequests, arg.ConfirmationCode, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -277,21 +285,23 @@ func (q *Queries) AdminSearchShipRequests(ctx context.Context, confirmationCode 
 }
 
 const adminSearchUsers = `-- name: AdminSearchUsers :many
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, status, created_at, updated_at FROM users
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
 WHERE name LIKE ? OR email LIKE ? OR (suite_code IS NOT NULL AND suite_code LIKE ?)
 ORDER BY name
-LIMIT 5
+LIMIT ? OFFSET ?
 `
 
 type AdminSearchUsersParams struct {
 	Name      string         `json:"name"`
 	Email     string         `json:"email"`
 	SuiteCode sql.NullString `json:"suite_code"`
+	Limit     int64          `json:"limit"`
+	Offset    int64          `json:"offset"`
 }
 
 // Global search: users by name, email, or suite_code. Limit 5.
 func (q *Queries) AdminSearchUsers(ctx context.Context, arg AdminSearchUsersParams) ([]User, error) {
-	rows, err := q.db.QueryContext(ctx, adminSearchUsers, arg.Name, arg.Email, arg.SuiteCode)
+	rows, err := q.db.QueryContext(ctx, adminSearchUsers, arg.Name, arg.Email, arg.SuiteCode, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -315,6 +325,8 @@ func (q *Queries) AdminSearchUsers(ctx context.Context, arg AdminSearchUsersPara
 			&i.StoragePlan,
 			&i.FreeStorageDays,
 			&i.EmailVerified,
+			&i.EmailVerificationToken,
+			&i.EmailVerificationSentAt,
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
