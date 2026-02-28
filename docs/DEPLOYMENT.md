@@ -101,4 +101,4 @@ Magic link and contact-form emails are sent only when **`RESEND_API_KEY`** is se
 
 The server uses **Traefik** (Docker) for HTTPS and routing. See **scripts/deploy-production.md** for step-by-step deploy: clone repo to `/opt/qcs-cargo`, build with `docker-compose.prod.yml`, run migrations, stop old app (`/root/qcs-cargo-v2`), start new stack. Traefik routes `Host(qcs-cargo.com)` and `Host(www.qcs-cargo.com)` to the new container (port 8080).
 
-Automatic deployments are supported through [.github/workflows/deploy.yml](../.github/workflows/deploy.yml). Configure the repository secret `PROD_SSH_PASSWORD` so pushes to `main` deploy automatically after the `CI` workflow completes successfully.
+Automatic deployments are supported through [.github/workflows/deploy.yml](../.github/workflows/deploy.yml). Configure the repository secret `PROD_SSH_PRIVATE_KEY` so pushes to `main` deploy automatically after the `CI` workflow completes successfully.

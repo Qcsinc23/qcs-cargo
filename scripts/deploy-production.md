@@ -57,7 +57,7 @@
 Future pushes to `main` can deploy automatically after CI passes.
 
 1. Add this repository secret in GitHub:
-   - `PROD_SSH_PASSWORD` — SSH password for `root@82.25.85.157`
+   - `PROD_SSH_PRIVATE_KEY` — private SSH deploy key for `root@82.25.85.157`
 2. The workflow [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) will:
    - wait for the `CI` workflow to succeed on `main`
    - SSH to `root@82.25.85.157`
