@@ -10,6 +10,44 @@ import (
 	"database/sql"
 )
 
+const anonymizeUserForDeletion = `-- name: AnonymizeUserForDeletion :exec
+UPDATE users
+SET
+  name = ?,
+  email = ?,
+  phone = NULL,
+  avatar_url = NULL,
+  password_hash = NULL,
+  suite_code = NULL,
+  address_street = NULL,
+  address_city = NULL,
+  address_state = NULL,
+  address_zip = NULL,
+  email_verified = 0,
+  email_verification_token = NULL,
+  email_verification_sent_at = NULL,
+  status = 'deleted',
+  updated_at = ?
+WHERE id = ?
+`
+
+type AnonymizeUserForDeletionParams struct {
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	UpdatedAt string `json:"updated_at"`
+	ID        string `json:"id"`
+}
+
+func (q *Queries) AnonymizeUserForDeletion(ctx context.Context, arg AnonymizeUserForDeletionParams) error {
+	_, err := q.db.ExecContext(ctx, anonymizeUserForDeletion,
+		arg.Name,
+		arg.Email,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE email = ?
 `

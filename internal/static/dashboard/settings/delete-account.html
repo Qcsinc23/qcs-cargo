@@ -37,6 +37,11 @@
         return div.innerHTML;
       }
 
+      function clearLocalAuth() {
+        localStorage.removeItem('qcs_access_token');
+        localStorage.removeItem('qcs_session_id');
+      }
+
       function sidebar(user, active) {
         const suiteCode = (user && user.suite_code) || '—';
         const links = [
@@ -76,27 +81,96 @@
         const main = '<main class="flex-1 p-8">' +
           '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Delete Account</li></ol></nav>' +
           '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Delete account</h1>' +
-          '<p class="text-slate-600 mb-6">This will mark your account for deletion. You will be signed out. This action cannot be undone.</p>' +
+          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Account lifecycle</h1>' +
+          '<p class="text-slate-600 mb-6">Deactivate to pause account access, or delete to anonymize personal data and close the account.</p>' +
+          '<div class="grid gap-6 max-w-2xl">' +
+          '<section class="bg-white rounded-xl border border-slate-200 p-6">' +
+          '<h2 class="text-xl font-semibold text-[#0F172A] mb-2">Deactivate account</h2>' +
+          '<p class="text-slate-600 mb-4">Your account is set to inactive and all active sessions are revoked. Contact support to reactivate.</p>' +
+          '<button type="button" id="deactivate-btn" class="bg-amber-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-amber-700">Deactivate account</button>' +
+          '</section>' +
+          '<section class="bg-white rounded-xl border border-red-200 p-6">' +
+          '<h2 class="text-xl font-semibold text-red-700 mb-2">Delete account</h2>' +
+          '<p class="text-slate-600 mb-4">This action is permanent. Personal profile fields are anonymized and all sessions are revoked.</p>' +
+          '<label class="block text-sm font-medium text-slate-700 mb-1">Type DELETE to confirm</label>' +
+          '<input id="delete-confirm" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3" placeholder="DELETE" />' +
           '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-red-700">Delete my account</button>' +
-          '<p id="delete-msg" class="mt-3 text-sm hidden"></p>' +
+          '</section>' +
+          '</div>' +
+          '<p id="account-msg" class="mt-4 text-sm hidden"></p>' +
           '</main></div>';
         document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
         document.getElementById('logout-btn').onclick = () => {
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => {
+            clearLocalAuth();
+            window.location.href = '/';
+          });
         };
+
+        function setMessage(text, isError) {
+          const el = document.getElementById('account-msg');
+          el.classList.remove('hidden');
+          el.textContent = text;
+          el.className = 'mt-4 text-sm ' + (isError ? 'text-red-600' : 'text-emerald-600');
+        }
+
+        function closeAndRedirect(successText) {
+          clearLocalAuth();
+          setMessage(successText + ' Redirecting…', false);
+          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
+            setTimeout(() => { window.location.href = '/'; }, 1200);
+          });
+        }
+
+        document.getElementById('deactivate-btn').onclick = function () {
+          if (!confirm('Deactivate account and sign out all sessions?')) return;
+          this.disabled = true;
+          fetch('/api/v1/account/deactivate', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } })
+            .then(async (r) => {
+              if (r.ok) {
+                closeAndRedirect('Account deactivated.');
+                return;
+              }
+              let msg = 'Failed to deactivate account.';
+              try {
+                const j = await r.json();
+                if (j && j.error && j.error.message) msg = j.error.message;
+              } catch (_) { }
+              this.disabled = false;
+              setMessage(msg, true);
+            })
+            .catch(() => {
+              this.disabled = false;
+              setMessage('Network error. Please try again.', true);
+            });
+        };
+
         document.getElementById('delete-btn').onclick = function () {
-          if (!confirm('Are you sure you want to delete your account? You will be signed out immediately.')) return;
+          const confirmText = (document.getElementById('delete-confirm').value || '').trim().toUpperCase();
+          if (confirmText !== 'DELETE') {
+            setMessage('Type DELETE in the confirmation box to continue.', true);
+            return;
+          }
+          if (!confirm('Delete account permanently and anonymize personal data?')) return;
           this.disabled = true;
           fetch('/api/v1/account/delete', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } })
-            .then(r => r.ok ? r.json() : null)
-            .then(() => {
-              localStorage.removeItem('qcs_access_token');
-              document.getElementById('delete-msg').textContent = 'Account deleted. Redirecting…';
-              document.getElementById('delete-msg').classList.remove('hidden');
-              setTimeout(() => { window.location.href = '/'; }, 1500);
+            .then(async (r) => {
+              if (r.ok) {
+                closeAndRedirect('Account deleted and personal data anonymized.');
+                return;
+              }
+              let msg = 'Failed to delete account.';
+              try {
+                const j = await r.json();
+                if (j && j.error && j.error.message) msg = j.error.message;
+              } catch (_) { }
+              this.disabled = false;
+              setMessage(msg, true);
             })
-            .catch(() => { this.disabled = false; document.getElementById('delete-msg').textContent = 'Request failed.'; document.getElementById('delete-msg').classList.remove('hidden'); });
+            .catch(() => {
+              this.disabled = false;
+              setMessage('Network error. Please try again.', true);
+            });
         };
       });
     })();

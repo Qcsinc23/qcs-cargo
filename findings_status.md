@@ -60,8 +60,8 @@
 | INC-043 | INC | TBD | IMPLEMENTED | codex | migrate up/down clean+seeded DB verification; go test ./... | implemented 2026-02-28 wave5 (down migrations + rollback compatibility rebuilds) |
 | MISS-001 | MISS | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |
 | MISS-002 | MISS | TBD | OPEN | - | - | - |
-| MISS-003 | MISS | TBD | OPEN | - | - | - |
-| MISS-004 | MISS | TBD | OPEN | - | - | - |
+| MISS-003 | MISS | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run SessionsRevokeAll_KeepCurrentSession -count=1; go test ./... -count=1 | implemented 2026-02-28 wave10 (session management UI hardened with keep-current-session flow + backend/session tests) |
+| MISS-004 | MISS | TBD | IMPLEMENTED | codex | go test -tags=integration ./internal/api -run 'AccountDeactivate|AccountDelete|RequireAuth_RejectsInactiveUserStatus|AuthMagicLinkVerify_RejectsInactiveAccount' -count=1; go test ./... -count=1 | implemented 2026-02-28 wave10 (account deactivate endpoint + GDPR-style anonymizing delete + inactive account enforcement) |
 | MISS-005 | MISS | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; integration+e2e | implemented 2026-02-28 wave4 |
 | MISS-006 | MISS | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; integration+e2e | implemented 2026-02-28 wave3 |
 | MISS-007 | MISS | TBD | IMPLEMENTED | codex | go test ./...; go test -race ./...; e2e smoke | implemented 2026-02-28 |

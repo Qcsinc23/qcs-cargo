@@ -550,13 +550,32 @@ paths:
   /api/v1/account/delete:
     post:
       tags: [Account]
-      summary: Mark current account as deleted
+      summary: Delete current account and anonymize personal data
       operationId: postAccountDelete
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: Account marked for deletion
+          description: Account deleted and anonymized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/account/deactivate:
+    post:
+      tags: [Account]
+      summary: Deactivate current account
+      operationId: postAccountDeactivate
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Account deactivated
           content:
             application/json:
               schema:
@@ -813,12 +832,15 @@ components:
       properties:
         data:
           type: object
-          required: [user, access_token, expires_in]
+          required: [user, access_token, session_id, expires_in]
           properties:
             user:
               $ref: '#/components/schemas/User'
             access_token:
               type: string
+            session_id:
+              type: string
+              description: Current refresh-session identifier used by session-management UI.
             expires_in:
               type: integer
               description: Access-token lifetime in seconds.

@@ -1,33 +1,104 @@
 package api
 
 import (
+	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
 
-// RegisterAccount mounts POST /account/delete. Requires auth.
+const deletedUserName = "Deleted User"
+
+// RegisterAccount mounts account lifecycle routes. Requires auth.
 func RegisterAccount(g fiber.Router) {
+	g.Post("/account/deactivate", middleware.RequireAuth, accountDeactivate)
 	g.Post("/account/delete", middleware.RequireAuth, accountDelete)
 }
 
-// accountDelete marks the user as deleted (status = 'deleted'). PRD 2.14.
+func accountDeactivate(c *fiber.Ctx) error {
+	userID := c.Locals(middleware.CtxUserID).(string)
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to deactivate account"))
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	qtx := db.Queries().WithTx(tx)
+	if err := qtx.UpdateUserStatus(c.Context(), gen.UpdateUserStatusParams{
+		Status:    "inactive",
+		UpdatedAt: now,
+		ID:        userID,
+	}); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to deactivate account"))
+	}
+	if err := qtx.DeleteSessionsByUser(c.Context(), userID); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to deactivate account"))
+	}
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to deactivate account"))
+	}
+
+	blacklistCurrentAccessToken(c)
+	clearRefreshCookie(c)
+	recordActivity(c.Context(), userID, "auth.account.deactivate", "user", userID, "status=inactive")
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Account deactivated. You can contact support to reactivate."}})
+}
+
+// accountDelete anonymizes user PII and marks account deleted (GDPR-style soft deletion).
 func accountDelete(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 	now := time.Now().UTC().Format(time.RFC3339)
-	err := db.Queries().UpdateUserStatus(c.Context(), gen.UpdateUserStatusParams{
-		Status:    "deleted",
-		UpdatedAt: now,
-		ID:        userID,
-	})
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
 	}
-	// Optionally revoke all sessions so they are logged out
-	_ = db.Queries().DeleteSessionsByUser(c.Context(), userID)
-	recordActivity(c.Context(), userID, "auth.account.delete", "user", userID, "status=deleted")
-	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Account marked for deletion."}})
+	defer func() { _ = tx.Rollback() }()
+
+	qtx := db.Queries().WithTx(tx)
+	if err := qtx.AnonymizeUserForDeletion(c.Context(), gen.AnonymizeUserForDeletionParams{
+		Name:      deletedUserName,
+		Email:     deletedEmailForUser(userID),
+		UpdatedAt: now,
+		ID:        userID,
+	}); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
+	}
+	if err := qtx.DeleteSessionsByUser(c.Context(), userID); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
+	}
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
+	}
+
+	blacklistCurrentAccessToken(c)
+	clearRefreshCookie(c)
+	recordActivity(c.Context(), userID, "auth.account.delete", "user", userID, "status=deleted,anonymized=true")
+	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Account deleted and personal data anonymized."}})
+}
+
+func deletedEmailForUser(userID string) string {
+	return "deleted+" + strings.TrimSpace(userID) + "@qcs.invalid"
+}
+
+func blacklistCurrentAccessToken(c *fiber.Ctx) {
+	auth := c.Get("Authorization")
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	claims, err := services.ValidateAccessTokenClaims(token)
+	if err != nil {
+		return
+	}
+	if claims.ID == "" || claims.ExpiresAt == nil {
+		return
+	}
+	_ = services.BlacklistToken(c.Context(), claims.ID, claims.ExpiresAt.Time)
 }

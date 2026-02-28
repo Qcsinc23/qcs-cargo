@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"database/sql"
 	"log"
 	"strings"
 
+	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
@@ -55,6 +57,24 @@ func RequireAuth(c *fiber.Ctx) error {
 	}
 
 	userID := claims.UserID
+	user, err := db.Queries().GetUserByID(c.Context(), userID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(401).JSON(fiber.Map{
+				"error": fiber.Map{"code": "UNAUTHENTICATED", "message": "User not found"},
+			})
+		}
+		log.Printf("[auth] %s %s RequireAuth: user status lookup failed (%v)", c.Method(), c.Path(), err)
+		return c.Status(503).JSON(fiber.Map{
+			"error": fiber.Map{"code": "AUTH_CHECK_UNAVAILABLE", "message": "Authentication temporarily unavailable"},
+		})
+	}
+	if !strings.EqualFold(strings.TrimSpace(user.Status), "active") {
+		return c.Status(403).JSON(fiber.Map{
+			"error": fiber.Map{"code": "ACCOUNT_INACTIVE", "message": "Account is inactive"},
+		})
+	}
+
 	email := claims.Email
 	role := claims.Role
 	log.Printf("[auth] %s %s RequireAuth: ok user_id=%s", c.Method(), c.Path(), userID)

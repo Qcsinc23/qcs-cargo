@@ -6,6 +6,15 @@ The format is based on Keep a Changelog, using date-based entries.
 
 ## [Unreleased]
 
+### Added
+- Added account lifecycle endpoint `POST /api/v1/account/deactivate` and updated dashboard account lifecycle UI for deactivate/delete actions.
+
+### Changed
+- Session management UI now preserves current browser session when revoking all other sessions (using `keep_session_id`), with improved error handling.
+- Magic-link verify now returns `session_id` alongside `access_token` to support reliable session-management UX.
+- Account deletion now anonymizes core personal profile fields and revokes active sessions.
+- Auth middleware now rejects non-active accounts (`ACCOUNT_INACTIVE`) for protected routes.
+
 ## [2026-02-28]
 
 ### Security

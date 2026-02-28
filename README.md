@@ -9,7 +9,7 @@ Unified product per QCS Cargo Unified PRD v3.
 ## Audit remediation status
 
 - Canonical remediation tracker: `findings_status.md`
-- Current snapshot (2026-02-28): `IMPLEMENTED 83`, `OPEN 37`, `TOTAL 120`
+- Current snapshot (2026-02-28): `IMPLEMENTED 85`, `OPEN 35`, `TOTAL 120`
 - Implementation roadmap and tranche sequencing: `plans/IMPLEMENTATION_PLAN.md`
 - Change history: [CHANGELOG.md](CHANGELOG.md)
 
@@ -130,6 +130,8 @@ Dependency update automation is configured with Dependabot for:
 ### API contract notes
 
 - `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
+- `POST /api/v1/account/deactivate` sets account status to `inactive`, revokes sessions, and signs out current auth context.
+- `POST /api/v1/account/delete` anonymizes profile PII, revokes sessions, blacklists current access token, and returns a success message.
 - `GET /api/v1/destinations` and `GET /api/v1/destinations/:id` are DB-backed via the `destinations` catalog table. A static fallback list is used only if destination DB access fails unexpectedly.
 - `GET /api/v1/locker` supports pagination query params: `limit` (default `20`, max `100`) and `page` (default `1`). Response includes `data`, `page`, `limit`, `total`, and `status`.
 - `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, `metrics_endpoint`, queue/count metrics, and `generated_at`.

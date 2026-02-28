@@ -341,6 +341,9 @@ func authMagicLinkVerify(c *fiber.Ctx) error {
 		if errors.Is(err, services.ErrEmailNotVerified) {
 			return c.Status(403).JSON(ErrorResponse{}.withCode("EMAIL_NOT_VERIFIED", "Please verify your email before signing in."))
 		}
+		if errors.Is(err, services.ErrAccountInactive) {
+			return c.Status(403).JSON(ErrorResponse{}.withCode("ACCOUNT_INACTIVE", "Account is inactive"))
+		}
 		log.Printf("[auth] magic-link verify failed: %v", err)
 		return c.Status(401).JSON(ErrorResponse{}.withCode("INVALID_LINK", err.Error()))
 	}
@@ -348,10 +351,12 @@ func authMagicLinkVerify(c *fiber.Ctx) error {
 	middleware.ClearAuthAttemptFailures(lockKey)
 	recordActivity(c.Context(), user.ID, "auth.magic_link.verify", "user", user.ID, "")
 	setRefreshCookie(c, refreshToken)
+	sessionID, _ := services.ValidateRefreshToken(refreshToken)
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"user":         userToMap(user),
 			"access_token": accessToken,
+			"session_id":   sessionID,
 			"expires_in":   int(services.AccessExpiry.Seconds()),
 		},
 	})
@@ -364,12 +369,17 @@ func authRefresh(c *fiber.Ctx) error {
 	}
 	user, accessToken, err := services.RefreshSession(c.Context(), refreshToken)
 	if err != nil {
+		if errors.Is(err, services.ErrAccountInactive) {
+			return c.Status(403).JSON(ErrorResponse{}.withCode("ACCOUNT_INACTIVE", "Account is inactive"))
+		}
 		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", err.Error()))
 	}
+	sessionID, _ := services.ValidateRefreshToken(refreshToken)
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"user":         userToMap(user),
 			"access_token": accessToken,
+			"session_id":   sessionID,
 			"expires_in":   int(services.AccessExpiry.Seconds()),
 		},
 	})

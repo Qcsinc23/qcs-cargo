@@ -49,6 +49,9 @@ var alphanum = []byte("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 // ErrEmailNotVerified indicates an auth attempt for an account that has not completed email verification.
 var ErrEmailNotVerified = errors.New("email not verified")
 
+// ErrAccountInactive indicates an auth attempt for a non-active account.
+var ErrAccountInactive = errors.New("account is inactive")
+
 // GenerateSuiteCode returns QCS-{6 alphanumeric} per PRD 8.10.
 func GenerateSuiteCode() (string, error) {
 	b := make([]byte, SuiteCodeLength)
@@ -200,6 +203,9 @@ func VerifyMagicLink(ctx context.Context, rawToken string) (user gen.User, acces
 	if err != nil {
 		return gen.User{}, "", "", err
 	}
+	if !strings.EqualFold(strings.TrimSpace(user.Status), "active") {
+		return gen.User{}, "", "", ErrAccountInactive
+	}
 	if user.EmailVerified == 0 {
 		return gen.User{}, "", "", ErrEmailNotVerified
 	}
@@ -332,6 +338,10 @@ func RefreshSession(ctx context.Context, refreshTokenString string) (user gen.Us
 	user, err = q.GetUserByID(ctx, sess.UserID)
 	if err != nil {
 		return gen.User{}, "", err
+	}
+	if !strings.EqualFold(strings.TrimSpace(user.Status), "active") {
+		_ = q.DeleteSession(ctx, sess.ID)
+		return gen.User{}, "", ErrAccountInactive
 	}
 	accessToken, err = issueAccessToken(user.ID, user.Email, user.Role)
 	if err != nil {

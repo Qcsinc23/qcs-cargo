@@ -66,6 +66,9 @@
             status.textContent = 'Success. Redirecting...';
             try {
               localStorage.setItem('qcs_access_token', j.data.access_token);
+              if (j.data.session_id) {
+                localStorage.setItem('qcs_session_id', j.data.session_id);
+              }
             } catch (_) {
               status.textContent = 'Could not save sign-in state. Please disable private mode and try again.';
               return;
