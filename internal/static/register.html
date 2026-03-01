@@ -28,113 +28,123 @@
     </div>
   </header>
 
-  <main class="page" id="main">
-    <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Sign Up</span></div>
-    <section class="section section-card reveal" style="max-width:560px; margin:0 auto;">
-      <div id="step-indicator" class="flex-between" style="margin-bottom: 24px;">
-        <div class="step-dot active" data-step="1">1</div>
-        <div class="step-line"></div>
-        <div class="step-dot" data-step="2">2</div>
-        <div class="step-line"></div>
-        <div class="step-dot" data-step="3">3</div>
-        <div class="step-line"></div>
-        <div class="step-dot" data-step="4">4</div>
+  <main class="page" id="main" style="padding: 0;">
+    <section class="hero reveal" style="min-height: 85vh; grid-template-columns: 0.8fr 1.2fr; gap: 0; padding: 0;">
+      <!-- Image Side -->
+      <div class="hero-media reveal delay-2"
+        style="background: url('/web/images/public/hero-register.png') center/cover no-repeat; height: 100%;">
       </div>
 
-      <div class="section-head" id="registration-header">
-        <h1 class="page-title" style="font-size:1.8rem;">Step 1: Account Details</h1>
-        <p>Create your credentials to get started.</p>
-      </div>
+      <!-- Form Side -->
+      <div class="reveal delay-1" style="padding: 40px 60px; background: white; overflow-y: auto;">
+        <div class="breadcrumb" style="margin-top: 0;"><a href="/">Home</a><span>/</span><span class="current">Sign
+            Up</span></div>
 
-      <form id="register-form" class="card" style="padding:24px; border: none; box-shadow: var(--shadow-2);">
-        <!-- Step 1: Account Info -->
-        <div class="reg-step" data-step="1">
-          <div class="form-field">
-            <label for="name">Full Name</label>
-            <input id="name" type="text" name="name" required placeholder="John Doe" />
-          </div>
-          <div class="form-field" style="margin-top:16px;">
-            <label for="email">Email Address</label>
-            <input id="email" type="email" name="email" required placeholder="john.doe@example.com" />
-          </div>
-          <div class="form-field" style="margin-top:16px;">
-            <label for="phone">WhatsApp Number</label>
-            <div style="display: flex; gap: 8px;">
-              <span
-                style="display: flex; align-items: center; padding: 0 12px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 0.9rem;">+592</span>
-              <input id="phone" type="tel" name="phone" required placeholder="600 0000" style="flex: 1;" />
-            </div>
-          </div>
-          <div class="form-field" style="margin-top:16px;">
-            <label for="password">Password</label>
-            <input id="password" type="password" name="password" required placeholder="Min. 8 characters" />
-          </div>
-          <button type="button" class="btn btn-accent next-step" style="width:100%; margin-top:24px;">Confirm &
-            Continue</button>
+        <div id="step-indicator" class="flex-between" style="margin-bottom: 24px; max-width: 500px;">
+          <div class="step-dot active" data-step="1">1</div>
+          <div class="step-line"></div>
+          <div class="step-dot" data-step="2">2</div>
+          <div class="step-line"></div>
+          <div class="step-dot" data-step="3">3</div>
+          <div class="step-line"></div>
+          <div class="step-dot" data-step="4">4</div>
         </div>
 
-        <!-- Step 2: Destination -->
-        <div class="reg-step" data-step="2" style="display: none;">
-          <div class="form-field">
-            <label>Primary Shipping Route</label>
-            <div class="card"
-              style="padding: 16px; display: flex; align-items: center; gap: 16px; border: 2px solid var(--brand); background: var(--bg-soft);">
-              <img src="https://flagcdn.com/gy.svg" alt="Guyana" style="width: 32px; height: auto;" />
-              <div>
-                <p style="font-weight: 700; color: var(--brand);">Guyana (GEO)</p>
-                <p class="text-small muted">Weekly air & ocean freight</p>
+        <div class="section-head" id="registration-header" style="text-align: left; margin-bottom: 24px;">
+          <h1 class="page-title" style="font-size: 1.8rem; margin-bottom: 8px;">Step 1: Account Details</h1>
+          <p class="muted">Create your credentials to get started.</p>
+        </div>
+
+        <form id="register-form" class="card"
+          style="padding: 32px; border: 1px solid var(--line); box-shadow: var(--shadow-2); max-width: 500px;">
+          <!-- Step 1: Account Info -->
+          <div class="reg-step" data-step="1">
+            <div class="form-field">
+              <label for="name">Full Name</label>
+              <input id="name" type="text" name="name" required placeholder="John Doe" />
+            </div>
+            <div class="form-field" style="margin-top: 16px;">
+              <label for="email">Email Address</label>
+              <input id="email" type="email" name="email" required placeholder="john.doe@example.com" />
+            </div>
+            <div class="form-field" style="margin-top: 16px;">
+              <label for="phone">WhatsApp Number</label>
+              <div style="display: flex; gap: 8px;">
+                <span
+                  style="display: flex; align-items: center; padding: 0 12px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 0.9rem;">+592</span>
+                <input id="phone" type="tel" name="phone" required placeholder="600 0000" style="flex: 1;" />
               </div>
-              <div style="margin-left: auto; color: var(--brand);">✓</div>
+            </div>
+            <div class="form-field" style="margin-top: 16px;">
+              <label for="password">Password</label>
+              <input id="password" type="password" name="password" required placeholder="Min. 8 characters" />
+            </div>
+            <button type="button" class="btn btn-accent next-step" style="width: 100%; margin-top: 24px;">Confirm &
+              Continue</button>
+          </div>
+
+          <!-- Step 2: Destination -->
+          <div class="reg-step" data-step="2" style="display: none;">
+            <div class="form-field">
+              <label>Primary Shipping Route</label>
+              <div class="card"
+                style="padding: 16px; display: flex; align-items: center; gap: 16px; border: 2px solid var(--brand); background: var(--bg-soft);">
+                <img src="https://flagcdn.com/gy.svg" alt="Guyana" style="width: 32px; height: auto;" />
+                <div>
+                  <p style="font-weight: 700; color: var(--brand);">Guyana (GEO)</p>
+                  <p class="text-small muted">Weekly air & ocean freight</p>
+                </div>
+                <div style="margin-left: auto; color: var(--brand);">✓</div>
+              </div>
+            </div>
+            <p class="text-small muted" style="margin-top: 16px;">Your US shipping address will be optimized for the
+              Guyana route. You can add more destinations later.</p>
+            <div class="flex-between" style="margin-top: 24px; gap: 12px;">
+              <button type="button" class="btn btn-light prev-step" style="flex: 1;">Back</button>
+              <button type="button" class="btn btn-accent next-step" style="flex: 2;">Select Destination</button>
             </div>
           </div>
-          <p class="text-small muted" style="margin-top: 16px;">Your US shipping address will be optimized for the
-            Guyana route. You can add more destinations later.</p>
-          <div class="flex-between" style="margin-top: 24px; gap: 12px;">
-            <button type="button" class="btn btn-light prev-step" style="flex: 1;">Back</button>
-            <button type="button" class="btn btn-accent next-step" style="flex: 2;">Select Destination</button>
-          </div>
-        </div>
 
-        <!-- Step 3: Verification Notice -->
-        <div class="reg-step" data-step="3" style="display: none;">
-          <div style="text-align: center; margin-bottom: 20px;">
-            <div style="font-size: 3rem; margin-bottom: 16px;">📑</div>
-            <h3 style="margin-bottom: 8px;">Customs Compliance</h3>
-            <p class="text-small muted">To comply with Guyana customs, you will need to provide your <b>ID</b> and
-              <b>TIN</b> after signup to clear packages.
-            </p>
+          <!-- Step 3: Verification Notice -->
+          <div class="reg-step" data-step="3" style="display: none;">
+            <div style="text-align: center; margin-bottom: 20px;">
+              <div style="font-size: 3rem; margin-bottom: 16px;">📑</div>
+              <h3 style="margin-bottom: 8px;">Customs Compliance</h3>
+              <p class="text-small muted">To comply with Guyana customs, you will need to provide your <b>ID</b> and
+                <b>TIN</b> after signup to clear packages.</p>
+            </div>
+            <div class="card"
+              style="padding: 16px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px;">
+              <ul class="text-small" style="padding-left: 20px; color: #92400e;">
+                <li>Personal ID / Passport</li>
+                <li>Taxpayer Identification Number (TIN)</li>
+                <li>USPS Form 1583 (We'll help with this)</li>
+              </ul>
+            </div>
+            <div class="flex-between" style="margin-top: 24px; gap: 12px;">
+              <button type="button" class="btn btn-light prev-step" style="flex: 1;">Back</button>
+              <button type="submit" class="btn btn-primary" style="flex: 2;">Agree & Finalize</button>
+            </div>
           </div>
-          <div class="card" style="padding: 16px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 8px;">
-            <ul class="text-small" style="padding-left: 20px; color: #92400e;">
-              <li>Personal ID / Passport</li>
-              <li>Taxpayer Identification Number (TIN)</li>
-              <li>USPS Form 1583 (We'll help with this)</li>
-            </ul>
-          </div>
-          <div class="flex-between" style="margin-top: 24px; gap: 12px;">
-            <button type="button" class="btn btn-light prev-step" style="flex: 1;">Back</button>
-            <button type="submit" class="btn btn-primary" style="flex: 2;">Agree & Finalize</button>
-          </div>
-        </div>
 
-        <!-- Step 4: Success -->
-        <div class="reg-step" data-step="4" style="display: none; text-align: center;">
-          <div style="font-size: 4rem; margin-bottom: 16px;">🎉</div>
-          <h2>Welcome aboard!</h2>
-          <p class="muted">Your account is ready. Here is your unique suite code for the Miami hub:</p>
-          <div id="suite-code-display"
-            style="font-size: 2rem; font-weight: 800; color: var(--brand); margin: 24px 0; padding: 16px; background: var(--bg-soft); border-radius: 12px; letter-spacing: 2px;">
-            QCS-XXXXXX
+          <!-- Step 4: Success -->
+          <div class="reg-step" data-step="4" style="display: none; text-align: center;">
+            <div style="font-size: 4rem; margin-bottom: 16px;">🎉</div>
+            <h2 style="margin-bottom: 8px;">Welcome aboard!</h2>
+            <p class="muted">Your account is ready. Here is your unique suite code for the Miami hub:</p>
+            <div id="suite-code-display"
+              style="font-size: 2rem; font-weight: 800; color: var(--brand); margin: 24px 0; padding: 16px; background: var(--bg-soft); border-radius: 12px; letter-spacing: 2px;">
+              QCS-XXXXXX</div>
+            <p class="text-small muted" style="margin-bottom: 24px;">Use this code as part of your name when shopping
+              online.</p>
+            <a href="/login" class="btn btn-accent" style="width: 100%;">Go to Dashboard</a>
           </div>
-          <p class="text-small muted" style="margin-bottom: 24px;">Use this code as part of your name when shopping
-            online.</p>
-          <a href="/login" class="btn btn-accent" style="width: 100%;">Go to Dashboard</a>
-        </div>
-      </form>
+        </form>
 
-      <p id="form-status" class="text-small" style="margin-top:16px; display:none; text-align: center;"></p>
-      <p id="login-link" class="text-small" style="margin-top:20px; text-align: center;">Already registered? <a
-          href="/login">Sign in</a>.</p>
+        <p id="form-status" class="text-small" style="margin-top: 16px; display: none; text-align: center;"></p>
+        <p id="login-link" class="text-small" style="margin-top: 20px; text-align: left;">Already registered? <a
+            href="/login" style="font-weight: 700; color: var(--accent);">Sign in</a>.</p>
+      </div>
     </section>
   </main>
 

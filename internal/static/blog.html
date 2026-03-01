@@ -18,7 +18,8 @@
     <a href="#main" class="skip-link">Skip to main content</a>
     <header class="site-header">
         <div class="nav-shell">
-            <a class="brand" href="/"><img src="/web/images/logo.svg" alt="QCS Cargo" style="height:36px;width:auto;" /></a>
+            <a class="brand" href="/"><img src="/web/images/logo.svg" alt="QCS Cargo"
+                    style="height:36px;width:auto;" /></a>
             <nav class="nav-links" aria-label="Main navigation">
                 <a class="nav-link" href="/how-it-works">How It Works</a>
                 <a class="nav-link" href="/about">About</a>
@@ -31,16 +32,23 @@
     <main class="page" id="main">
         <div class="breadcrumb"><a href="/">Home</a><span>/</span><span class="current">Blog</span></div>
 
-        <section class="section" style="padding-top: 20px;">
-            <div class="section-head" style="text-align: center; margin-bottom: 60px;">
-                <h1 class="page-title">Latest from the Blog</h1>
-                <p class="muted">Tips, news, and guides for smooth logistics.</p>
+        <section class="hero reveal"
+            style="background: var(--brand); color: #fff; padding: 60px 0; grid-template-columns: 1fr 0.8fr;">
+            <div class="reveal delay-1">
+                <h1 style="color: #fff; margin-bottom: 16px;">Latest from the Blog</h1>
+                <p class="lead" style="color: #cbd5e1;">Tips, news, and guides for smooth logistics across the
+                    Caribbean.</p>
             </div>
+            <div class="hero-media reveal delay-2">
+                <img src="/web/images/public/hero-blog.png" alt="Logistics magazine aesthetic"
+                    style="max-height: 250px; border-radius: 12px;" />
+            </div>
+        </section>
 
-            <div class="grid-3" id="blog-grid">
-                <p class="muted text-small text-center animate-pulse" style="grid-column: 1 / -1; padding: 40px 0;">
-                    Loading posts...</p>
-            </div>
+        <div class="grid-3" id="blog-grid">
+            <p class="muted text-small text-center animate-pulse" style="grid-column: 1 / -1; padding: 40px 0;">
+                Loading posts...</p>
+        </div>
         </section>
     </main>
 
@@ -73,7 +81,7 @@
                         const dateStr = p.published_at ? new Date(p.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '';
                         grid.innerHTML += `
               <article class="card blog-card" style="padding: 0; overflow: hidden; border: none; box-shadow: var(--shadow-1);">
-                <a href="/blog/${p.slug}" style="display: block; height: 200px; background: ${bgColor}; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1"></a>
+                <a href="/blog/${p.slug}" style="display: block; height: 200px; background: url('/web/images/public/blog-fallback.png') center/cover no-repeat; transition: opacity 0.2s;" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1"></a>
                 <div style="padding: 24px;">
                   <div class="flex-between" style="margin-bottom: 12px;">
                     <span class="text-small" style="color: var(--accent); font-weight: 700; letter-spacing: 0.5px;">${p.category || 'NEWS'}</span>

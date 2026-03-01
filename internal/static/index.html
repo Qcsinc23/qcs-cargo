@@ -65,25 +65,25 @@
     <!-- Action Cards Section -->
     <section class="section reveal delay-2" style="margin-top: -60px; position: relative; z-index: 10;">
       <div class="grid-3" style="max-width: 900px; margin: 0 auto;">
-        <article class="card"
-          style="text-align: center; padding: 32px 24px; box-shadow: var(--shadow-1); border: none;">
-          <div style="font-size: 2.5rem; margin-bottom: 16px;">📦</div>
+        <article class="card" style="text-align: center; padding: 24px; box-shadow: var(--shadow-1); border: none;">
+          <img src="/web/images/public/icon-pre-alert.png" alt="Package icon"
+            style="width: 64px; height: 64px; margin: 0 auto 16px; display: block;" />
           <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Pre-Alert</h3>
           <p style="font-size: 0.9rem; margin-bottom: 16px;">Tell us about your incoming packages.</p>
           <a href="/login" style="font-weight: 700; color: var(--brand); border-bottom: 2px solid var(--accent);">Submit
             Now &rarr;</a>
         </article>
-        <article class="card"
-          style="text-align: center; padding: 32px 24px; box-shadow: var(--shadow-1); border: none;">
-          <div style="font-size: 2.5rem; margin-bottom: 16px;">💳</div>
+        <article class="card" style="text-align: center; padding: 24px; box-shadow: var(--shadow-1); border: none;">
+          <img src="/web/images/public/icon-payment.png" alt="Credit card icon"
+            style="width: 64px; height: 64px; margin: 0 auto 16px; display: block;" />
           <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Make Payment</h3>
           <p style="font-size: 0.9rem; margin-bottom: 16px;">Pay for shipping and customs duties online.</p>
           <a href="/login" style="font-weight: 700; color: var(--brand); border-bottom: 2px solid var(--accent);">Pay
             Online &rarr;</a>
         </article>
-        <article class="card"
-          style="text-align: center; padding: 32px 24px; box-shadow: var(--shadow-1); border: none;">
-          <div style="font-size: 2.5rem; margin-bottom: 16px;">🔍</div>
+        <article class="card" style="text-align: center; padding: 24px; box-shadow: var(--shadow-1); border: none;">
+          <img src="/web/images/public/icon-track.png" alt="Tracking icon"
+            style="width: 64px; height: 64px; margin: 0 auto 16px; display: block;" />
           <h3 style="font-size: 1.1rem; margin-bottom: 8px;">Track Package</h3>
           <p style="font-size: 0.9rem; margin-bottom: 16px;">Live status updates on all your shipments.</p>
           <a href="/login" style="font-weight: 700; color: var(--brand); border-bottom: 2px solid var(--accent);">Track
@@ -251,7 +251,7 @@
             const bgColor = colors[Math.floor(Math.random() * colors.length)];
             const html = `
               <article class="card blog-card" style="padding: 0; overflow: hidden; border: none; box-shadow: var(--shadow-1);">
-                <div style="height: 180px; background: ${bgColor};"></div>
+                <div style="height: 180px; background: url('/web/images/public/blog-fallback.png') center/cover no-repeat;"></div>
                 <div style="padding: 24px;">
                   <p class="text-small" style="color: var(--accent); font-weight: 700; margin-bottom: 8px; text-transform: uppercase;">
                     ${p.category || 'NEWS'}
