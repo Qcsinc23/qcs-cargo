@@ -1,10 +1,13 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
@@ -101,6 +104,18 @@ func shipRequestSubmitCustoms(c *fiber.Ctx) error {
 	for _, it := range items {
 		itemByID[it.ID] = it
 	}
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
+	}
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("shipRequestSubmitCustoms rollback failed: %v", rbErr)
+		}
+	}()
+	qtx := db.Queries().WithTx(tx)
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, b := range body {
 		if b.ID == "" {
@@ -109,6 +124,15 @@ func shipRequestSubmitCustoms(c *fiber.Ctx) error {
 		_, ok := itemByID[b.ID]
 		if !ok {
 			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "unknown item id: "+b.ID))
+		}
+		if b.Value != nil && *b.Value < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "customs value cannot be negative"))
+		}
+		if b.Quantity != nil && *b.Quantity < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "customs quantity cannot be negative"))
+		}
+		if b.WeightLbs != nil && *b.WeightLbs < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "customs weight cannot be negative"))
 		}
 		arg := gen.UpdateShipRequestItemCustomsParams{
 			ID:            b.ID,
@@ -132,12 +156,30 @@ func shipRequestSubmitCustoms(c *fiber.Ctx) error {
 		if b.WeightLbs != nil {
 			arg.CustomsWeightLbs = sql.NullFloat64{Float64: *b.WeightLbs, Valid: true}
 		}
-		if err := db.Queries().UpdateShipRequestItemCustoms(c.Context(), arg); err != nil {
+		if err := qtx.UpdateShipRequestItemCustoms(c.Context(), arg); err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update item customs"))
 		}
 	}
+
+	pricingInputs, err := loadShipRequestPricingInputs(c.Context(), qtx, userID, id)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to recalculate ship request pricing"))
+	}
+	pricing := services.CalculateShipmentPricing(sr.DestinationID, sr.ServiceType, pricingInputs)
+	if err := qtx.UpdateShipRequestPricing(c.Context(), gen.UpdateShipRequestPricingParams{
+		Subtotal:    pricing.Subtotal,
+		ServiceFees: pricing.ServiceFees,
+		Insurance:   pricing.Insurance,
+		Discount:    pricing.Discount,
+		Total:       pricing.Total,
+		UpdatedAt:   now,
+		ID:          id,
+		UserID:      userID,
+	}); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update ship request pricing"))
+	}
 	customsStatus := sql.NullString{String: "submitted", Valid: true}
-	if err := db.Queries().UpdateShipRequestCustomsStatus(c.Context(), gen.UpdateShipRequestCustomsStatusParams{
+	if err := qtx.UpdateShipRequestCustomsStatus(c.Context(), gen.UpdateShipRequestCustomsStatusParams{
 		CustomsStatus: customsStatus,
 		Status:        "pending_payment",
 		UpdatedAt:     now,
@@ -145,6 +187,9 @@ func shipRequestSubmitCustoms(c *fiber.Ctx) error {
 		UserID:        userID,
 	}); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update customs status"))
+	}
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit ship request customs updates"))
 	}
 	return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{"customs_status": "submitted"}})
 }
@@ -187,6 +232,9 @@ func shipRequestPay(c *fiber.Ctx) error {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
+	}
+	if sr.Status != "pending_payment" && sr.Status != "paid" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Ship request must be pending_payment before payment"))
 	}
 	amountCents := int64(sr.Total * 100)
 	if amountCents < 50 {
@@ -276,11 +324,16 @@ func shipRequestCreate(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
+	body.DestinationID = strings.TrimSpace(body.DestinationID)
+	body.ServiceType = strings.TrimSpace(body.ServiceType)
 	if body.DestinationID == "" || body.ServiceType == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "destination_id and service_type required"))
 	}
 	if err := services.ValidateDestination(body.DestinationID); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	if !isAllowedShipRequestServiceType(body.ServiceType) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid service_type"))
 	}
 
 	var packageIDs []string
@@ -296,27 +349,36 @@ func shipRequestCreate(c *fiber.Ctx) error {
 	if len(packageIDs) == 0 {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "locker_package_ids or items required"))
 	}
+	packageIDs = uniqueNonEmptyStrings(packageIDs)
+	if len(packageIDs) == 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "locker_package_ids or items required"))
+	}
 
 	userID := c.Locals(middleware.CtxUserID).(string)
 
-	for _, pkgID := range packageIDs {
-		_, err := db.Queries().GetLockerPackageByID(c.Context(), gen.GetLockerPackageByIDParams{ID: pkgID, UserID: userID})
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "package not found or not yours: "+pkgID))
-			}
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to validate package"))
+	recipientID, err := validateRecipientForShipRequest(c.Context(), userID, body.DestinationID, body.RecipientID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient not found or not yours"))
 		}
+		var fiberErr *fiber.Error
+		if errors.As(err, &fiberErr) {
+			return c.Status(fiberErr.Code).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", fiberErr.Message))
+		}
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to validate recipient"))
 	}
+	pricingInputs, err := collectShipRequestPricingInputs(c.Context(), db.Queries(), userID, packageIDs, nil)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "package not found or not yours"))
+		}
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to validate package"))
+	}
+	pricing := services.CalculateShipmentPricing(body.DestinationID, body.ServiceType, pricingInputs)
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	srID := uuid.New().String()
 	confirmationCode := "SR-" + genConfirmationCode()
-
-	recipientID := sql.NullString{}
-	if body.RecipientID != nil && *body.RecipientID != "" {
-		recipientID = sql.NullString{String: *body.RecipientID, Valid: true}
-	}
 	specialInstructions := sql.NullString{}
 	if body.SpecialInstructions != nil && *body.SpecialInstructions != "" {
 		specialInstructions = sql.NullString{String: *body.SpecialInstructions, Valid: true}
@@ -357,6 +419,11 @@ func shipRequestCreate(c *fiber.Ctx) error {
 		ServiceType:         body.ServiceType,
 		Consolidate:         consolidate,
 		SpecialInstructions: specialInstructions,
+		Subtotal:            pricing.Subtotal,
+		ServiceFees:         pricing.ServiceFees,
+		Insurance:           pricing.Insurance,
+		Discount:            pricing.Discount,
+		Total:               pricing.Total,
 		CreatedAt:           now,
 		UpdatedAt:           now,
 	})
@@ -427,6 +494,91 @@ func shipRequestCreate(c *fiber.Ctx) error {
 		"status": "success",
 		"data":   fiber.Map{"id": srID, "confirmation_code": confirmationCode},
 	})
+}
+
+func validateRecipientForShipRequest(ctx context.Context, userID, destinationID string, recipientID *string) (sql.NullString, error) {
+	if recipientID == nil || strings.TrimSpace(*recipientID) == "" {
+		return sql.NullString{}, nil
+	}
+	rec, err := db.Queries().GetRecipientByID(ctx, gen.GetRecipientByIDParams{
+		ID:     strings.TrimSpace(*recipientID),
+		UserID: userID,
+	})
+	if err != nil {
+		return sql.NullString{}, err
+	}
+	if rec.DestinationID != destinationID {
+		return sql.NullString{}, fiber.NewError(fiber.StatusBadRequest, "recipient destination does not match ship request destination")
+	}
+	return sql.NullString{String: rec.ID, Valid: true}, nil
+}
+
+func collectShipRequestPricingInputs(ctx context.Context, queries *gen.Queries, userID string, packageIDs []string, weightOverrides map[string]sql.NullFloat64) ([]services.ShipmentPackageInput, error) {
+	inputs := make([]services.ShipmentPackageInput, 0, len(packageIDs))
+	for _, pkgID := range packageIDs {
+		pkg, err := queries.GetLockerPackageByID(ctx, gen.GetLockerPackageByIDParams{ID: pkgID, UserID: userID})
+		if err != nil {
+			return nil, err
+		}
+		input := services.ShipmentPackageInput{}
+		if pkg.WeightLbs.Valid {
+			input.WeightLbs = pkg.WeightLbs.Float64
+		}
+		if pkg.LengthIn.Valid {
+			input.LengthIn = pkg.LengthIn.Float64
+		}
+		if pkg.WidthIn.Valid {
+			input.WidthIn = pkg.WidthIn.Float64
+		}
+		if pkg.HeightIn.Valid {
+			input.HeightIn = pkg.HeightIn.Float64
+		}
+		if override, ok := weightOverrides[pkgID]; ok && override.Valid {
+			input.WeightLbs = override.Float64
+		}
+		inputs = append(inputs, input)
+	}
+	return inputs, nil
+}
+
+func loadShipRequestPricingInputs(ctx context.Context, queries *gen.Queries, userID, shipRequestID string) ([]services.ShipmentPackageInput, error) {
+	items, err := queries.ListShipRequestItemsByShipRequestID(ctx, shipRequestID)
+	if err != nil {
+		return nil, err
+	}
+	packageIDs := make([]string, 0, len(items))
+	weightOverrides := make(map[string]sql.NullFloat64, len(items))
+	for _, item := range items {
+		packageIDs = append(packageIDs, item.LockerPackageID)
+		weightOverrides[item.LockerPackageID] = item.CustomsWeightLbs
+	}
+	return collectShipRequestPricingInputs(ctx, queries, userID, packageIDs, weightOverrides)
+}
+
+func isAllowedShipRequestServiceType(serviceType string) bool {
+	switch serviceType {
+	case "standard", "express", "door_to_door":
+		return true
+	default:
+		return false
+	}
+}
+
+func uniqueNonEmptyStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 const confirmationChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"

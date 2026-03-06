@@ -140,6 +140,33 @@ func TestRefreshSession_ExpiredSessionReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "session expired or invalid")
 }
 
+func TestRefreshSession_RejectsRefreshHashMismatch(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	raw, err := services.RequestMagicLink(context.Background(), testdata.CustomerAliceID, "")
+	require.NoError(t, err)
+	_, _, refreshToken, err := services.VerifyMagicLink(context.Background(), raw)
+	require.NoError(t, err)
+
+	sessionID, err := services.ValidateRefreshToken(refreshToken)
+	require.NoError(t, err)
+
+	_, err = conn.Exec(`UPDATE sessions SET refresh_token_hash = ? WHERE id = ?`, "tampered-hash", sessionID)
+	require.NoError(t, err)
+
+	_, _, err = services.RefreshSession(context.Background(), refreshToken)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session expired or invalid")
+
+	var count int
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = ?`, sessionID).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
 func TestRefreshSession_ReturnsCurrentUserRowFields(t *testing.T) {
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("APP_ENV", "test")
@@ -216,4 +243,52 @@ func TestLogout_ValidRefreshTokenDeletesSession(t *testing.T) {
 	err = conn.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = ?`, sessionID).Scan(&count)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count)
+}
+
+func TestLogout_RejectsRefreshHashMismatch(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	raw, err := services.RequestMagicLink(context.Background(), testdata.CustomerAliceID, "")
+	require.NoError(t, err)
+	_, _, refreshToken, err := services.VerifyMagicLink(context.Background(), raw)
+	require.NoError(t, err)
+
+	sessionID, err := services.ValidateRefreshToken(refreshToken)
+	require.NoError(t, err)
+
+	_, err = conn.Exec(`UPDATE sessions SET refresh_token_hash = ? WHERE id = ?`, "tampered-hash", sessionID)
+	require.NoError(t, err)
+
+	err = services.Logout(context.Background(), refreshToken)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "session expired or invalid")
+
+	var count int
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = ?`, sessionID).Scan(&count))
+	assert.Equal(t, 0, count)
+}
+
+func TestVerifyMagicLink_RejectsUnverifiedUser(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	_, err := conn.Exec(`UPDATE users SET email_verified = 0 WHERE id = ?`, testdata.CustomerAliceID)
+	require.NoError(t, err)
+
+	raw, err := services.RequestMagicLink(context.Background(), testdata.CustomerAliceID, "")
+	require.NoError(t, err)
+
+	_, _, _, err = services.VerifyMagicLink(context.Background(), raw)
+	require.ErrorIs(t, err, services.ErrEmailNotVerified)
+
+	var sessions int
+	require.NoError(t, conn.QueryRow(`SELECT COUNT(*) FROM sessions WHERE user_id = ?`, testdata.CustomerAliceID).Scan(&sessions))
+	assert.Equal(t, 0, sessions)
 }

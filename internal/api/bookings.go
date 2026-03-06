@@ -1,8 +1,11 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
@@ -66,11 +69,23 @@ func bookingCreate(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
+	body.ServiceType = strings.TrimSpace(body.ServiceType)
+	body.DestinationID = strings.TrimSpace(body.DestinationID)
+	body.TimeSlot = strings.TrimSpace(body.TimeSlot)
 	if body.ServiceType == "" || body.DestinationID == "" || body.ScheduledDate == "" || body.TimeSlot == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "service_type, destination_id, scheduled_date, time_slot required"))
 	}
 	if err := services.ValidateDestination(body.DestinationID); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	if !isAllowedShipRequestServiceType(body.ServiceType) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid service_type"))
+	}
+	if !isAllowedBookingTimeSlot(body.TimeSlot) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid time_slot"))
+	}
+	if body.WeightLbs < 0 || body.LengthIn < 0 || body.WidthIn < 0 || body.HeightIn < 0 || body.ValueUSD < 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "booking dimensions, weight, and declared value cannot be negative"))
 	}
 	// scheduled_date must be today or future (UTC)
 	scheduledDate, err := time.Parse("2006-01-02", body.ScheduledDate)
@@ -85,9 +100,12 @@ func bookingCreate(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 	now := time.Now().UTC().Format(time.RFC3339)
 	confirmationCode := "BK-" + genBookingConfirmationCode()
-	recipientID := sql.NullString{}
-	if body.RecipientID != nil && *body.RecipientID != "" {
-		recipientID = sql.NullString{String: *body.RecipientID, Valid: true}
+	recipientID, err := validateBookingRecipient(c.Context(), userID, body.DestinationID, body.RecipientID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient not found or not yours"))
+		}
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 	specialInstructions := sql.NullString{}
 	if body.SpecialInstructions != nil && *body.SpecialInstructions != "" {
@@ -167,6 +185,9 @@ func bookingUpdate(c *fiber.Ctx) error {
 
 	status := existing.Status
 	if body.Status != nil {
+		if !isAllowedBookingStatus(strings.TrimSpace(*body.Status)) {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid status"))
+		}
 		status = *body.Status
 	}
 	specialInstructions := existing.SpecialInstructions
@@ -177,22 +198,37 @@ func bookingUpdate(c *fiber.Ctx) error {
 	// Recalculate price with existing values as defaults for fields not provided
 	weight := existing.WeightLbs
 	if body.WeightLbs != nil {
+		if *body.WeightLbs < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "weight_lbs cannot be negative"))
+		}
 		weight = *body.WeightLbs
 	}
 	length := existing.LengthIn
 	if body.LengthIn != nil {
+		if *body.LengthIn < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "length_in cannot be negative"))
+		}
 		length = *body.LengthIn
 	}
 	width := existing.WidthIn
 	if body.WidthIn != nil {
+		if *body.WidthIn < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "width_in cannot be negative"))
+		}
 		width = *body.WidthIn
 	}
 	height := existing.HeightIn
 	if body.HeightIn != nil {
+		if *body.HeightIn < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "height_in cannot be negative"))
+		}
 		height = *body.HeightIn
 	}
 	val := existing.ValueUsd
 	if body.ValueUSD != nil {
+		if *body.ValueUSD < 0 {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "value_usd cannot be negative"))
+		}
 		val = *body.ValueUSD
 	}
 	insure := existing.AddInsurance != 0
@@ -226,6 +262,9 @@ func bookingUpdate(c *fiber.Ctx) error {
 
 	paymentStatus := existing.PaymentStatus
 	if body.PaymentStatus != nil {
+		if !isAllowedBookingPaymentStatus(strings.TrimSpace(*body.PaymentStatus)) {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid payment_status"))
+		}
 		paymentStatus = sql.NullString{String: *body.PaymentStatus, Valid: true}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -301,4 +340,48 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+func validateBookingRecipient(ctx context.Context, userID, destinationID string, recipientID *string) (sql.NullString, error) {
+	if recipientID == nil || strings.TrimSpace(*recipientID) == "" {
+		return sql.NullString{}, nil
+	}
+	rec, err := db.Queries().GetRecipientByID(ctx, gen.GetRecipientByIDParams{
+		ID:     strings.TrimSpace(*recipientID),
+		UserID: userID,
+	})
+	if err != nil {
+		return sql.NullString{}, err
+	}
+	if rec.DestinationID != destinationID {
+		return sql.NullString{}, errors.New("recipient destination does not match booking destination")
+	}
+	return sql.NullString{String: rec.ID, Valid: true}, nil
+}
+
+func isAllowedBookingTimeSlot(slot string) bool {
+	switch slot {
+	case "morning", "afternoon", "evening":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedBookingStatus(status string) bool {
+	switch status {
+	case "pending", "confirmed", "received", "completed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedBookingPaymentStatus(status string) bool {
+	switch status {
+	case "pending", "paid", "failed", "refunded":
+		return true
+	default:
+		return false
+	}
 }

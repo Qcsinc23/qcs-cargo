@@ -25,6 +25,50 @@ func RegisterNotifications(g fiber.Router) {
 	g.Post("/notifications/push/subscribe", middleware.RequireAuth, notificationsPushSubscribe)
 }
 
+func authenticateNotificationStream(c *fiber.Ctx) (string, int, string, string) {
+	auth := strings.TrimSpace(c.Get("Authorization"))
+	if strings.HasPrefix(auth, "Bearer ") {
+		token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+		claims, err := services.ValidateAccessTokenClaims(token)
+		if err != nil {
+			return "", 401, "UNAUTHENTICATED", "Invalid or expired token"
+		}
+		if claims.ID != "" {
+			blacklisted, err := services.IsTokenBlacklisted(c.Context(), claims.ID)
+			if err != nil {
+				return "", 503, "AUTH_CHECK_UNAVAILABLE", "Authentication temporarily unavailable"
+			}
+			if blacklisted {
+				return "", 401, "UNAUTHENTICATED", "Token has been revoked"
+			}
+		}
+		user, err := db.Queries().GetUserByID(c.Context(), claims.UserID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return "", 401, "UNAUTHENTICATED", "User not found"
+			}
+			return "", 503, "AUTH_CHECK_UNAVAILABLE", "Authentication temporarily unavailable"
+		}
+		if !strings.EqualFold(strings.TrimSpace(user.Status), "active") {
+			return "", 403, "ACCOUNT_INACTIVE", "Account is inactive"
+		}
+		return user.ID, 0, "", ""
+	}
+
+	refreshToken := strings.TrimSpace(c.Cookies(refreshCookieName))
+	if refreshToken == "" {
+		return "", 401, "UNAUTHENTICATED", "Authorization required"
+	}
+	user, _, err := services.RefreshSession(c.Context(), refreshToken)
+	if err != nil {
+		if err == services.ErrAccountInactive {
+			return "", 403, "ACCOUNT_INACTIVE", "Account is inactive"
+		}
+		return "", 401, "UNAUTHENTICATED", "Invalid or expired session"
+	}
+	return user.ID, 0, "", ""
+}
+
 func notificationsGetPrefs(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 	prefs, err := db.Queries().GetNotificationPrefsByUser(c.Context(), userID)
@@ -213,21 +257,10 @@ WHERE id = ? AND user_id = ? AND read_at IS NULL
 }
 
 func notificationsStream(c *fiber.Ctx) error {
-	token := strings.TrimSpace(c.Query("access_token"))
-	if token == "" {
-		auth := strings.TrimSpace(c.Get("Authorization"))
-		if strings.HasPrefix(auth, "Bearer ") {
-			token = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-		}
+	userID, status, code, message := authenticateNotificationStream(c)
+	if status != 0 {
+		return c.Status(status).JSON(ErrorResponse{}.withCode(code, message))
 	}
-	if token == "" {
-		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Authorization required"))
-	}
-	claims, err := services.ValidateAccessTokenClaims(token)
-	if err != nil {
-		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Invalid or expired token"))
-	}
-	userID := claims.UserID
 	if err := ensureNotificationSeed(c.Context(), userID); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to open notification stream"))
 	}

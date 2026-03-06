@@ -484,11 +484,18 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 	if body.DestinationID == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "destination_id required"))
 	}
+	if len(body.ShipRequestIDs) == 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "ship_request_ids required"))
+	}
 	tx, err := db.DB().BeginTx(c.Context(), nil)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("warehouseManifestsCreate rollback failed: %v", rbErr)
+		}
+	}()
 	qtx := db.Queries().WithTx(tx)
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -506,30 +513,44 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 
 	manifestIDNull := sql.NullString{String: manifestID, Valid: true}
 	for _, srID := range body.ShipRequestIDs {
-		_ = qtx.AddShipRequestToManifest(c.Context(), gen.AddShipRequestToManifestParams{
+		if err := qtx.AddShipRequestToManifest(c.Context(), gen.AddShipRequestToManifestParams{
 			ManifestID:    manifestID,
 			ShipRequestID: srID,
-		})
+		}); err != nil {
+			if err == sql.ErrNoRows {
+				return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found: "+srID))
+			}
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to add ship request to manifest"))
+		}
 		// Mark ship request as shipped
-		_ = qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+		if err := qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
 			Status:    "shipped",
 			UpdatedAt: now,
 			ID:        srID,
-		})
-		_ = qtx.UpdateShipRequestManifestID(c.Context(), gen.UpdateShipRequestManifestIDParams{
+		}); err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update ship request status"))
+		}
+		if err := qtx.UpdateShipRequestManifestID(c.Context(), gen.UpdateShipRequestManifestIDParams{
 			ManifestID: manifestIDNull,
 			UpdatedAt:  now,
 			ID:         srID,
-		})
+		}); err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to link manifest to ship request"))
+		}
 
 		// Mark locker packages as shipped
-		items, _ := qtx.ListShipRequestItemsByShipRequestID(c.Context(), srID)
+		items, err := qtx.ListShipRequestItemsByShipRequestID(c.Context(), srID)
+		if err != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request items"))
+		}
 		for _, item := range items {
-			_ = qtx.UpdateLockerPackageStatus(c.Context(), gen.UpdateLockerPackageStatusParams{
+			if err := qtx.UpdateLockerPackageStatus(c.Context(), gen.UpdateLockerPackageStatusParams{
 				Status:    "shipped",
 				UpdatedAt: now,
 				ID:        item.LockerPackageID,
-			})
+			}); err != nil {
+				return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update locker package status"))
+			}
 		}
 	}
 
@@ -537,7 +558,10 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit transaction"))
 	}
 
-	m, _ := db.Queries().GetWarehouseManifestByID(c.Context(), manifestID)
+	m, err := db.Queries().GetWarehouseManifestByID(c.Context(), manifestID)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to reload manifest"))
+	}
 	return c.Status(201).JSON(fiber.Map{"data": m})
 }
 

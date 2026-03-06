@@ -209,7 +209,6 @@
 
   function openNotificationStream(options) {
     var opts = options || {};
-    var token = opts.token || '';
     var endpoint = opts.endpoint || STREAM_DEFAULT;
     var onEvent = typeof opts.onEvent === 'function' ? opts.onEvent : function () {};
     var onError = typeof opts.onError === 'function' ? opts.onError : function () {};
@@ -226,8 +225,7 @@
       return { close: function () {} };
     }
 
-    var qs = token ? (endpoint.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token) : '';
-    var source = new EventSource(endpoint + qs, { withCredentials: true });
+    var source = new EventSource(endpoint, { withCredentials: true });
     updateStreamStatus(statusSelector, t('realtime_connecting'), 'qcs-stream-retry');
 
     source.onopen = function () {

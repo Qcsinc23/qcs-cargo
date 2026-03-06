@@ -118,7 +118,7 @@ INSERT INTO ship_requests (
     consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
     created_at, updated_at
 ) VALUES (
-    ?, ?, ?, 'draft', ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?
+    ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
           consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
@@ -134,6 +134,11 @@ type CreateShipRequestParams struct {
 	ServiceType         string         `json:"service_type"`
 	Consolidate         int            `json:"consolidate"`
 	SpecialInstructions sql.NullString `json:"special_instructions"`
+	Subtotal            float64        `json:"subtotal"`
+	ServiceFees         float64        `json:"service_fees"`
+	Insurance           float64        `json:"insurance"`
+	Discount            float64        `json:"discount"`
+	Total               float64        `json:"total"`
 	CreatedAt           string         `json:"created_at"`
 	UpdatedAt           string         `json:"updated_at"`
 }
@@ -170,6 +175,11 @@ func (q *Queries) CreateShipRequest(ctx context.Context, arg CreateShipRequestPa
 		arg.ServiceType,
 		arg.Consolidate,
 		arg.SpecialInstructions,
+		arg.Subtotal,
+		arg.ServiceFees,
+		arg.Insurance,
+		arg.Discount,
+		arg.Total,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -758,6 +768,37 @@ func (q *Queries) UpdateShipRequestPaymentReconcile(ctx context.Context, arg Upd
 	_, err := q.db.ExecContext(ctx, updateShipRequestPaymentReconcile,
 		arg.PaymentStatus,
 		arg.Status,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.UserID,
+	)
+	return err
+}
+
+const updateShipRequestPricing = `-- name: UpdateShipRequestPricing :exec
+UPDATE ship_requests
+SET subtotal = ?, service_fees = ?, insurance = ?, discount = ?, total = ?, updated_at = ?
+WHERE id = ? AND user_id = ?
+`
+
+type UpdateShipRequestPricingParams struct {
+	Subtotal    float64 `json:"subtotal"`
+	ServiceFees float64 `json:"service_fees"`
+	Insurance   float64 `json:"insurance"`
+	Discount    float64 `json:"discount"`
+	Total       float64 `json:"total"`
+	UpdatedAt   string  `json:"updated_at"`
+	ID          string  `json:"id"`
+	UserID      string  `json:"user_id"`
+}
+
+func (q *Queries) UpdateShipRequestPricing(ctx context.Context, arg UpdateShipRequestPricingParams) error {
+	_, err := q.db.ExecContext(ctx, updateShipRequestPricing,
+		arg.Subtotal,
+		arg.ServiceFees,
+		arg.Insurance,
+		arg.Discount,
+		arg.Total,
 		arg.UpdatedAt,
 		arg.ID,
 		arg.UserID,

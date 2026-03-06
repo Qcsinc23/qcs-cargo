@@ -102,7 +102,7 @@
             '</form></main></div>';
           document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
           if (shell) {
-            shell.openNotificationStream({ token: token, statusSelector: '#notification-stream-status' });
+            shell.openNotificationStream({ statusSelector: '#notification-stream-status' });
           }
           document.getElementById('logout-btn').onclick = () => {
             fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });

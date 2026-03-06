@@ -26,7 +26,7 @@ INSERT INTO ship_requests (
     consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
     created_at, updated_at
 ) VALUES (
-    ?, ?, ?, 'draft', ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?
+    ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 )
 RETURNING id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
           consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
@@ -56,6 +56,11 @@ WHERE id = ? AND ship_request_id = ?;
 -- name: UpdateShipRequestCustomsStatus :exec
 UPDATE ship_requests
 SET customs_status = ?, status = ?, updated_at = ?
+WHERE id = ? AND user_id = ?;
+
+-- name: UpdateShipRequestPricing :exec
+UPDATE ship_requests
+SET subtotal = ?, service_fees = ?, insurance = ?, discount = ?, total = ?, updated_at = ?
 WHERE id = ? AND user_id = ?;
 
 -- name: UpdateShipRequestPaymentIntent :exec

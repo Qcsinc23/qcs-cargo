@@ -22,6 +22,20 @@ func normalizeAuthEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
+func currentAppURL() string {
+	appURL := strings.TrimSpace(os.Getenv("APP_URL"))
+	if appURL == "" {
+		return "http://localhost:8080"
+	}
+	return appURL
+}
+
+func logSensitiveAuthArtifact(format string, args ...any) {
+	if services.AllowDebugAuthArtifacts() {
+		log.Printf(format, args...)
+	}
+}
+
 // RegisterAuth mounts auth routes on the given group. Pass the same group to RegisterMe with auth middleware applied.
 func RegisterAuth(g fiber.Router) {
 	g.Post("/auth/register", authRegister)
@@ -103,17 +117,15 @@ func authRegister(c *fiber.Ctx) error {
 	if rawToken, err := services.RequestEmailVerification(c.Context(), user.ID); err != nil {
 		log.Printf("auth register: failed to create verification token: %v", err)
 	} else {
-		appURL := os.Getenv("APP_URL")
-		if appURL == "" {
-			appURL = "http://localhost:8080"
-		}
+		appURL := currentAppURL()
 		link := appURL + "/verify-email?token=" + rawToken
 		if os.Getenv("RESEND_API_KEY") != "" {
 			if err := services.SendVerificationEmail(user.Email, link); err != nil {
 				log.Printf("auth register: verification email send failed: %v", err)
 			}
 		} else {
-			log.Printf("[DEV] Verification link for %s: %s", user.Email, link)
+			log.Printf("auth register: verification transport not configured for %s", user.Email)
+			logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", user.Email, link)
 		}
 	}
 	recordActivity(c.Context(), user.ID, "auth.register", "user", user.ID, "email="+user.Email)
@@ -170,10 +182,7 @@ func authResendVerification(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
 
-	appURL := os.Getenv("APP_URL")
-	if appURL == "" {
-		appURL = "http://localhost:8080"
-	}
+	appURL := currentAppURL()
 	link := appURL + "/verify-email?token=" + rawToken
 	if os.Getenv("RESEND_API_KEY") != "" {
 		if err := services.SendVerificationEmail(user.Email, link); err != nil {
@@ -181,7 +190,8 @@ func authResendVerification(c *fiber.Ctx) error {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[DEV] Verification link for %s: %s", user.Email, link)
+		log.Printf("auth resend verification: verification transport not configured for %s", user.Email)
+		logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", user.Email, link)
 	}
 
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
@@ -216,14 +226,30 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 	}
+	appURL := currentAppURL()
+	if user.EmailVerified == 0 {
+		rawToken, reqErr := services.RequestEmailVerification(c.Context(), user.ID)
+		if reqErr != nil {
+			log.Printf("magic link request: verification token create failed: %v", reqErr)
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+		}
+		link := appURL + "/verify-email?token=" + rawToken
+		if os.Getenv("RESEND_API_KEY") != "" {
+			if err := services.SendVerificationEmail(user.Email, link); err != nil {
+				log.Printf("magic link request: verification email send failed for %s: %v", normalizedEmail, err)
+				return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+			}
+		} else {
+			log.Printf("magic link request: verification transport not configured for %s", normalizedEmail)
+			logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", normalizedEmail, link)
+		}
+		recordActivity(c.Context(), user.ID, "auth.magic_link.request", "user", user.ID, "rerouted=verify_email")
+		return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
+	}
 	rawToken, err := services.RequestMagicLink(c.Context(), user.ID, body.RedirectTo)
 	if err != nil {
 		log.Printf("magic link request: %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
-	}
-	appURL := os.Getenv("APP_URL")
-	if appURL == "" {
-		appURL = "http://localhost:8080"
 	}
 	link := appURL + "/verify?token=" + rawToken
 	if body.RedirectTo != "" {
@@ -235,11 +261,8 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[Resend] not configured — magic link not sent. For %s use link (valid 10 min): %s", normalizedEmail, link)
-	}
-	// Log magic link to server console only in dev mode (never in response)
-	if os.Getenv("APP_ENV") == "dev" || appURL == "http://localhost:8080" {
-		log.Printf("[DEV] Magic link for %s: %s", normalizedEmail, link)
+		log.Printf("magic link request: mail transport not configured for %s", normalizedEmail)
+		logSensitiveAuthArtifact("[DEV] Magic link for %s: %s", normalizedEmail, link)
 	}
 	recordActivity(c.Context(), user.ID, "auth.magic_link.request", "user", user.ID, "email="+user.Email)
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
@@ -268,10 +291,7 @@ func authForgotPassword(c *fiber.Ctx) error {
 		// Return 200 regardless — prevent enumeration
 		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 	}
-	appURL := os.Getenv("APP_URL")
-	if appURL == "" {
-		appURL = "http://localhost:8080"
-	}
+	appURL := currentAppURL()
 	_, link, err := services.RequestPasswordReset(c.Context(), user.ID, appURL)
 	if err != nil {
 		log.Printf("forgot password: %v", err)
@@ -283,7 +303,8 @@ func authForgotPassword(c *fiber.Ctx) error {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
 		}
 	} else {
-		log.Printf("[DEV] Password reset link for %s: %s", normalizedEmail, link)
+		log.Printf("forgot password: mail transport not configured for %s", normalizedEmail)
+		logSensitiveAuthArtifact("[DEV] Password reset link for %s: %s", normalizedEmail, link)
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 }
@@ -411,24 +432,28 @@ func authLogout(c *fiber.Ctx) error {
 }
 
 func setRefreshCookie(c *fiber.Ctx, token string) {
+	appURL := currentAppURL()
 	c.Cookie(&fiber.Cookie{
 		Name:     refreshCookieName,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   refreshCookieMaxAge,
 		HTTPOnly: true,
-		Secure:   os.Getenv("APP_URL") != "" && strings.HasPrefix(os.Getenv("APP_URL"), "https"),
+		Secure:   services.IsProductionRuntime() || strings.HasPrefix(appURL, "https://"),
 		SameSite: "Strict",
 	})
 }
 
 func clearRefreshCookie(c *fiber.Ctx) {
+	appURL := currentAppURL()
 	c.Cookie(&fiber.Cookie{
 		Name:     refreshCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HTTPOnly: true,
+		Secure:   services.IsProductionRuntime() || strings.HasPrefix(appURL, "https://"),
+		SameSite: "Strict",
 	})
 }
 

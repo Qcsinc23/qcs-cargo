@@ -12,6 +12,7 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/jobs"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/Qcsinc23/qcs-cargo/internal/static"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/compress"
@@ -23,6 +24,9 @@ import (
 
 func main() {
 	_ = godotenv.Load() // load .env if present (ignore error)
+	if services.IsProductionRuntime() && len(strings.TrimSpace(os.Getenv("JWT_SECRET"))) < 32 {
+		log.Fatal("JWT_SECRET must be at least 32 characters in production")
+	}
 	if os.Getenv("RESEND_API_KEY") != "" {
 		log.Print("Resend: configured (transactional email enabled)")
 	} else {
@@ -55,7 +59,7 @@ func main() {
 
 	// CORS: ALLOWED_ORIGINS required in production; empty = allow all in dev
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-	isProduction := strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+	isProduction := services.IsProductionRuntime()
 
 	if isProduction && allowedOrigins == "" {
 		log.Fatal("ALLOWED_ORIGINS must be set in production (comma-separated list of allowed domains)")

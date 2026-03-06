@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go-version-policy:
     runs-on: ubuntu-latest
@@ -39,7 +43,7 @@ jobs:
           echo "go.mod go version: ${{ steps.go_version.outputs.value }}"
           go version
 
-  test:
+  lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: [go-version-policy]
@@ -65,8 +69,225 @@ jobs:
           go-version: ${{ steps.go_version.outputs.value }}
           check-latest: true
           cache: true
-      - name: Run Go tests
-        run: go test ./... -count=1
+      - name: Install golangci-lint when available
+        id: lint_install
+        shell: bash
+        run: |
+          set -u
+          install_dir="$RUNNER_TEMP/bin"
+          mkdir -p "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
+          if GOBIN="$install_dir" go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "golangci-lint installation failed; CI will fall back to go vet." >&2
+          fi
+      - name: Run golangci-lint
+        if: steps.lint_install.outputs.available == 'true'
+        run: golangci-lint run ./cmd/... ./internal/...
+      - name: Fallback lint gate
+        if: steps.lint_install.outputs.available != 'true'
+        run: go vet ./cmd/... ./internal/...
+
+  test-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [go-version-policy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Run unit and package tests with coverage
+        run: go test ./cmd/... ./internal/... -race -count=1 -covermode=atomic -coverprofile=coverage.out
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -n 1
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          if-no-files-found: error
+
+  test-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [go-version-policy]
+    env:
+      DATABASE_URL: file::memory:?cache=shared
+      JWT_SECRET: test-secret-key-for-ci-do-not-use
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Run integration tests
+        run: go test ./internal/api/... -race -count=1 -tags=integration
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, test-unit, test-integration]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Run smoke test
+        run: bash ./scripts/smoke-test.sh
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint, test-unit, test-integration, smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - name: Build release artifacts
+        run: |
+          mkdir -p web
+          go build -o qcs-server ./cmd/server
+          go build -o qcs-migrate ./cmd/migrate
+          GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
+          test -s qcs-server
+          test -s qcs-migrate
+          test -s web/app.wasm
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            qcs-server
+            qcs-migrate
+            web/app.wasm
+          if-no-files-found: error
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+      - name: Make binaries executable
+        run: chmod +x qcs-server qcs-migrate
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Playwright dependencies
+        run: |
+          cd e2e
+          npm install
+          npx playwright install --with-deps chromium
+      - name: Start application for E2E
+        shell: bash
+        env:
+          DATABASE_URL: file:qcs_e2e.db?_journal_mode=WAL
+          JWT_SECRET: e2e-test-secret-key-at-least-32-chars
+          RESEND_API_KEY: ""
+          STRIPE_SECRET_KEY: sk_test_fake
+          STRIPE_WEBHOOK_SECRET: whsec_test_fake
+          FROM_EMAIL: test@qcs-cargo.com
+          APP_URL: http://127.0.0.1:8080
+          PORT: 8080
+        run: |
+          rm -f qcs_e2e.db qcs_e2e.db-wal qcs_e2e.db-shm
+          ./qcs-migrate
+          ./qcs-server > /tmp/qcs-e2e-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/health >/dev/null; then
+              cd e2e
+              npx playwright test
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/qcs-e2e-server.log >&2 || true
+          exit 1
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            /tmp/qcs-e2e-server.log
+          if-no-files-found: ignore
 
   govulncheck:
     runs-on: ubuntu-latest

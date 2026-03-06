@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"math/big"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -23,7 +26,57 @@ import (
 )
 
 func isProductionEnv() bool {
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production")
+	return IsProductionRuntime()
+}
+
+// IsProductionRuntime returns true for explicit production envs and for deployed
+// HTTPS app URLs that are not loopback hosts. This keeps prod hardening enabled
+// even when APP_ENV was omitted from deployment config.
+func IsProductionRuntime() bool {
+	env := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
+	if env == "prod" || env == "production" {
+		return true
+	}
+	appURL := strings.TrimSpace(os.Getenv("APP_URL"))
+	if appURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(appURL)
+	if err != nil {
+		return false
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return false
+	}
+	return !isLoopbackHost(parsed.Hostname())
+}
+
+// AllowDebugAuthArtifacts is limited to explicit local/test environments. It
+// gates raw auth-link logging and MFA OTP echoing.
+func AllowDebugAuthArtifacts() bool {
+	env := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
+	switch env {
+	case "test", "dev", "development", "local":
+		return true
+	}
+	appURL := strings.TrimSpace(os.Getenv("APP_URL"))
+	if appURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(appURL)
+	if err != nil {
+		return false
+	}
+	return isLoopbackHost(parsed.Hostname())
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" || host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func init() {
@@ -207,14 +260,7 @@ func VerifyMagicLink(ctx context.Context, rawToken string) (user gen.User, acces
 		return gen.User{}, "", "", ErrAccountInactive
 	}
 	if user.EmailVerified == 0 {
-		if err := q.SetEmailVerified(ctx, gen.SetEmailVerifiedParams{
-			UpdatedAt: now,
-			ID:        user.ID,
-		}); err != nil {
-			return gen.User{}, "", "", fmt.Errorf("VerifyMagicLink: auto-verify email: %w", err)
-		}
-		user.EmailVerified = 1
-		log.Printf("[auth] auto-verified email for user_id=%s via magic link", user.ID)
+		return gen.User{}, "", "", ErrEmailNotVerified
 	}
 	if err := q.MarkMagicLinkUsed(ctx, link.ID); err != nil {
 		return gen.User{}, "", "", err
@@ -327,6 +373,15 @@ func ValidateRefreshToken(tokenString string) (sessionID string, err error) {
 	return claims.SessionID, nil
 }
 
+func validateRefreshTokenHash(sess gen.Session, refreshTokenString string) error {
+	presentedHash := hashToken(refreshTokenString)
+	storedHash := strings.TrimSpace(sess.RefreshTokenHash)
+	if storedHash == "" || subtle.ConstantTimeCompare([]byte(presentedHash), []byte(storedHash)) != 1 {
+		return fmt.Errorf("session expired or invalid")
+	}
+	return nil
+}
+
 // RefreshSession validates the refresh token (JWT), loads session from DB, returns new access token and user.
 func RefreshSession(ctx context.Context, refreshTokenString string) (user gen.User, accessToken string, err error) {
 	sessionID, err := ValidateRefreshToken(refreshTokenString)
@@ -340,6 +395,10 @@ func RefreshSession(ctx context.Context, refreshTokenString string) (user gen.Us
 		if err == sql.ErrNoRows {
 			return gen.User{}, "", fmt.Errorf("session expired or invalid")
 		}
+		return gen.User{}, "", err
+	}
+	if err := validateRefreshTokenHash(sess, refreshTokenString); err != nil {
+		_ = q.DeleteSession(ctx, sess.ID)
 		return gen.User{}, "", err
 	}
 	user, err = q.GetUserByID(ctx, sess.UserID)
@@ -363,7 +422,22 @@ func Logout(ctx context.Context, refreshTokenString string) error {
 	if err != nil {
 		return fmt.Errorf("logout validate refresh token: %w", err)
 	}
-	return db.Queries().DeleteSession(ctx, sessionID)
+	q := db.Queries()
+	sess, err := q.GetSessionByID(ctx, gen.GetSessionByIDParams{
+		ID:        sessionID,
+		ExpiresAt: time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("logout validate refresh token: session expired or invalid")
+		}
+		return err
+	}
+	if err := validateRefreshTokenHash(sess, refreshTokenString); err != nil {
+		_ = q.DeleteSession(ctx, sess.ID)
+		return fmt.Errorf("logout validate refresh token: %w", err)
+	}
+	return q.DeleteSession(ctx, sessionID)
 }
 
 // BlacklistToken revokes an access token (by JTI) until its expiration.

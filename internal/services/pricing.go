@@ -52,30 +52,54 @@ type PricingResult struct {
 	MinimumApplied bool
 }
 
-func CalculatePricing(in PricingInput) PricingResult {
-	rate, ok := Rates[in.DestinationID]
-	if !ok {
-		rate = DefaultRatePerLb
-	}
+type ShipmentPackageInput struct {
+	WeightLbs float64
+	LengthIn  float64
+	WidthIn   float64
+	HeightIn  float64
+}
 
+func CalculatePricing(in PricingInput) PricingResult {
 	dimWeight := 0.0
 	if in.LengthIn > 0 && in.WidthIn > 0 && in.HeightIn > 0 {
 		dimWeight = (in.LengthIn * in.WidthIn * in.HeightIn) / DimWeightDivisor
 	}
 
-	billableWeight := math.Max(in.WeightLbs, dimWeight)
+	return calculatePricingTotals(in.DestinationID, in.ServiceType, in.WeightLbs, dimWeight, in.ValueUSD, in.AddInsurance)
+}
+
+func CalculateShipmentPricing(destinationID, serviceType string, packages []ShipmentPackageInput) PricingResult {
+	totalActualWeight := 0.0
+	totalDimWeight := 0.0
+	for _, pkg := range packages {
+		totalActualWeight += pkg.WeightLbs
+		if pkg.LengthIn > 0 && pkg.WidthIn > 0 && pkg.HeightIn > 0 {
+			totalDimWeight += (pkg.LengthIn * pkg.WidthIn * pkg.HeightIn) / DimWeightDivisor
+		}
+	}
+
+	return calculatePricingTotals(destinationID, serviceType, totalActualWeight, totalDimWeight, 0, false)
+}
+
+func calculatePricingTotals(destinationID, serviceType string, actualWeight, dimWeight, valueUSD float64, addInsurance bool) PricingResult {
+	rate, ok := Rates[destinationID]
+	if !ok {
+		rate = DefaultRatePerLb
+	}
+
+	billableWeight := math.Max(actualWeight, dimWeight)
 	baseCost := billableWeight * rate
 
 	serviceFees := 0.0
-	if in.ServiceType == "express" {
+	if serviceType == "express" {
 		serviceFees = baseCost * ExpressSurchargePct
-	} else if in.ServiceType == "door_to_door" {
+	} else if serviceType == "door_to_door" {
 		serviceFees = DoorToDoorFee
 	}
 
 	insurance := 0.0
-	if in.AddInsurance {
-		insurance = in.ValueUSD * InsuranceRate
+	if addInsurance {
+		insurance = valueUSD * InsuranceRate
 	}
 
 	// Volume Discounts (PRD 5.1/8.2 and Pricing page)
@@ -103,9 +127,9 @@ func CalculatePricing(in PricingInput) PricingResult {
 	}
 
 	return PricingResult{
-		DestinationID:  in.DestinationID,
-		Service:        in.ServiceType,
-		ActualWeight:   in.WeightLbs,
+		DestinationID:  destinationID,
+		Service:        serviceType,
+		ActualWeight:   actualWeight,
 		DimWeight:      math.Round(dimWeight*100) / 100,
 		BillableWeight: math.Round(billableWeight*100) / 100,
 		RatePerLb:      rate,

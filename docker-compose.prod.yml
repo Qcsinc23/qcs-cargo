@@ -16,6 +16,7 @@ services:
     container_name: qcs_cargo
     restart: unless-stopped
     environment:
+      - APP_ENV=production
       - DATABASE_URL=file:/data/qcs.db?_journal_mode=WAL
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8080

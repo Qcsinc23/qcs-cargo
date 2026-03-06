@@ -55,14 +55,20 @@ func platformReadiness(c *fiber.Ctx) error {
 }
 
 func platformRuntime(c *fiber.Ctx) error {
+	sharedCacheEnabled := strings.TrimSpace(os.Getenv("REDIS_URL")) != ""
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"cache_backend":        platformCache.Backend(),
 			"cdn_base_url":         strings.TrimSpace(os.Getenv("CDN_BASE_URL")),
-			"horizontal_scaling":   true,
-			"stateless_api":        true,
-			"shared_cache_enabled": strings.TrimSpace(os.Getenv("REDIS_URL")) != "",
-			"asset_cache_policy":   "public, max-age=31536000, immutable for versioned assets",
+			"horizontal_scaling":   false,
+			"stateless_api":        false,
+			"shared_cache_enabled": sharedCacheEnabled,
+			"constraints": []string{
+				"SQLite is the default runtime database",
+				"In-process scheduled jobs run inside the web process",
+				"Auth throttling and lockout state use process-local memory",
+			},
+			"asset_cache_policy": "public, max-age=31536000, immutable for versioned assets",
 		},
 	})
 }

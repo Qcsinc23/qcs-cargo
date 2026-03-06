@@ -21,48 +21,67 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: production
     env:
-      PROD_HOST: 82.25.85.157
-      PROD_USER: root
-      PROD_APP_DIR: /opt/qcs-cargo
-      PROD_PUBLIC_URL: https://qcs-cargo.com
+      PROD_HOST: ${{ vars.PROD_HOST != '' && vars.PROD_HOST || '82.25.85.157' }}
+      PROD_USER: ${{ vars.PROD_USER != '' && vars.PROD_USER || 'deploy' }}
+      PROD_APP_DIR: ${{ vars.PROD_APP_DIR != '' && vars.PROD_APP_DIR || '/opt/qcs-cargo' }}
+      PROD_PUBLIC_URL: ${{ vars.PROD_PUBLIC_URL != '' && vars.PROD_PUBLIC_URL || 'https://qcs-cargo.com' }}
       DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && 'origin/main' || github.event.workflow_run.head_sha }}
     steps:
-      - name: Validate deploy secret
+      - name: Validate deploy configuration
         env:
           PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         run: |
           if [[ -z "${PROD_SSH_PRIVATE_KEY:-}" ]]; then
             echo "Missing required repository secret: PROD_SSH_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${PROD_SSH_KNOWN_HOSTS:-}" ]]; then
+            echo "Missing required repository secret: PROD_SSH_KNOWN_HOSTS" >&2
+            exit 1
+          fi
+          if [[ "${PROD_USER}" == "root" ]]; then
+            echo "Production deploys must use a non-root SSH user. Set repository variable PROD_USER." >&2
             exit 1
           fi
 
       - name: Configure SSH key
         env:
           PROD_SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          PROD_SSH_KNOWN_HOSTS: ${{ secrets.PROD_SSH_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$PROD_SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$PROD_HOST" >> ~/.ssh/known_hosts
+          printf '%s\n' "$PROD_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
 
       - name: Deploy validated commit
         run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes "$PROD_USER@$PROD_HOST" \
+          ssh -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            "$PROD_USER@$PROD_HOST" \
             "set -euo pipefail; \
             cd '$PROD_APP_DIR'; \
+            previous_sha=\$(git rev-parse HEAD); \
             git fetch origin main; \
             git checkout --detach '$DEPLOY_REF'; \
             APP_DIR='$PROD_APP_DIR' \
             TARGET_BRANCH='main' \
             DEPLOY_REF='$DEPLOY_REF' \
             APP_URL='$PROD_PUBLIC_URL' \
+            PREVIOUS_SUCCESSFUL_SHA=\"\$previous_sha\" \
+            ROLLBACK_ON_FAILURE=1 \
             SKIP_GIT_PREP=1 \
             bash '$PROD_APP_DIR/scripts/deploy-production.sh'"
 
       - name: Verify public production endpoints
         run: |
-          curl --fail --silent --show-error "$PROD_PUBLIC_URL/api/v1/health"
-          curl --fail --silent --show-error "$PROD_PUBLIC_URL/" >/tmp/qcs-home.html
+          curl --fail --silent --show-error --max-time 10 "$PROD_PUBLIC_URL/api/v1/health"
+          curl --fail --silent --show-error --max-time 10 "$PROD_PUBLIC_URL/" >/tmp/qcs-home.html
           grep -q "<title>" /tmp/qcs-home.html

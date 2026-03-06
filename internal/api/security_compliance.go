@@ -7,13 +7,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -150,8 +150,8 @@ WHERE user_id = ?
 		"method":       method,
 		"expires_at":   expiresAt,
 	}
-	if !isProductionEnv() {
-		// Testing/dev fallback when external email/SMS transport is not configured.
+	if services.AllowDebugAuthArtifacts() {
+		// Explicit local/test fallback when external email/SMS transport is not configured.
 		data["otp_code"] = code
 	}
 
@@ -1010,11 +1010,6 @@ func currentUserID(c *fiber.Ctx) string {
 		return strings.TrimSpace(userID)
 	}
 	return ""
-}
-
-func isProductionEnv() bool {
-	v := strings.TrimSpace(strings.ToLower(os.Getenv("APP_ENV")))
-	return v == "prod" || v == "production"
 }
 
 func scBoolToInt(v bool) int {

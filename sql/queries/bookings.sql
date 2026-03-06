@@ -64,7 +64,7 @@ SELECT id, user_id, confirmation_code, status, service_type, destination_id, rec
        subtotal, discount, insurance, total,
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
-WHERE date(scheduled_date) = date('now')
+WHERE scheduled_date = date('now')
 ORDER BY time_slot ASC, created_at ASC;
 
 -- name: GetBookingByIDOnly :one

@@ -51,6 +51,7 @@ make run
 - CI uses the Go version declared in `go.mod` (`go` directive) as the source of truth.
 - The workflow contains a `go-version-policy` job that resolves `go.mod` version and validates toolchain setup before test jobs run.
 - Keep local and CI toolchains aligned with `go.mod` to avoid drift.
+- CI now enforces the repo's meaningful gates: lint (with `go vet` fallback if `golangci-lint` cannot be installed), unit/package tests with coverage output, integration tests, smoke, release artifact builds, Playwright E2E, and `govulncheck`.
 
 ## Build WASM frontend (optional)
 
@@ -82,6 +83,7 @@ This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.
 |----------|-------------|
 | `DATABASE_URL` | SQLite path or Postgres URL (default: `file:qcs.db?_journal_mode=WAL`) |
 | `PORT` | Server port (default: 8080) |
+| `APP_ENV` | Runtime environment. Production deployments must set this to `production`. |
 | `APP_URL` | Base URL for magic links, cookies (production: `https://qcs-cargo.com`) |
 | `MIGRATIONS_DIR` | Migration directory for migrate binary (default: `sql/migrations`) |
 | `STRIPE_SECRET_KEY` | Stripe secret key (sk_live_/sk_test_) for PaymentIntents |
@@ -102,6 +104,7 @@ See `.env.example` for a full list.
 ## Production (qcs-cargo.com)
 
 - Set `APP_URL=https://qcs-cargo.com` and use HTTPS.
+- Set `APP_ENV=production`. The checked-in production compose file now includes it explicitly, and the deploy script refuses to proceed if it is missing.
 - In **Stripe Dashboard**: add `https://qcs-cargo.com` to allowed redirect/checkout domains if required.
 - Verify Stripe: run `make stripe-verify` (with server running and keys set).
 
@@ -133,6 +136,17 @@ Dependency update automation is configured with Dependabot for:
 - npm dependencies in `e2e/`
 - GitHub Actions workflows
 
+## Deployment automation
+
+Production deploys are handled by [.github/workflows/deploy.yml](.github/workflows/deploy.yml) after a successful `CI` run on `main`, or via manual `workflow_dispatch`.
+
+- Required secret: `PROD_SSH_PRIVATE_KEY`
+- Required secret: `PROD_SSH_KNOWN_HOSTS`
+- Required variable: `PROD_USER` and it must be a non-root deploy user
+- Optional variables: `PROD_HOST`, `PROD_APP_DIR`, `PROD_PUBLIC_URL`
+
+The deploy path now uses pinned host keys instead of runtime `ssh-keyscan`, verifies both container health and public endpoints, and records the last successful release SHA for best-effort rollback. That rollback does not undo database migrations; use backups if a schema change is not backward compatible.
+
 ### API contract notes
 
 - `POST /api/v1/auth/logout` intentionally returns `204 No Content` with an empty response body. Clients should treat the status code as success and not expect JSON content.
@@ -150,7 +164,7 @@ Dependency update automation is configured with Dependabot for:
 - `GET /api/v1/locker` supports pagination query params: `limit` (default `20`, max `100`) and `page` (default `1`). Response includes `data`, `page`, `limit`, `total`, and `status`.
 - `GET /api/v1/admin/system-health` (admin-only) returns monitoring snapshot data: status, DB health, Stripe/Resend config flags, `metrics_endpoint`, queue/count metrics, and `generated_at`.
 
-**E2E (Playwright):** From the project root, run: `cd e2e && npm ci && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal). In local smoke mode, set `RESEND_API_KEY` empty so verification/magic-link email sends operate as no-op.
+**E2E (Playwright):** From the project root, run: `cd e2e && npm install && npx playwright install chromium && npx playwright test`. Ensure the server is running at http://localhost:8080 (e.g. `make run` in another terminal). In local smoke mode, set `RESEND_API_KEY` empty so verification/magic-link email sends operate as no-op.
 
 ## Commands
 

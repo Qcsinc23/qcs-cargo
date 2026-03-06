@@ -159,7 +159,7 @@ func SeedShipRequests(db *sql.DB) error {
 	items := []struct{ id, shipReqID, lockerPkgID string }{
 		{"sri_draft_1", ShipReqAliceDraft, PkgAliceStored1},
 		{"sri_paid_1", ShipReqAlicePaid, PkgAliceStored2},
-		{"sri_ship_1", ShipReqAliceShipped, PkgAliceStored2},
+		{"sri_ship_1", ShipReqAliceShipped, PkgAliceShipped},
 	}
 	for _, it := range items {
 		_, err := db.Exec(`
