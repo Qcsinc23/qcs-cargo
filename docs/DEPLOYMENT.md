@@ -117,6 +117,7 @@ The deploy workflow now:
 - requires a non-root SSH user
 - enforces strict host-key checking from the pinned `PROD_SSH_KNOWN_HOSTS` secret
 - runs only after the `CI` workflow succeeds or via manual dispatch
+- retries transient SSH transport failures before failing the deploy
 - deploys from a clean detached git worktree so uncommitted files on the host do not block the release
 - keeps deploy lock/state files under `.deploy/` so the non-root deploy user owns them
 - performs internal container health checks plus public endpoint checks
