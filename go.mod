@@ -1,6 +1,6 @@
 module github.com/Qcsinc23/qcs-cargo
 
-go 1.25.0
+go 1.26.1
 
 require (
 	github.com/getsentry/sentry-go v0.43.0

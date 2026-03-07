@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -405,7 +406,11 @@ func securityAPIKeyRotate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to rotate API key"))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("securityAPIKeyRotate rollback failed: %v", rbErr)
+		}
+	}()
 
 	var name, scopesJSON string
 	var expiresAt sql.NullString
