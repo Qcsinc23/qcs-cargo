@@ -61,15 +61,7 @@ jobs:
 
       - name: Deploy validated commit
         run: |
-          ssh -i ~/.ssh/id_ed25519 \
-            -o BatchMode=yes \
-            -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            "$PROD_USER@$PROD_HOST" \
-            PROD_APP_DIR="$PROD_APP_DIR" \
-            DEPLOY_REF="$DEPLOY_REF" \
-            PROD_PUBLIC_URL="$PROD_PUBLIC_URL" \
-            'bash -se' <<'EOF'
+          cat > /tmp/qcs-remote-deploy.sh <<'EOF'
           set -euo pipefail
           cd "$PROD_APP_DIR"
 
@@ -106,6 +98,28 @@ jobs:
           SKIP_GIT_PREP=1 \
           bash "$release_dir/scripts/deploy-production.sh"
           EOF
+
+          for attempt in 1 2 3; do
+            if ssh -i ~/.ssh/id_ed25519 \
+              -o BatchMode=yes \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=15 \
+              -o ServerAliveCountMax=4 \
+              -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts \
+              "$PROD_USER@$PROD_HOST" \
+              PROD_APP_DIR="$PROD_APP_DIR" \
+              DEPLOY_REF="$DEPLOY_REF" \
+              PROD_PUBLIC_URL="$PROD_PUBLIC_URL" \
+              'bash -se' < /tmp/qcs-remote-deploy.sh; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "deploy ssh command failed after $attempt attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Verify public production endpoints
         run: |
