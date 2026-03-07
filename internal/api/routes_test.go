@@ -7,12 +7,18 @@ import (
 
 	"github.com/Qcsinc23/qcs-cargo/internal/api"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func setupRoutesTestApp() *fiber.App {
+func setupRoutesTestApp(t *testing.T) *fiber.App {
+	t.Helper()
+	t.Setenv("QCS_OBSERVABILITY_DISABLED", "1")
+	services.ResetObservabilityForTest()
+	t.Cleanup(services.ResetObservabilityForTest)
+
 	app := fiber.New(fiber.Config{
 		ErrorHandler: api.ErrorHandler,
 	})
@@ -22,7 +28,7 @@ func setupRoutesTestApp() *fiber.App {
 
 func TestAuthRateLimit_AppliesOnlyOnAuthPrefix(t *testing.T) {
 	middleware.ResetAuthRateLimitersForTest()
-	app := setupRoutesTestApp()
+	app := setupRoutesTestApp(t)
 
 	nonAuthIP := "198.51.100.10:1234"
 	for i := 0; i < 11; i++ {
@@ -53,7 +59,7 @@ func TestAuthRateLimit_AppliesOnlyOnAuthPrefix(t *testing.T) {
 }
 
 func TestRequestID_IsPropagatedToResponsesWhenPresent(t *testing.T) {
-	app := setupRoutesTestApp()
+	app := setupRoutesTestApp(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/not-found", nil)
 	req.Header.Set("X-Request-ID", "req-123")

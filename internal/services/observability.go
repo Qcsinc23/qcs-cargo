@@ -47,6 +47,15 @@ var (
 	observabilitySvc  *ObservabilityService
 )
 
+// ResetObservabilityForTest clears the process-wide singleton between tests.
+func ResetObservabilityForTest() {
+	if observabilitySvc != nil && observabilitySvc.queue != nil && !observabilitySvc.disabled {
+		close(observabilitySvc.queue)
+	}
+	observabilitySvc = nil
+	observabilityOnce = sync.Once{}
+}
+
 // Observability returns a process-wide singleton service.
 func Observability() *ObservabilityService {
 	observabilityOnce.Do(func() {
