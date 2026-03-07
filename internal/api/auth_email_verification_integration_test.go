@@ -17,6 +17,7 @@ import (
 )
 
 func TestAuthRegister_DuplicateUnverifiedEmailReturnsVerificationMessage(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "")
 	app := setupTestApp(t)
 
 	payload := []byte(`{
