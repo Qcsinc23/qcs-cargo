@@ -29,14 +29,14 @@ func TestAuthRegister_DuplicateUnverifiedEmailReturnsVerificationMessage(t *test
 
 	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewReader(payload))
 	firstReq.Header.Set("Content-Type", "application/json")
-	firstResp, err := app.Test(firstReq)
+	firstResp, err := app.Test(firstReq, 5000)
 	require.NoError(t, err)
 	defer firstResp.Body.Close()
 	require.Equal(t, http.StatusCreated, firstResp.StatusCode)
 
 	secondReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewReader(payload))
 	secondReq.Header.Set("Content-Type", "application/json")
-	secondResp, err := app.Test(secondReq)
+	secondResp, err := app.Test(secondReq, 5000)
 	require.NoError(t, err)
 	defer secondResp.Body.Close()
 	require.Equal(t, http.StatusOK, secondResp.StatusCode)
