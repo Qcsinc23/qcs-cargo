@@ -73,7 +73,7 @@ The intended production path is PR-gated:
    - run [`scripts/deploy-production.sh`](deploy-production.sh)
    - verify `https://qcs-cargo.com/api/v1/health` and `https://qcs-cargo.com/`
 
-The server-side script uses a lock file to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful. The temporary worktree keeps dirty local files in `/opt/qcs-cargo` from blocking deploys.
+The server-side script uses a lock file under `.deploy/` to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful. The temporary worktree keeps dirty local files in `/opt/qcs-cargo` from blocking deploys.
 
 ## Traefik file provider (this server)
 
