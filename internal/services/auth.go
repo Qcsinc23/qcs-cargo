@@ -102,6 +102,9 @@ var alphanum = []byte("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 // ErrEmailNotVerified indicates an auth attempt for an account that has not completed email verification.
 var ErrEmailNotVerified = errors.New("email not verified")
 
+// ErrEmailAlreadyRegistered indicates the email is already associated with an account.
+var ErrEmailAlreadyRegistered = errors.New("email already registered")
+
 // ErrAccountInactive indicates an auth attempt for a non-active account.
 var ErrAccountInactive = errors.New("account is inactive")
 
@@ -130,7 +133,7 @@ func Register(ctx context.Context, name, email, phone, password string) (gen.Use
 	q := db.Queries()
 	_, err := q.GetUserByEmail(ctx, email)
 	if err == nil {
-		return gen.User{}, fmt.Errorf("email already registered")
+		return gen.User{}, ErrEmailAlreadyRegistered
 	}
 	if err != sql.ErrNoRows {
 		return gen.User{}, err
@@ -173,12 +176,14 @@ func RequestEmailVerification(ctx context.Context, userID string) (string, error
 	rawToken := hex.EncodeToString(token)
 	hash := hashToken(rawToken)
 	now := time.Now().UTC().Format(time.RFC3339)
+	expiresAt := time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
 
-	err := db.Queries().SetEmailVerificationToken(ctx, gen.SetEmailVerificationTokenParams{
-		EmailVerificationToken:  sql.NullString{String: hash, Valid: true},
-		EmailVerificationSentAt: sql.NullString{String: now, Valid: true},
-		UpdatedAt:               now,
-		ID:                      userID,
+	_, err := db.Queries().CreateEmailVerificationToken(ctx, gen.CreateEmailVerificationTokenParams{
+		ID:        uuid.New().String(),
+		UserID:    userID,
+		TokenHash: hash,
+		ExpiresAt: expiresAt,
+		CreatedAt: now,
 	})
 	if err != nil {
 		return "", err
@@ -190,7 +195,8 @@ func RequestEmailVerification(ctx context.Context, userID string) (string, error
 // VerifyEmail validates and consumes an email verification token.
 func VerifyEmail(ctx context.Context, rawToken string) error {
 	hash := hashToken(rawToken)
-	user, err := db.Queries().GetUserByEmailVerificationToken(ctx, sql.NullString{String: hash, Valid: true})
+	q := db.Queries()
+	record, err := q.GetEmailVerificationTokenByHash(ctx, hash)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return fmt.Errorf("invalid or expired verification token")
@@ -198,20 +204,43 @@ func VerifyEmail(ctx context.Context, rawToken string) error {
 		return err
 	}
 
-	if !user.EmailVerificationSentAt.Valid {
-		return fmt.Errorf("invalid or expired verification token")
+	user, err := q.GetUserByID(ctx, record.UserID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("invalid or expired verification token")
+		}
+		return err
 	}
-	sentAt, err := time.Parse(time.RFC3339, user.EmailVerificationSentAt.String)
+	if user.EmailVerified != 0 {
+		now := time.Now().UTC().Format(time.RFC3339)
+		_ = q.MarkEmailVerificationTokensUsedByUser(ctx, gen.MarkEmailVerificationTokensUsedByUserParams{
+			UsedAt: sql.NullString{String: now, Valid: true},
+			UserID: user.ID,
+		})
+		return nil
+	}
+
+	if record.Used != 0 {
+		return fmt.Errorf("verification link has already been used")
+	}
+	expiresAt, err := time.Parse(time.RFC3339, record.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("invalid verification token timestamp")
 	}
-	if time.Since(sentAt) > 24*time.Hour {
+	if time.Now().UTC().After(expiresAt) {
 		return fmt.Errorf("verification token expired")
 	}
 
-	return db.Queries().SetEmailVerified(ctx, gen.SetEmailVerifiedParams{
-		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := q.SetEmailVerified(ctx, gen.SetEmailVerifiedParams{
+		UpdatedAt: now,
 		ID:        user.ID,
+	}); err != nil {
+		return err
+	}
+	return q.MarkEmailVerificationTokensUsedByUser(ctx, gen.MarkEmailVerificationTokensUsedByUserParams{
+		UsedAt: sql.NullString{String: now, Valid: true},
+		UserID: user.ID,
 	})
 }
 

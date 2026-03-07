@@ -20,6 +20,26 @@ SET email_verified = 1,
     updated_at = ?
 WHERE id = ?;
 
+-- name: CreateEmailVerificationToken :one
+INSERT INTO email_verification_tokens (id, user_id, token_hash, used, expires_at, created_at, used_at)
+VALUES (?, ?, ?, 0, ?, ?, NULL)
+RETURNING id, user_id, token_hash, used, expires_at, created_at, used_at;
+
+-- name: GetEmailVerificationTokenByHash :one
+SELECT id, user_id, token_hash, used, expires_at, created_at, used_at
+FROM email_verification_tokens
+WHERE token_hash = ?;
+
+-- name: MarkEmailVerificationTokenUsed :exec
+UPDATE email_verification_tokens
+SET used = 1, used_at = ?
+WHERE id = ?;
+
+-- name: MarkEmailVerificationTokensUsedByUser :exec
+UPDATE email_verification_tokens
+SET used = 1, used_at = ?
+WHERE user_id = ? AND used = 0;
+
 -- name: CreateSession :one
 INSERT INTO sessions (id, user_id, refresh_token_hash, ip_address, user_agent, expires_at, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
