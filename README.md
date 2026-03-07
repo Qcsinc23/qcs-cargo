@@ -151,7 +151,7 @@ Repository delivery is enforced as:
 - Required variable: `PROD_USER` and it must be a non-root deploy user
 - Optional variables: `PROD_HOST`, `PROD_APP_DIR`, `PROD_PUBLIC_URL`
 
-The deploy path now uses pinned host keys instead of runtime `ssh-keyscan`, retries transient SSH connection failures, deploys from a clean detached git worktree on the server so stray local edits cannot block releases, keeps deployment state and locking under `.deploy/`, verifies both container health and public endpoints, and records the last successful release SHA for best-effort rollback. That rollback does not undo database migrations; use backups if a schema change is not backward compatible.
+The deploy path now uses pinned host keys instead of runtime `ssh-keyscan`, retries transient SSH connection failures, deploys from a clean detached git worktree on the server so stray local edits cannot block releases, keeps deployment state and locking under `.deploy/`, reuses the base repo `.env`, keeps a fixed Compose project identity, verifies both container health and public endpoints, and records the last successful release SHA for best-effort rollback. That rollback does not undo database migrations; use backups if a schema change is not backward compatible.
 
 ### API contract notes
 

@@ -73,7 +73,7 @@ The intended production path is PR-gated:
    - run [`scripts/deploy-production.sh`](deploy-production.sh)
    - verify `https://qcs-cargo.com/api/v1/health` and `https://qcs-cargo.com/`
 
-The server-side script uses a lock file under `.deploy/` to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful. The temporary worktree keeps dirty local files in `/opt/qcs-cargo` from blocking deploys, and the workflow retries transient SSH transport failures before marking the deploy failed.
+The server-side script uses a lock file under `.deploy/` to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful. The temporary worktree keeps dirty local files in `/opt/qcs-cargo` from blocking deploys, the workflow retries transient SSH transport failures before marking the deploy failed, and Compose continues to use the production `.env` plus the stable `qcs-cargo` project identity from the base repo.
 
 ## Traefik file provider (this server)
 

@@ -120,6 +120,7 @@ The deploy workflow now:
 - retries transient SSH transport failures before failing the deploy
 - deploys from a clean detached git worktree so uncommitted files on the host do not block the release
 - keeps deploy lock/state files under `.deploy/` so the non-root deploy user owns them
+- reuses `/opt/qcs-cargo/.env` and a fixed Compose project name when deploying from a detached worktree
 - performs internal container health checks plus public endpoint checks
 - records the last successful Git SHA and attempts a best-effort rollback to that SHA if a deployment fails
 
