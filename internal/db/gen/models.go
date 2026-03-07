@@ -73,6 +73,16 @@ type Destination struct {
 	UpdatedAt      string  `json:"updated_at"`
 }
 
+type EmailVerificationToken struct {
+	ID        string         `json:"id"`
+	UserID    string         `json:"user_id"`
+	TokenHash string         `json:"token_hash"`
+	Used      int            `json:"used"`
+	ExpiresAt string         `json:"expires_at"`
+	CreatedAt string         `json:"created_at"`
+	UsedAt    sql.NullString `json:"used_at"`
+}
+
 type InboundTracking struct {
 	ID              string         `json:"id"`
 	UserID          string         `json:"user_id"`

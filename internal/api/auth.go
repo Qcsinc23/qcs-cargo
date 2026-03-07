@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log"
@@ -34,6 +35,24 @@ func logSensitiveAuthArtifact(format string, args ...any) {
 	if services.AllowDebugAuthArtifacts() {
 		log.Printf(format, args...)
 	}
+}
+
+func sendVerificationEmail(ctx context.Context, user gen.User, logPrefix string) error {
+	rawToken, err := services.RequestEmailVerification(ctx, user.ID)
+	if err != nil {
+		return err
+	}
+
+	link := currentAppURL() + "/verify-email?token=" + rawToken
+	if os.Getenv("RESEND_API_KEY") != "" {
+		if err := services.SendVerificationEmail(user.Email, link); err != nil {
+			return err
+		}
+	} else {
+		log.Printf("%s: verification transport not configured for %s", logPrefix, user.Email)
+		logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", user.Email, link)
+	}
+	return nil
 }
 
 // RegisterAuth mounts auth routes on the given group. Pass the same group to RegisterMe with auth middleware applied.
@@ -106,7 +125,19 @@ func authRegister(c *fiber.Ctx) error {
 	}
 	user, err := services.Register(c.Context(), body.Name, normalizedEmail, body.Phone, body.Password)
 	if err != nil {
-		if err.Error() == "email already registered" {
+		if errors.Is(err, services.ErrEmailAlreadyRegistered) {
+			existing, lookupErr := db.Queries().GetUserByEmail(c.Context(), normalizedEmail)
+			if lookupErr == nil && existing.EmailVerified == 0 {
+				if sendErr := sendVerificationEmail(c.Context(), existing, "auth register"); sendErr != nil {
+					log.Printf("auth register: failed to create/send verification token for existing user: %v", sendErr)
+				}
+				return c.JSON(fiber.Map{
+					"data": fiber.Map{
+						"user":    userToMap(existing),
+						"message": "Account already exists. Please check your email to verify your account.",
+					},
+				})
+			}
 			return c.Status(409).JSON(ErrorResponse{}.withCode("EMAIL_EXISTS", err.Error()))
 		}
 		log.Printf("auth register: %v", err)
@@ -114,19 +145,8 @@ func authRegister(c *fiber.Ctx) error {
 	}
 
 	// Send verification email for newly registered users.
-	if rawToken, err := services.RequestEmailVerification(c.Context(), user.ID); err != nil {
-		log.Printf("auth register: failed to create verification token: %v", err)
-	} else {
-		appURL := currentAppURL()
-		link := appURL + "/verify-email?token=" + rawToken
-		if os.Getenv("RESEND_API_KEY") != "" {
-			if err := services.SendVerificationEmail(user.Email, link); err != nil {
-				log.Printf("auth register: verification email send failed: %v", err)
-			}
-		} else {
-			log.Printf("auth register: verification transport not configured for %s", user.Email)
-			logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", user.Email, link)
-		}
+	if err := sendVerificationEmail(c.Context(), user, "auth register"); err != nil {
+		log.Printf("auth register: failed to create/send verification token: %v", err)
 	}
 	recordActivity(c.Context(), user.ID, "auth.register", "user", user.ID, "email="+user.Email)
 
@@ -176,22 +196,9 @@ func authResendVerification(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 	}
 
-	rawToken, err := services.RequestEmailVerification(c.Context(), user.ID)
-	if err != nil {
-		log.Printf("auth resend verification: token create failed: %v", err)
+	if err := sendVerificationEmail(c.Context(), user, "auth resend verification"); err != nil {
+		log.Printf("auth resend verification: token create/send failed: %v", err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
-	}
-
-	appURL := currentAppURL()
-	link := appURL + "/verify-email?token=" + rawToken
-	if os.Getenv("RESEND_API_KEY") != "" {
-		if err := services.SendVerificationEmail(user.Email, link); err != nil {
-			log.Printf("auth resend verification: email send failed: %v", err)
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
-		}
-	} else {
-		log.Printf("auth resend verification: verification transport not configured for %s", user.Email)
-		logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", user.Email, link)
 	}
 
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})

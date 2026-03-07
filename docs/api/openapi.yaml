@@ -62,6 +62,12 @@ paths:
             schema:
               $ref: '#/components/schemas/AuthRegisterRequest'
       responses:
+        '200':
+          description: Existing unverified account found; verification email re-issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthRegisterResponse'
         '201':
           description: Account created
           content:
@@ -232,7 +238,7 @@ paths:
                   value:
                     error:
                       code: INVALID_TOKEN
-                      message: token invalid or expired
+                      message: invalid or expired verification token
         '429':
           $ref: '#/components/responses/RateLimited'
 

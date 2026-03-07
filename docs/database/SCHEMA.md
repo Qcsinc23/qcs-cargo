@@ -46,6 +46,23 @@ Indexes and constraints:
 Relationship notes:
 
 - Referenced by many domain tables (`sessions`, `magic_links`, `password_resets`, etc.).
+- Legacy verification fields remain on `users` for backward compatibility with earlier migrations. Active verification links are now stored in `email_verification_tokens`.
+
+### `email_verification_tokens`
+
+Purpose: one-time email verification token ledger. Multiple outstanding tokens may exist for the same user so older emails do not break when a resend or duplicate signup occurs.
+
+Key columns:
+
+- `id` (PK)
+- `user_id`, `token_hash`, `used`, `expires_at`, `created_at`, `used_at`
+
+Indexes and constraints:
+
+- FK: `user_id -> users(id)`
+- `token_hash` UNIQUE
+- `idx_email_verification_tokens_user_id` on `user_id`
+- `idx_email_verification_tokens_expires_at` on `expires_at`
 
 ### `sessions`
 

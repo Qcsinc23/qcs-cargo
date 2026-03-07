@@ -123,21 +123,20 @@
             </div>
             <div class="flex-between" style="margin-top: 24px; gap: 12px;">
               <button type="button" class="btn btn-light prev-step" style="flex: 1;">Back</button>
-              <button type="submit" class="btn btn-primary" style="flex: 2;">Agree & Finalize</button>
+              <button type="submit" id="register-submit" class="btn btn-primary" style="flex: 2;">Agree & Finalize</button>
             </div>
           </div>
 
           <!-- Step 4: Success -->
           <div class="reg-step" data-step="4" style="display: none; text-align: center;">
             <div style="font-size: 4rem; margin-bottom: 16px;">🎉</div>
-            <h2 style="margin-bottom: 8px;">Welcome aboard!</h2>
-            <p class="muted">Your account is ready. Here is your unique suite code for the Miami hub:</p>
+            <h2 style="margin-bottom: 8px;">Check your email</h2>
+            <p id="verification-message" class="muted">We sent a verification link to your inbox. Verify your email to activate your account and sign in.</p>
             <div id="suite-code-display"
               style="font-size: 2rem; font-weight: 800; color: var(--brand); margin: 24px 0; padding: 16px; background: var(--bg-soft); border-radius: 12px; letter-spacing: 2px;">
-              QCS-XXXXXX</div>
-            <p class="text-small muted" style="margin-bottom: 24px;">Use this code as part of your name when shopping
-              online.</p>
-            <a href="/login" class="btn btn-accent" style="width: 100%;">Go to Dashboard</a>
+              Suite code pending</div>
+            <p class="text-small muted" style="margin-bottom: 24px;">Your suite code is reserved now and becomes active after email verification.</p>
+            <a href="/login" class="btn btn-accent" style="width: 100%;">Back to Sign In</a>
           </div>
         </form>
 
@@ -220,12 +219,13 @@
     const headerTitle = document.querySelector('#registration-header h1');
     const headerText = document.querySelector('#registration-header p');
     const status = document.getElementById('form-status');
+    const submitBtn = document.getElementById('register-submit');
 
     const stepInfo = [
       { title: 'Step 1: Account Details', text: 'Create your credentials to get started.' },
       { title: 'Step 2: Shipping Route', text: 'Choose your primary destination for best rates.' },
       { title: 'Step 3: Verification', text: 'Review international shipping requirements.' },
-      { title: 'Registration Complete!', text: 'Your Caribbean shipping suite is now active.' }
+      { title: 'Verify Your Email', text: 'Use the link in your inbox to activate your account.' }
     ];
 
     function showStep(stepNum) {
@@ -293,6 +293,8 @@
       status.style.display = 'block';
       status.style.color = 'var(--muted)';
       status.textContent = 'Creating your account...';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating...';
 
       try {
         const r = await fetch('/api/v1/auth/register', {
@@ -302,7 +304,11 @@
         });
         const j = await r.json();
         if (r.ok) {
-          document.getElementById('suite-code-display').textContent = j.data?.suite_code || 'QCS-ERROR';
+          const user = j.data?.user || {};
+          const email = user.email || data.email;
+          const suiteCode = user.suite_code || 'Suite code assigned';
+          document.getElementById('suite-code-display').textContent = suiteCode;
+          document.getElementById('verification-message').textContent = (j.data?.message || 'Check your inbox for the verification link.') + ' Sent to ' + email + '.';
           status.style.display = 'none';
           showStep(4);
         } else {
@@ -312,6 +318,9 @@
       } catch (err) {
         status.style.color = '#b91c1c';
         status.textContent = 'Connection error. Please try again.';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Agree & Finalize';
       }
     });
   </script>

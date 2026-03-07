@@ -245,6 +245,57 @@ func TestLogout_ValidRefreshTokenDeletesSession(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestEmailVerification_OlderTokensRemainValidAfterReissue(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	user, err := services.Register(context.Background(), "Verify User", "verify-user@example.com", "+15551234567", "StrongPass1!")
+	require.NoError(t, err)
+
+	firstToken, err := services.RequestEmailVerification(context.Background(), user.ID)
+	require.NoError(t, err)
+	secondToken, err := services.RequestEmailVerification(context.Background(), user.ID)
+	require.NoError(t, err)
+
+	err = services.VerifyEmail(context.Background(), firstToken)
+	require.NoError(t, err)
+
+	verifiedUser, err := db.Queries().GetUserByID(context.Background(), user.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, verifiedUser.EmailVerified)
+
+	err = services.VerifyEmail(context.Background(), secondToken)
+	require.NoError(t, err)
+
+	var usedCount int
+	err = conn.QueryRow(`SELECT COUNT(*) FROM email_verification_tokens WHERE user_id = ? AND used = 1`, user.ID).Scan(&usedCount)
+	require.NoError(t, err)
+	assert.Equal(t, 2, usedCount)
+}
+
+func TestEmailVerification_UsedTokenIsIdempotentForVerifiedUser(t *testing.T) {
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("APP_ENV", "test")
+
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+
+	user, err := services.Register(context.Background(), "Verify Again", "verify-again@example.com", "+15551234567", "StrongPass1!")
+	require.NoError(t, err)
+
+	token, err := services.RequestEmailVerification(context.Background(), user.ID)
+	require.NoError(t, err)
+
+	err = services.VerifyEmail(context.Background(), token)
+	require.NoError(t, err)
+
+	err = services.VerifyEmail(context.Background(), token)
+	require.NoError(t, err)
+}
+
 func TestLogout_RejectsRefreshHashMismatch(t *testing.T) {
 	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("APP_ENV", "test")

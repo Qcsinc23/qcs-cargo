@@ -28,6 +28,41 @@ func (q *Queries) CountTokenBlacklistByJti(ctx context.Context, arg CountTokenBl
 	return count, err
 }
 
+const createEmailVerificationToken = `-- name: CreateEmailVerificationToken :one
+INSERT INTO email_verification_tokens (id, user_id, token_hash, used, expires_at, created_at, used_at)
+VALUES (?, ?, ?, 0, ?, ?, NULL)
+RETURNING id, user_id, token_hash, used, expires_at, created_at, used_at
+`
+
+type CreateEmailVerificationTokenParams struct {
+	ID        string `json:"id"`
+	UserID    string `json:"user_id"`
+	TokenHash string `json:"token_hash"`
+	ExpiresAt string `json:"expires_at"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (q *Queries) CreateEmailVerificationToken(ctx context.Context, arg CreateEmailVerificationTokenParams) (EmailVerificationToken, error) {
+	row := q.db.QueryRowContext(ctx, createEmailVerificationToken,
+		arg.ID,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.CreatedAt,
+	)
+	var i EmailVerificationToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.Used,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UsedAt,
+	)
+	return i, err
+}
+
 const createMagicLink = `-- name: CreateMagicLink :one
 INSERT INTO magic_links (id, user_id, token_hash, redirect_to, used, expires_at, created_at)
 VALUES (?, ?, ?, ?, 0, ?, ?)
@@ -256,6 +291,27 @@ func (q *Queries) DeleteSessionsByUserExcept(ctx context.Context, arg DeleteSess
 	return err
 }
 
+const getEmailVerificationTokenByHash = `-- name: GetEmailVerificationTokenByHash :one
+SELECT id, user_id, token_hash, used, expires_at, created_at, used_at
+FROM email_verification_tokens
+WHERE token_hash = ?
+`
+
+func (q *Queries) GetEmailVerificationTokenByHash(ctx context.Context, tokenHash string) (EmailVerificationToken, error) {
+	row := q.db.QueryRowContext(ctx, getEmailVerificationTokenByHash, tokenHash)
+	var i EmailVerificationToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.TokenHash,
+		&i.Used,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.UsedAt,
+	)
+	return i, err
+}
+
 const getMagicLinkByTokenHash = `-- name: GetMagicLinkByTokenHash :one
 SELECT id, user_id, token_hash, redirect_to, used, expires_at, created_at
 FROM magic_links WHERE token_hash = ? AND used = 0 AND expires_at > ?
@@ -411,6 +467,38 @@ func (q *Queries) ListSessionsByUser(ctx context.Context, arg ListSessionsByUser
 		return nil, err
 	}
 	return items, nil
+}
+
+const markEmailVerificationTokenUsed = `-- name: MarkEmailVerificationTokenUsed :exec
+UPDATE email_verification_tokens
+SET used = 1, used_at = ?
+WHERE id = ?
+`
+
+type MarkEmailVerificationTokenUsedParams struct {
+	UsedAt sql.NullString `json:"used_at"`
+	ID     string         `json:"id"`
+}
+
+func (q *Queries) MarkEmailVerificationTokenUsed(ctx context.Context, arg MarkEmailVerificationTokenUsedParams) error {
+	_, err := q.db.ExecContext(ctx, markEmailVerificationTokenUsed, arg.UsedAt, arg.ID)
+	return err
+}
+
+const markEmailVerificationTokensUsedByUser = `-- name: MarkEmailVerificationTokensUsedByUser :exec
+UPDATE email_verification_tokens
+SET used = 1, used_at = ?
+WHERE user_id = ? AND used = 0
+`
+
+type MarkEmailVerificationTokensUsedByUserParams struct {
+	UsedAt sql.NullString `json:"used_at"`
+	UserID string         `json:"user_id"`
+}
+
+func (q *Queries) MarkEmailVerificationTokensUsedByUser(ctx context.Context, arg MarkEmailVerificationTokensUsedByUserParams) error {
+	_, err := q.db.ExecContext(ctx, markEmailVerificationTokensUsedByUser, arg.UsedAt, arg.UserID)
+	return err
 }
 
 const markMagicLinkUsed = `-- name: MarkMagicLinkUsed :exec
