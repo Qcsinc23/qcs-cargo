@@ -66,19 +66,46 @@ jobs:
             -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts \
             "$PROD_USER@$PROD_HOST" \
-            "set -euo pipefail; \
-            cd '$PROD_APP_DIR'; \
-            previous_sha=\$(git rev-parse HEAD); \
-            git fetch origin main; \
-            git checkout --detach '$DEPLOY_REF'; \
-            APP_DIR='$PROD_APP_DIR' \
-            TARGET_BRANCH='main' \
-            DEPLOY_REF='$DEPLOY_REF' \
-            APP_URL='$PROD_PUBLIC_URL' \
-            PREVIOUS_SUCCESSFUL_SHA=\"\$previous_sha\" \
-            ROLLBACK_ON_FAILURE=1 \
-            SKIP_GIT_PREP=1 \
-            bash '$PROD_APP_DIR/scripts/deploy-production.sh'"
+            PROD_APP_DIR="$PROD_APP_DIR" \
+            DEPLOY_REF="$DEPLOY_REF" \
+            PROD_PUBLIC_URL="$PROD_PUBLIC_URL" \
+            'bash -se' <<'EOF'
+          set -euo pipefail
+          cd "$PROD_APP_DIR"
+
+          deploy_state_dir="$PROD_APP_DIR/.deploy"
+          release_dir="$deploy_state_dir/releases/$DEPLOY_REF"
+          last_successful_sha_file="$deploy_state_dir/last-successful.sha"
+
+          mkdir -p "$deploy_state_dir/releases"
+          git fetch origin main
+          git worktree remove --force "$release_dir" >/dev/null 2>&1 || true
+
+          cleanup() {
+            git worktree remove --force "$release_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          git worktree add --force --detach "$release_dir" "$DEPLOY_REF"
+
+          previous_sha=""
+          if [[ -f "$last_successful_sha_file" ]]; then
+            previous_sha="$(tr -d '[:space:]' < "$last_successful_sha_file")"
+          else
+            previous_sha="$(git rev-parse HEAD)"
+          fi
+
+          APP_DIR="$release_dir" \
+          DEPLOY_STATE_DIR="$deploy_state_dir" \
+          LAST_SUCCESSFUL_SHA_FILE="$last_successful_sha_file" \
+          TARGET_BRANCH='main' \
+          DEPLOY_REF="$DEPLOY_REF" \
+          APP_URL="$PROD_PUBLIC_URL" \
+          PREVIOUS_SUCCESSFUL_SHA="$previous_sha" \
+          ROLLBACK_ON_FAILURE=1 \
+          SKIP_GIT_PREP=1 \
+          bash "$release_dir/scripts/deploy-production.sh"
+          EOF
 
       - name: Verify public production endpoints
         run: |
