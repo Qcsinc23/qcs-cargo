@@ -69,11 +69,11 @@ The intended production path is PR-gated:
 2. The workflow [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) will:
    - wait for the `CI` workflow to succeed on `main`
    - SSH to the non-root deploy user on `82.25.85.157`
-   - check out the exact validated commit SHA
+   - create a clean detached git worktree for the exact validated commit SHA
    - run [`scripts/deploy-production.sh`](deploy-production.sh)
    - verify `https://qcs-cargo.com/api/v1/health` and `https://qcs-cargo.com/`
 
-The server-side script uses a lock file to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful.
+The server-side script uses a lock file to prevent overlapping deployments and waits for the Docker health check to report `healthy` before marking the deployment successful. The temporary worktree keeps dirty local files in `/opt/qcs-cargo` from blocking deploys.
 
 ## Traefik file provider (this server)
 
