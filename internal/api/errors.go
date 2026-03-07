@@ -40,7 +40,6 @@ func (e ErrorResponse) withCode(code, message string) ErrorResponse {
 // ErrorHandler is Fiber's custom error handler.
 func ErrorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
-	er := ErrorResponse{}
 
 	if e := new(fiber.Error); errors.As(err, &e) {
 		code = e.Code
@@ -48,7 +47,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 
 	// Client errors get a safe status-derived message.
 	if code >= 400 && code < 500 {
-		er = newErrorResponse(httpStatusToCode(code), clientMessageForStatus(code))
+		er := newErrorResponse(httpStatusToCode(code), clientMessageForStatus(code))
 		return c.Status(code).JSON(er)
 	}
 
@@ -56,7 +55,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	if code < 500 || code > 599 {
 		code = fiber.StatusInternalServerError
 	}
-	er = newErrorResponse("INTERNAL_ERROR", "An unexpected error occurred")
+	er := newErrorResponse("INTERNAL_ERROR", "An unexpected error occurred")
 
 	if code >= 500 {
 		requestID := errorRequestID(c)

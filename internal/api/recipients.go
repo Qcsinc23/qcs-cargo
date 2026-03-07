@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"log"
 	"strings"
 	"time"
 
@@ -80,7 +81,11 @@ func recipientsCreate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("recipientsCreate rollback failed: %v", rbErr)
+		}
+	}()
 	qtx := db.Queries().WithTx(tx)
 
 	if isDefault == 1 {
@@ -194,7 +199,11 @@ func recipientsUpdate(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
-	defer tx.Rollback()
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("recipientsUpdate rollback failed: %v", rbErr)
+		}
+	}()
 	qtx := db.Queries().WithTx(tx)
 
 	if isDefault == 1 {

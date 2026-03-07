@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"math"
-	"strconv"
 	"strings"
 	"time"
 
@@ -664,7 +663,11 @@ func dataRecipientsImport(c *fiber.Ctx) error {
 		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start import transaction"))
 		}
-		defer tx.Rollback()
+		defer func() {
+			if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+				log.Printf("dataRecipientsImport rollback failed: %v", rbErr)
+			}
+		}()
 
 		stmt, err := tx.PrepareContext(c.Context(), `
 			INSERT INTO recipients (id, user_id, name, phone, destination_id, street, apt, city, delivery_instructions, is_default, use_count, created_at, updated_at)
@@ -1112,16 +1115,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func parseIntQuery(c *fiber.Ctx, key string, defaultValue int) int {
-	raw := strings.TrimSpace(c.Query(key))
-	if raw == "" {
-		return defaultValue
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil {
-		return defaultValue
-	}
-	return n
 }

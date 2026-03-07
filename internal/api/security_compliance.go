@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -1046,13 +1045,4 @@ func nullJSONString(v string) any {
 		return nil
 	}
 	return v
-}
-
-func parseIntFromAny(v any) int {
-	s := strings.TrimSpace(fmt.Sprint(v))
-	if s == "" {
-		return 0
-	}
-	n, _ := strconv.Atoi(s)
-	return n
 }
