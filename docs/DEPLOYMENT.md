@@ -113,6 +113,7 @@ Automatic deployments are supported through [.github/workflows/deploy.yml](../.g
 
 The deploy workflow now:
 
+- expects changes to reach `main` through a reviewed pull request after CI passes
 - requires a non-root SSH user
 - enforces strict host-key checking from the pinned `PROD_SSH_KNOWN_HOSTS` secret
 - runs only after the `CI` workflow succeeds or via manual dispatch

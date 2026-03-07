@@ -54,13 +54,21 @@
 
 ## GitHub Actions auto-deploy
 
-Future pushes to `main` can deploy automatically after CI passes.
+The intended production path is PR-gated:
 
-1. Add this repository secret in GitHub:
-   - `PROD_SSH_PRIVATE_KEY` — private SSH deploy key for `root@82.25.85.157`
+1. Open a pull request targeting `main`
+2. Wait for `CI` to pass
+3. Merge the PR into `main`
+4. GitHub Actions runs the production deploy automatically after successful post-merge `CI`
+
+1. Add these repository secrets in GitHub:
+   - `PROD_SSH_PRIVATE_KEY` — private SSH deploy key for the non-root deploy user
+   - `PROD_SSH_KNOWN_HOSTS` — pinned `known_hosts` entry for the production host
+2. Add this repository variable in GitHub:
+   - `PROD_USER=deploy`
 2. The workflow [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) will:
    - wait for the `CI` workflow to succeed on `main`
-   - SSH to `root@82.25.85.157`
+   - SSH to the non-root deploy user on `82.25.85.157`
    - check out the exact validated commit SHA
    - run [`scripts/deploy-production.sh`](deploy-production.sh)
    - verify `https://qcs-cargo.com/api/v1/health` and `https://qcs-cargo.com/`

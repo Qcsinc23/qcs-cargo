@@ -140,6 +140,12 @@ Dependency update automation is configured with Dependabot for:
 
 Production deploys are handled by [.github/workflows/deploy.yml](.github/workflows/deploy.yml) after a successful `CI` run on `main`, or via manual `workflow_dispatch`.
 
+Repository delivery is enforced as:
+- all changes land through a pull request
+- `main` requires passing CI checks and an approving review before merge
+- merge to `main` triggers `CI`
+- successful `CI` on `main` triggers the production deploy workflow
+
 - Required secret: `PROD_SSH_PRIVATE_KEY`
 - Required secret: `PROD_SSH_KNOWN_HOSTS`
 - Required variable: `PROD_USER` and it must be a non-root deploy user
