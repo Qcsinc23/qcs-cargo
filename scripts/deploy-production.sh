@@ -5,12 +5,16 @@ APP_DIR="${APP_DIR:-/opt/qcs-cargo}"
 TARGET_BRANCH="${TARGET_BRANCH:-main}"
 DEPLOY_REF="${DEPLOY_REF:-origin/$TARGET_BRANCH}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-qcs-cargo}"
 SERVICE_NAME="${SERVICE_NAME:-qcs-cargo}"
 CONTAINER_NAME="${CONTAINER_NAME:-qcs_cargo}"
 APP_URL="${APP_URL:-https://qcs-cargo.com}"
 DEPLOY_STATE_DIR="${DEPLOY_STATE_DIR:-$APP_DIR/.deploy}"
 LAST_SUCCESSFUL_SHA_FILE="${LAST_SUCCESSFUL_SHA_FILE:-$DEPLOY_STATE_DIR/last-successful.sha}"
 LOCK_FILE="${LOCK_FILE:-$DEPLOY_STATE_DIR/production-deploy.lock}"
+ENV_FILE="${ENV_FILE:-$APP_DIR/.env}"
+HEALTH_RESPONSE_FILE="${HEALTH_RESPONSE_FILE:-$DEPLOY_STATE_DIR/health-check.json}"
+HOME_SNAPSHOT_FILE="${HOME_SNAPSHOT_FILE:-$DEPLOY_STATE_DIR/home.html}"
 HEALTH_RETRIES="${HEALTH_RETRIES:-20}"
 HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-3}"
 BUILD_FLAGS="${BUILD_FLAGS:---pull}"
@@ -46,7 +50,7 @@ echo "deploying_sha=$deployed_sha"
 echo "previous_successful_sha=$previous_successful_sha"
 
 compose() {
-  docker compose -f "$COMPOSE_FILE" "$@"
+  docker compose -p "$COMPOSE_PROJECT_NAME" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 require_production_compose() {
@@ -77,8 +81,8 @@ wait_for_container_health() {
 }
 
 verify_public_endpoints() {
-  curl --fail --silent --show-error --max-time "$CURL_MAX_TIME" "$APP_URL/api/v1/health" >/tmp/qcs-deploy-health.json
-  curl --fail --silent --show-error --max-time "$CURL_MAX_TIME" "$APP_URL/" >/tmp/qcs-deploy-home.html
+  curl --fail --silent --show-error --max-time "$CURL_MAX_TIME" "$APP_URL/api/v1/health" >"$HEALTH_RESPONSE_FILE"
+  curl --fail --silent --show-error --max-time "$CURL_MAX_TIME" "$APP_URL/" >"$HOME_SNAPSHOT_FILE"
 }
 
 deploy_current_release() {
@@ -123,6 +127,6 @@ if ! deploy_current_release; then
 fi
 
 printf '%s\n' "$deployed_sha" > "$LAST_SUCCESSFUL_SHA_FILE"
-echo "health_response=$(sed -n '1p' /tmp/qcs-deploy-health.json)"
-echo "home_title=$(grep -o '<title>[^<]*</title>' /tmp/qcs-deploy-home.html | sed -n '1p')"
+echo "health_response=$(sed -n '1p' "$HEALTH_RESPONSE_FILE")"
+echo "home_title=$(grep -o '<title>[^<]*</title>' "$HOME_SNAPSHOT_FILE" | sed -n '1p')"
 echo "deployment_complete=$deployed_sha"

@@ -88,7 +88,9 @@ jobs:
           fi
 
           APP_DIR="$release_dir" \
+          COMPOSE_PROJECT_NAME='qcs-cargo' \
           DEPLOY_STATE_DIR="$deploy_state_dir" \
+          ENV_FILE="$PROD_APP_DIR/.env" \
           LAST_SUCCESSFUL_SHA_FILE="$last_successful_sha_file" \
           TARGET_BRANCH='main' \
           DEPLOY_REF="$DEPLOY_REF" \
