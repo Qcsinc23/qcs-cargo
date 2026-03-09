@@ -244,7 +244,7 @@ jobs:
           name: build-artifacts
       - name: Make binaries executable
         run: chmod +x qcs-server qcs-migrate
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
       - name: Install Playwright dependencies
