@@ -12,7 +12,7 @@ require (
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/maxence-charriere/go-app/v10 v10.1.11
 	github.com/prometheus/client_golang v1.21.1
-	github.com/resend/resend-go/v3 v3.1.0
+	github.com/resend/resend-go/v3 v3.1.1
 	github.com/stretchr/testify v1.11.1
 	github.com/stripe/stripe-go/v81 v81.4.0
 	golang.org/x/crypto v0.48.0
