@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -48,7 +48,7 @@ jobs:
     timeout-minutes: 15
     needs: [go-version-policy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -95,7 +95,7 @@ jobs:
     timeout-minutes: 15
     needs: [go-version-policy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -135,7 +135,7 @@ jobs:
       DATABASE_URL: file::memory:?cache=shared
       JWT_SECRET: test-secret-key-for-ci-do-not-use
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -164,7 +164,7 @@ jobs:
     timeout-minutes: 20
     needs: [lint, test-unit, test-integration]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -193,7 +193,7 @@ jobs:
     timeout-minutes: 15
     needs: [lint, test-unit, test-integration, smoke]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
@@ -238,7 +238,7 @@ jobs:
     timeout-minutes: 30
     needs: [build]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: build-artifacts
@@ -294,7 +294,7 @@ jobs:
     timeout-minutes: 15
     needs: [go-version-policy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Resolve Go version from go.mod
         id: go_version
         shell: bash
