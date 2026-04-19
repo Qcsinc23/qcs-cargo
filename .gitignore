@@ -54,6 +54,11 @@ e2e/redesign-shots/
 .gotmp/
 .gomodcache/
 
+# Scratch output from local tooling (PDF rendering, preview images, etc).
+# Do not commit build/audit artifacts from the agent workspace.
+output/
+tmp/
+
 # IDE & Local Workspace
 .cursor/
 PROMPT_Generate_Images_For_Public_Pages.md
