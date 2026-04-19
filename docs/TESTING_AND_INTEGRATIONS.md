@@ -2,7 +2,7 @@
 
 **Purpose:** This document provides exact implementation instructions for the QCS Cargo testing infrastructure. It is designed to be consumed by an AI coding agent building the application defined in the Unified PRD v3.0.
 
-**Stack context:** Go 1.26.1+ · Fiber v2 · go-app (WASM) · modernc.org/sqlite · sqlc · goose · Stripe · Resend · Playwright
+**Stack context:** Go 1.26.1+ · Fiber v2 · server-rendered HTML (Tailwind CSS) · modernc.org/sqlite · sqlc · goose · Stripe · Resend · Playwright
 
 **Repo note:** When implementing code from this doc, use module path `github.com/Qcsinc23/qcs-cargo` (replace any `github.com/qcs-cargo/app` in examples). Reference this file when adding integration tests, CI, E2E, or test data seeding.
 
@@ -18,7 +18,7 @@
 6. [Stripe Payment Testing](#6-stripe-payment-testing)
 7. [Storage Fee Cron Job Testing](#7-storage-fee-cron-job-testing)
 8. [Load Testing](#8-load-testing)
-9. [go-app Component Testing](#9-go-app-component-testing)
+9. [Frontend Component Testing](#9-frontend-component-testing)
 10. [Test File Organization](#10-test-file-organization)
 
 ---
@@ -113,23 +113,12 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - name: Build server binary
         run: go build -o qcs-server ./cmd/server
-      - name: Build WASM
-        run: GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
-      - name: Check WASM size
-        run: |
-          SIZE=$(stat -f%z web/app.wasm 2>/dev/null || stat -c%s web/app.wasm)
-          SIZE_MB=$(echo "scale=2; $SIZE / 1048576" | bc)
-          echo "WASM size: ${SIZE_MB} MB"
-          if (( $(echo "$SIZE > 12582912" | bc -l) )); then
-            echo "::warning::WASM binary exceeds 12MB (${SIZE_MB}MB)"
-          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build
           path: |
             qcs-server
-            web/app.wasm
 
   smoke-test:
     runs-on: ubuntu-latest
@@ -277,11 +266,10 @@ check "Health endpoint" "${BASE}/api/v1/health"
 check_contains "Health returns OK" "${BASE}/api/v1/health" '"status":"ok"'
 check_contains "Health DB check" "${BASE}/api/v1/health" '"db":"ok"'
 
-# --- Critical Path: WASM App Shell ---
+# --- Critical Path: App Shell ---
 echo ""
-echo "--- WASM App Shell ---"
+echo "--- App Shell ---"
 check "Root serves HTML" "${BASE}/"
-check_contains "Root loads WASM" "${BASE}/" "app.wasm"
 check_contains "Root has app shell" "${BASE}/" "QCS Cargo"
 
 # --- Critical Path: Auth ---
@@ -1852,11 +1840,11 @@ load-test:
 
 ---
 
-## 9. go-app Component Testing
+## 9. Frontend Component Testing
 
 ### 9.1 Architecture Rule
 
-**All business logic must be extractable from components.** Components should be thin wrappers that call pure functions and render results.
+**All business logic must be extractable from components.** Server-rendered pages and JS helpers should be thin wrappers that call pure functions and render results.
 
 ```
 BAD:  Component calculates dimensional weight inside Render()

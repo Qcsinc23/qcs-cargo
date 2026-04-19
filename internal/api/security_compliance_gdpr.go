@@ -192,7 +192,16 @@ func complianceGDPRCreateRequest(c *fiber.Ctx, changeType string) error {
 	// 'processed' once it succeeds.
 	if changeType == "delete_request" {
 		deletedEmail := "deleted+" + strings.TrimSpace(userID) + "@qcs.invalid"
-		if err := services.AnonymizeUserData(c.Context(), userID, "Deleted User", deletedEmail); err != nil {
+		// Pass 3 HIGH-01: audit row is written in the same tx as the
+		// scrub so the GDPR audit trail cannot disagree with reality.
+		audit := &services.AuditEvent{
+			ActorUserID: userID,
+			EventType:   "gdpr.delete_request.processed",
+			IPAddress:   c.IP(),
+			UserAgent:   c.Get(fiber.HeaderUserAgent),
+			Metadata:    "request_id=" + requestID,
+		}
+		if err := services.AnonymizeUserData(c.Context(), userID, "Deleted User", deletedEmail, audit); err != nil {
 			log.Printf("[gdpr] anonymize on delete_request user=%s: %v", userID, err)
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to process delete request"))
 		}

@@ -1,6 +1,6 @@
 -- name: CreateUser :one
-INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
+INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, free_storage_days, email_verified, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 'customer', ?, 30, 0, 'active', ?, ?)
 RETURNING *;
 
 -- name: SetEmailVerificationToken :exec

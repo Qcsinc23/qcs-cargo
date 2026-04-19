@@ -1,5 +1,5 @@
 # QCS Cargo — PRD 13.1 build commands
-.PHONY: build run migrate test test-unit test-integration test-e2e loadtest loadtest-auth ci lint wasm deps smoke backup restore-check assets
+.PHONY: build run migrate test test-unit test-integration test-e2e loadtest loadtest-auth ci lint deps smoke backup restore-check assets
 
 deps:
 	go mod download
@@ -54,12 +54,6 @@ ci: lint test-unit test-integration smoke
 
 lint:
 	golangci-lint run ./cmd/... ./internal/...
-
-# Copy Go's WASM loader, sync frontend images to web/images, and build frontend to web/
-wasm:
-	cp "$$(go env GOROOT)/misc/wasm/wasm_exec.js" web/
-	@mkdir -p web/images && cp -R frontend/static/images/* web/images/ 2>/dev/null || true
-	GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
 
 # Generate sqlc code (requires sqlc: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest)
 sqlc:

@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countRecipientsByUser = `-- name: CountRecipientsByUser :one
+SELECT COUNT(*) FROM recipients WHERE user_id = ?
+`
+
+func (q *Queries) CountRecipientsByUser(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countRecipientsByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createRecipient = `-- name: CreateRecipient :one
 INSERT INTO recipients (id, user_id, name, phone, destination_id, street, apt, city, delivery_instructions, is_default, use_count, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -107,10 +118,19 @@ SELECT id, user_id, name, phone, destination_id, street, apt, city, delivery_ins
 FROM recipients
 WHERE user_id = ?
 ORDER BY is_default DESC, name ASC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListRecipientsByUser(ctx context.Context, userID string) ([]Recipient, error) {
-	rows, err := q.db.QueryContext(ctx, listRecipientsByUser, userID)
+type ListRecipientsByUserParams struct {
+	UserID string `json:"user_id"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+}
+
+// Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination so recipientsList no
+// longer fetches every row and slices in Go.
+func (q *Queries) ListRecipientsByUser(ctx context.Context, arg ListRecipientsByUserParams) ([]Recipient, error) {
+	rows, err := q.db.QueryContext(ctx, listRecipientsByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

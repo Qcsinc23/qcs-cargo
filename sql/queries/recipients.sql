@@ -1,9 +1,15 @@
 -- name: ListRecipientsByUser :many
+-- Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination so recipientsList no
+-- longer fetches every row and slices in Go.
 SELECT id, user_id, name, phone, destination_id, street, apt, city, delivery_instructions,
        is_default, use_count, created_at, updated_at
 FROM recipients
 WHERE user_id = ?
-ORDER BY is_default DESC, name ASC;
+ORDER BY is_default DESC, name ASC
+LIMIT ? OFFSET ?;
+
+-- name: CountRecipientsByUser :one
+SELECT COUNT(*) FROM recipients WHERE user_id = ?;
 
 -- name: GetRecipientByID :one
 SELECT id, user_id, name, phone, destination_id, street, apt, city, delivery_instructions,

@@ -18,19 +18,6 @@ func nullStr(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: s != ""}
 }
 
-// Phase 3.2 (INC-001 part B) outbound-email worker.
-//
-// RunOutboundEmailJob drains pending rows from the outbound_emails
-// table, dispatching each through the registered template renderer.
-// Each row is bound by maxOutboundAttempts; once that budget is
-// exhausted the row is marked status='failed' so ops can investigate.
-//
-// The worker is intentionally lightweight: a single pass per
-// invocation, claim up to drainBatchSize rows, run sends serially.
-// Single-replica deployment makes that more than enough for the
-// volumes a parcel-forwarding business sends. Frequency is controlled
-// by the caller (cmd/server runs it on a 1-minute ticker alongside
-// the daily jobs).
 const (
 	drainBatchSize       = 32
 	maxOutboundAttempts  = 5
@@ -40,9 +27,6 @@ const (
 func RunOutboundEmailJob(ctx context.Context) error {
 	q := db.Queries()
 
-	// Pass 2.5 HIGH-10 fix: reap rows stuck in 'in_progress' for >5min.
-	// The previous worker run may have crashed mid-dispatch; without this
-	// the rows would be invisible to ClaimPendingOutboundEmails forever.
 	reapCutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
 	rescheduleAt := time.Now().UTC().Format(time.RFC3339)
 	if reaped, err := q.ReapStuckOutboundEmails(ctx, gen.ReapStuckOutboundEmailsParams{
@@ -63,10 +47,16 @@ func RunOutboundEmailJob(ctx context.Context) error {
 		return fmt.Errorf("outbound email claim: %w", err)
 	}
 	for _, row := range rows {
-		// Best-effort optimistic claim (avoids re-running rows another
-		// invocation might have just picked up). Returns silently on no-op.
-		if err := q.MarkOutboundEmailInProgress(ctx, row.ID); err != nil {
+		// Pass 3 CRIT-03: rows-affected check. 0 = lost the optimistic-claim
+		// race; another worker advanced the row out of 'pending'. Skip
+		// dispatch to avoid a duplicate provider send.
+		n, err := q.MarkOutboundEmailInProgress(ctx, row.ID)
+		if err != nil {
 			log.Printf("[outbound email] mark in_progress %s: %v", row.ID, err)
+			continue
+		}
+		if n == 0 {
+			log.Printf("[outbound email] %s: lost claim race, skipping", row.ID)
 			continue
 		}
 		dispatchOutboundEmail(ctx, row)
@@ -89,7 +79,8 @@ func dispatchOutboundEmail(ctx context.Context, row gen.ClaimPendingOutboundEmai
 		return
 	}
 
-	err := send(ctx, row.Recipient, json.RawMessage(row.PayloadJson))
+	// Pass 3 CRIT-04: pass row.ID as the Resend Idempotency-Key.
+	err := send(ctx, row.Recipient, json.RawMessage(row.PayloadJson), row.ID)
 	if err == nil {
 		_ = q.MarkOutboundEmailSent(ctx, gen.MarkOutboundEmailSentParams{
 			SentAt: nullStr(time.Now().UTC().Format(time.RFC3339)),

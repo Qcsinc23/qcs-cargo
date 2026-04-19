@@ -22,14 +22,21 @@ func RegisterInvoices(g fiber.Router) {
 
 func invoiceList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-	list, err := db.Queries().ListInvoicesByUser(c.Context(), userID)
+	// Pass 3 HIGH-07: paginate at the SQL layer.
+	limit, offset := pagination(c)
+	page := pageFromOffset(offset, limit)
+	total, err := db.Queries().CountInvoicesByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list invoices"))
 	}
-	// Pass 2.5 MED-08: bound the response payload size. The sqlc query
-	// does not yet accept LIMIT/OFFSET; cap the slice in Go.
-	page, limit, total, slice := paginateInGo(c, len(list))
-	list = list[slice.start:slice.end]
+	list, err := db.Queries().ListInvoicesByUser(c.Context(), gen.ListInvoicesByUserParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list invoices"))
+	}
 	return c.JSON(fiber.Map{
 		"data":  list,
 		"page":  page,

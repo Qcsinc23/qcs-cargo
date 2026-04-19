@@ -63,14 +63,24 @@ func accountDeactivate(c *fiber.Ctx) error {
 func accountDelete(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 
-	if err := services.AnonymizeUserData(c.Context(), userID, deletedUserName, deletedEmailForUser(userID)); err != nil {
+	// Pass 3 HIGH-01: write the audit row inside the same transaction
+	// as the anonymization. The previous best-effort recordActivity
+	// call AFTER commit could silently drop the audit on a process
+	// crash between commit and log-write.
+	audit := &services.AuditEvent{
+		ActorUserID: userID,
+		EventType:   "auth.account.delete",
+		IPAddress:   c.IP(),
+		UserAgent:   c.Get(fiber.HeaderUserAgent),
+		Metadata:    "status=deleted,anonymized=true",
+	}
+	if err := services.AnonymizeUserData(c.Context(), userID, deletedUserName, deletedEmailForUser(userID), audit); err != nil {
 		log.Printf("[account delete] AnonymizeUserData user=%s: %v", userID, err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
 	}
 
 	blacklistCurrentAccessToken(c)
 	clearRefreshCookie(c)
-	recordActivity(c.Context(), userID, "auth.account.delete", "user", userID, "status=deleted,anonymized=true")
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Account deleted and personal data anonymized."}})
 }
 

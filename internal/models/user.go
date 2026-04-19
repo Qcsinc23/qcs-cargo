@@ -13,7 +13,6 @@ type User struct {
 	AddressCity      string  `json:"address_city,omitempty"`
 	AddressState     string  `json:"address_state,omitempty"`
 	AddressZip       string  `json:"address_zip,omitempty"`
-	StoragePlan      string  `json:"storage_plan"` // free | premium
 	FreeStorageDays  int     `json:"free_storage_days"`
 	EmailVerified    bool    `json:"email_verified"`
 	Status           string  `json:"status"` // active | suspended | etc.

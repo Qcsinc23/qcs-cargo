@@ -17,14 +17,21 @@ func RegisterShipments(g fiber.Router) {
 
 func shipmentList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-	list, err := db.Queries().ListShipmentsByUser(c.Context(), userID)
+	// Pass 3 HIGH-07: paginate at the SQL layer.
+	limit, offset := pagination(c)
+	page := pageFromOffset(offset, limit)
+	total, err := db.Queries().CountShipmentsByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list shipments"))
 	}
-	// Pass 2.5 MED-08: bound the response payload size. Cap in Go since
-	// the sqlc query does not yet accept LIMIT/OFFSET.
-	page, limit, total, slice := paginateInGo(c, len(list))
-	list = list[slice.start:slice.end]
+	list, err := db.Queries().ListShipmentsByUser(c.Context(), gen.ListShipmentsByUserParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list shipments"))
+	}
 	return c.JSON(fiber.Map{
 		"data":  list,
 		"page":  page,

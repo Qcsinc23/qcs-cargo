@@ -21,13 +21,21 @@ func RegisterInboundTracking(g fiber.Router) {
 
 func inboundTrackingList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-	list, err := db.Queries().ListInboundTrackingByUser(c.Context(), userID)
+	// Pass 3 HIGH-07: paginate at the SQL layer.
+	limit, offset := pagination(c)
+	page := pageFromOffset(offset, limit)
+	total, err := db.Queries().CountInboundTrackingByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list inbound tracking"))
 	}
-	// Pass 2.5 MED-08: cap response payload size in Go.
-	page, limit, total, slice := paginateInGo(c, len(list))
-	list = list[slice.start:slice.end]
+	list, err := db.Queries().ListInboundTrackingByUser(c.Context(), gen.ListInboundTrackingByUserParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list inbound tracking"))
+	}
 	return c.JSON(fiber.Map{
 		"data":  list,
 		"page":  page,

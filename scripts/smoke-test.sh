@@ -84,12 +84,6 @@ echo ""
 echo "--- App shell ---"
 check GET "/" 200
 check_contains "Root has app shell" "$BASE/" "QCS Cargo"
-# WASM may be referenced from static HTML or loaded by go-app
-if curl -sf "$BASE/" | grep -q "app.wasm"; then
-  echo "  ✓ Root references app.wasm"
-else
-  echo "  (skip app.wasm check - not in static HTML)"
-fi
 
 echo ""
 echo "--- Auth ---"

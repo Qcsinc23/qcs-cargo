@@ -9,6 +9,17 @@ import (
 	"context"
 )
 
+const countInvoicesByUser = `-- name: CountInvoicesByUser :one
+SELECT COUNT(*) FROM invoices WHERE user_id = ?
+`
+
+func (q *Queries) CountInvoicesByUser(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countInvoicesByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getInvoiceByID = `-- name: GetInvoiceByID :one
 SELECT id, user_id, booking_id, ship_request_id, invoice_number, subtotal, tax, total,
        status, due_date, paid_at, notes, created_at
@@ -85,10 +96,18 @@ SELECT id, user_id, booking_id, ship_request_id, invoice_number, subtotal, tax, 
 FROM invoices
 WHERE user_id = ?
 ORDER BY created_at DESC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListInvoicesByUser(ctx context.Context, userID string) ([]Invoice, error) {
-	rows, err := q.db.QueryContext(ctx, listInvoicesByUser, userID)
+type ListInvoicesByUserParams struct {
+	UserID string `json:"user_id"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+}
+
+// Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination.
+func (q *Queries) ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]Invoice, error) {
+	rows, err := q.db.QueryContext(ctx, listInvoicesByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

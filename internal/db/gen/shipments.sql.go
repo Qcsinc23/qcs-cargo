@@ -9,6 +9,20 @@ import (
 	"context"
 )
 
+const countShipmentsByUser = `-- name: CountShipmentsByUser :one
+SELECT COUNT(*)
+FROM shipments s
+INNER JOIN ship_requests sr ON s.ship_request_id = sr.id
+WHERE sr.user_id = ?
+`
+
+func (q *Queries) CountShipmentsByUser(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countShipmentsByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getShipmentByID = `-- name: GetShipmentByID :one
 SELECT s.id, s.destination_id, s.manifest_id, s.ship_request_id, s.tracking_number, s.status,
        s.total_weight, s.package_count, s.carrier, s.estimated_delivery, s.actual_delivery,
@@ -52,10 +66,18 @@ FROM shipments s
 INNER JOIN ship_requests sr ON s.ship_request_id = sr.id
 WHERE sr.user_id = ?
 ORDER BY s.created_at DESC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListShipmentsByUser(ctx context.Context, userID string) ([]Shipment, error) {
-	rows, err := q.db.QueryContext(ctx, listShipmentsByUser, userID)
+type ListShipmentsByUserParams struct {
+	UserID string `json:"user_id"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+}
+
+// Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination.
+func (q *Queries) ListShipmentsByUser(ctx context.Context, arg ListShipmentsByUserParams) ([]Shipment, error) {
+	rows, err := q.db.QueryContext(ctx, listShipmentsByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

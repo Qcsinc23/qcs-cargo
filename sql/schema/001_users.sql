@@ -11,7 +11,6 @@ CREATE TABLE users (
     address_city TEXT,
     address_state TEXT,
     address_zip TEXT,
-    storage_plan TEXT NOT NULL DEFAULT 'free',
     free_storage_days INTEGER NOT NULL DEFAULT 30,
     email_verified INTEGER NOT NULL DEFAULT 0,
     email_verification_token TEXT,

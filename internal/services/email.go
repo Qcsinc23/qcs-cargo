@@ -29,40 +29,40 @@ func init() {
 		ConfirmationCode string `json:"confirmation_code"`
 	}
 
-	RegisterEmailTemplate(TemplateStorageWarning5d, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateStorageWarning5d, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p storagePackagePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("storage_warning_5d payload: %w", err)
 		}
-		return SendStorageWarning5Days(to, p.SenderName)
+		return SendStorageWarning5Days(ctx, to, p.SenderName, key)
 	})
-	RegisterEmailTemplate(TemplateStorageWarning1d, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateStorageWarning1d, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p storagePackagePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("storage_warning_1d payload: %w", err)
 		}
-		return SendStorageWarning1Day(to, p.SenderName)
+		return SendStorageWarning1Day(ctx, to, p.SenderName, key)
 	})
-	RegisterEmailTemplate(TemplateStorageFinalNotice, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateStorageFinalNotice, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p storagePackagePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("storage_final_notice payload: %w", err)
 		}
-		return SendStorageFinalNotice(to, p.SenderName)
+		return SendStorageFinalNotice(ctx, to, p.SenderName, key)
 	})
-	RegisterEmailTemplate(TemplateStorageFeeCharged, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateStorageFeeCharged, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p storagePackagePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("storage_fee_charged payload: %w", err)
 		}
-		return SendStorageFeeCharged(to, p.SenderName, p.Amount)
+		return SendStorageFeeCharged(ctx, to, p.SenderName, p.Amount, key)
 	})
-	RegisterEmailTemplate(TemplateShipRequestPaid, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateShipRequestPaid, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p confirmationCodePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("ship_request_paid payload: %w", err)
 		}
-		return SendShipRequestPaid(to, p.ConfirmationCode)
+		return SendShipRequestPaid(ctx, to, p.ConfirmationCode, key)
 	})
 }
 
@@ -95,6 +95,33 @@ func resendClient() *resend.Client {
 		}
 	}
 	return resend.NewClient(key)
+}
+
+// sendResend POSTs the rendered email to Resend's POST /emails endpoint.
+//
+// Pass 3 CRIT-04 fix: when idempotencyKey is non-empty (worker-dispatched
+// rows), we route through the SDK's request-options pattern so the
+// underlying http.Request carries an Idempotency-Key: <key> header.
+// Resend treats two POST /emails requests with the same key as the same
+// logical send: a retry whose first attempt already succeeded provider-
+// side returns the prior result instead of re-queueing the message.
+//
+// Without the header, our own retry path (worker reschedules a row whose
+// Resend response was lost to a network error) would cause duplicate
+// inbound emails to the customer.
+func sendResend(ctx context.Context, params *resend.SendEmailRequest, idempotencyKey string) error {
+	client := resendClient()
+	if client == nil {
+		return nil
+	}
+	if idempotencyKey != "" {
+		_, err := client.Emails.SendWithOptions(ctx, params, &resend.SendEmailOptions{
+			IdempotencyKey: idempotencyKey,
+		})
+		return err
+	}
+	_, err := client.Emails.SendWithContext(ctx, params)
+	return err
 }
 
 func appURL() string {
@@ -378,11 +405,7 @@ func SendServiceComplete(to, serviceName, senderName string) error {
 // Storage warning emails
 // ---------------------------------------------------------------------------
 
-func SendStorageWarning5Days(to, senderName string) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendStorageWarning5Days(ctx context.Context, to, senderName, idempotencyKey string) error {
 	dashboardLink := appURL() + "/dashboard/inbox"
 	body := emailParagraph(fmt.Sprintf("Your package from <strong>%s</strong> will begin accruing daily storage fees in <strong>5 days</strong>. Ship or pick up your package before then to avoid charges.", escapeHTML(senderName))) +
 		emailButton(dashboardLink, "Manage package", brandOrange)
@@ -390,21 +413,16 @@ func SendStorageWarning5Days(to, senderName string) error {
 	html := emailLayout("Storage fees starting soon for "+escapeHTML(senderName)+" package", "Storage Reminder", body)
 	text := fmt.Sprintf("Package from %s starts storage fees in 5 days.", senderName)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Storage reminder – QCS Cargo",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
-func SendStorageWarning1Day(to, senderName string) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendStorageWarning1Day(ctx context.Context, to, senderName, idempotencyKey string) error {
 	dashboardLink := appURL() + "/dashboard/inbox"
 	body := emailParagraph(fmt.Sprintf("Today is the <strong>last day of free storage</strong> for your package from <strong>%s</strong>. Daily fees begin tomorrow.", escapeHTML(senderName))) +
 		emailButton(dashboardLink, "Ship now", brandOrange)
@@ -412,21 +430,16 @@ func SendStorageWarning1Day(to, senderName string) error {
 	html := emailLayout("Last day of free storage for "+escapeHTML(senderName)+" package", "Storage – Final Day", body)
 	text := fmt.Sprintf("Last day of free storage for %s package.", senderName)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Last day of free storage – QCS Cargo",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
-func SendStorageFeeCharged(to, senderName string, amount float64) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendStorageFeeCharged(ctx context.Context, to, senderName string, amount float64, idempotencyKey string) error {
 	dashboardLink := appURL() + "/dashboard/invoices"
 	rows := emailInfoRow("Package from", escapeHTML(senderName)) +
 		emailInfoRow("Fee charged", fmt.Sprintf("$%.2f", amount))
@@ -437,21 +450,16 @@ func SendStorageFeeCharged(to, senderName string, amount float64) error {
 	html := emailLayout(fmt.Sprintf("$%.2f storage fee charged", amount), "Storage Fee", body)
 	text := fmt.Sprintf("Storage fee $%.2f charged for %s package.", amount, senderName)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Storage fee charged – QCS Cargo",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
-func SendStorageFinalNotice(to, senderName string) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendStorageFinalNotice(ctx context.Context, to, senderName, idempotencyKey string) error {
 	dashboardLink := appURL() + "/dashboard/inbox"
 	body := emailParagraph(fmt.Sprintf("Your package from <strong>%s</strong> will be <strong>disposed of in 5 days</strong> unless you arrange for shipping. Please take action now to avoid losing your package.", escapeHTML(senderName))) +
 		emailButton(dashboardLink, "Ship my package", "#DC2626")
@@ -459,25 +467,20 @@ func SendStorageFinalNotice(to, senderName string) error {
 	html := emailLayout("URGENT: Package disposal in 5 days", "Final Notice", body)
 	text := fmt.Sprintf("Package from %s will be disposed in 5 days unless shipped.", senderName)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Final notice – package disposal – QCS Cargo",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
 // ---------------------------------------------------------------------------
 // Shipping lifecycle emails
 // ---------------------------------------------------------------------------
 
-func SendShipRequestPaid(to, code string) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendShipRequestPaid(ctx context.Context, to, code, idempotencyKey string) error {
 	dashboardLink := appURL() + "/dashboard/ship-requests"
 	body := emailParagraph(fmt.Sprintf("Payment received! Your ship request <strong>%s</strong> is confirmed and our warehouse team is preparing your package.", escapeHTML(code))) +
 		emailButton(dashboardLink, "Track ship request", brandBlue)
@@ -485,14 +488,13 @@ func SendShipRequestPaid(to, code string) error {
 	html := emailLayout("Ship request "+escapeHTML(code)+" confirmed", "Ship Request Confirmed", body)
 	text := fmt.Sprintf("Ship request %s confirmed! Being prepared.", code)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Ship request confirmed – QCS Cargo",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
 func SendShipRequestShipped(to, code, tracking string) error {
@@ -682,11 +684,7 @@ func pluralVerb(n int) string {
 // previously the challenge code was only returned to the client when
 // AllowDebugAuthArtifacts() was true, so production MFA was silently
 // inoperative. Now the code is enqueued via the outbound email worker.
-func SendMFAChallengeCode(to, code string) error {
-	client := resendClient()
-	if client == nil {
-		return nil
-	}
+func SendMFAChallengeCode(ctx context.Context, to, code, idempotencyKey string) error {
 	body := emailParagraph(fmt.Sprintf(
 		"Your QCS Cargo verification code is <strong>%s</strong>. It expires in 10 minutes. If you did not request this code, you can ignore this email.",
 		escapeHTML(code),
@@ -694,14 +692,13 @@ func SendMFAChallengeCode(to, code string) error {
 	html := emailLayout("Your QCS Cargo verification code", "Verification Code", body)
 	text := fmt.Sprintf("Your QCS Cargo verification code is %s. It expires in 10 minutes.", code)
 
-	_, err := client.Emails.Send(&resend.SendEmailRequest{
+	return sendResend(ctx, &resend.SendEmailRequest{
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Your QCS Cargo verification code",
 		Html:    html,
 		Text:    text,
-	})
-	return err
+	}, idempotencyKey)
 }
 
 // Pass 2.5 HIGH-02 registration. Kept in a separate init() so concurrent
@@ -711,12 +708,12 @@ func init() {
 	type mfaChallengePayload struct {
 		Code string `json:"code"`
 	}
-	RegisterEmailTemplate(TemplateMFAChallengeCode, func(ctx context.Context, to string, raw json.RawMessage) error {
+	RegisterEmailTemplate(TemplateMFAChallengeCode, func(ctx context.Context, to string, raw json.RawMessage, key string) error {
 		var p mfaChallengePayload
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return fmt.Errorf("mfa_challenge_code payload: %w", err)
 		}
-		return SendMFAChallengeCode(to, p.Code)
+		return SendMFAChallengeCode(ctx, to, p.Code, key)
 	})
 }
 

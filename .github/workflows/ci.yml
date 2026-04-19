@@ -74,8 +74,8 @@ jobs:
           node-version: 20
       # Pass 2.5 OPS-01: inline-script regression guard.
       # The CSP dropped 'unsafe-inline' in Pass 2; any new inline <script>
-      # block in internal/static/**/*.html or web/index.html would silently
-      # break that page in browsers. Fail the build if one reappears.
+      # block in internal/static/**/*.html would silently break that page
+      # in browsers. Fail the build if one reappears.
       - name: No inline <script> blocks in static HTML
         shell: bash
         run: |
@@ -83,7 +83,7 @@ jobs:
           violations=$(python3 -c "
           import re, glob, sys
           inline = re.compile(r'<script(?![^>]*\\bsrc=)[^>]*>[\\s\\S]*?</script>')
-          files = sorted(glob.glob('internal/static/**/*.html', recursive=True)) + ['web/index.html']
+          files = sorted(glob.glob('internal/static/**/*.html', recursive=True))
           total = 0
           for f in files:
               try:
@@ -119,6 +119,23 @@ jobs:
           if ! git diff --quiet -- internal/static/css/tailwind.css; then
             echo "::error::internal/static/css/tailwind.css is stale; run 'make assets' and commit the result"
             git diff --stat -- internal/static/css/tailwind.css
+            exit 1
+          fi
+      # Pass 3 HIGH-06: XSS regression guard for innerHTML.
+      # Catches `el.innerHTML = `...${var}...`` patterns where var is a
+      # plain identifier or member access (raw, unescaped). Function-call
+      # interpolations like ${escHtml(x)} are intentionally allowed, so
+      # the fix is to wrap unsafe sites with escHtml() (or use textContent).
+      - name: Guard against unescaped innerHTML template-literal interpolation
+        run: |
+          set -euo pipefail
+          if rg -nU --multiline-dotall --no-heading \
+              'innerHTML\s*=\s*`[^`]*\$\{\s*[A-Za-z_$][\w$.\[\]\s]*\}' \
+              internal/static/ \
+              -g '!*tailwind*' \
+              -g '!*/node_modules/*' \
+              --glob '*.js'; then
+            echo "::error::Found unescaped innerHTML with template-literal interpolation. Use escHtml() or textContent." >&2
             exit 1
           fi
 
@@ -295,13 +312,10 @@ jobs:
           cache: true
       - name: Build release artifacts
         run: |
-          mkdir -p web
           go build -o qcs-server ./cmd/server
           go build -o qcs-migrate ./cmd/migrate
-          GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
           test -s qcs-server
           test -s qcs-migrate
-          test -s web/app.wasm
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -309,7 +323,6 @@ jobs:
           path: |
             qcs-server
             qcs-migrate
-            web/app.wasm
           if-no-files-found: error
 
   e2e:

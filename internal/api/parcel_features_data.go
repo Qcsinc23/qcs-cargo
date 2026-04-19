@@ -276,7 +276,6 @@ type exportUserProfile struct {
 	AddressCity        *string `json:"address_city"`
 	AddressState       *string `json:"address_state"`
 	AddressZip         *string `json:"address_zip"`
-	StoragePlan        string  `json:"storage_plan"`
 	FreeStorageDays    int     `json:"free_storage_days"`
 	EmailVerified      bool    `json:"email_verified"`
 	Status             string  `json:"status"`
@@ -659,7 +658,7 @@ func exportUserProfileRow(ctx context.Context, userID string) (*exportUserProfil
 	row := db.DB().QueryRowContext(ctx, `
 		SELECT id, name, email, phone, role, avatar_url, suite_code,
 		       address_street, address_city, address_state, address_zip,
-		       storage_plan, free_storage_days, email_verified, status,
+		       free_storage_days, email_verified, status,
 		       created_at, updated_at
 		FROM users WHERE id = ?
 	`, userID)
@@ -670,7 +669,7 @@ func exportUserProfileRow(ctx context.Context, userID string) (*exportUserProfil
 	)
 	if err := row.Scan(&p.ID, &p.Name, &p.Email, &phone, &p.Role, &avatarURL, &suiteCode,
 		&street, &city, &state, &zip,
-		&p.StoragePlan, &p.FreeStorageDays, &emailVerified, &p.Status,
+		&p.FreeStorageDays, &emailVerified, &p.Status,
 		&p.CreatedAt, &p.UpdatedAt); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil

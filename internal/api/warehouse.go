@@ -373,6 +373,38 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 	return c.Status(201).JSON(fiber.Map{"data": created})
 }
 
+// staleStatusConflict is the canonical 409 response shape used by every
+// ship-queue handler that performs an optimistic-lock status transition
+// (Process, Weighed, Staged). The matching front-end consumer lives in
+// internal/static/warehouse/scripts/ship-queue.js and keys off
+// error.code === "STALE_STATUS" to surface a banner and refresh the
+// affected row in place.
+//
+//	{
+//	  "error": {
+//	    "code": "STALE_STATUS",
+//	    "message": "Ship request is no longer in status <expected>; refresh and retry",
+//	    "details": {
+//	      "ship_request_id": "<id>",
+//	      "expected_status": "<expected>",
+//	      "current_status":  "<actual or empty>",
+//	      "attempted_status": "<target>"
+//	    }
+//	  }
+//	}
+func staleStatusConflict(c *fiber.Ctx, id, expected, attempted, current string) error {
+	er := ErrorResponse{}
+	er.Error.Code = "STALE_STATUS"
+	er.Error.Message = "Ship request is no longer in status " + expected + "; refresh and retry"
+	er.Error.Details = fiber.Map{
+		"ship_request_id":  id,
+		"expected_status":  expected,
+		"current_status":   current,
+		"attempted_status": attempted,
+	}
+	return c.Status(409).JSON(er)
+}
+
 func warehouseShipQueueProcess(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -388,8 +420,7 @@ func warehouseShipQueueProcess(c *fiber.Ctx) error {
 	if strings.TrimSpace(body.ExpectedStatus) == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "expected_status required"))
 	}
-	_, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
-	if err != nil {
+	if _, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id); err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
 		}
@@ -406,12 +437,39 @@ func warehouseShipQueueProcess(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update status"))
 	}
 	if rows == 0 {
-		return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Ship request is no longer in status "+body.ExpectedStatus+"; refresh and retry"))
+		// Pass 3 HIGH-04: align Process with the new STALE_STATUS code so
+		// ship-queue.js can route all three transitions through the same
+		// 409 handler. Re-read the row so the response carries the truth
+		// the client should display after the targeted row refresh.
+		latest, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
+		return staleStatusConflict(c, id, body.ExpectedStatus, "processing", latest.Status)
 	}
 	updated, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	return c.JSON(fiber.Map{"data": updated})
 }
 
+// warehouseShipQueueWeighed records the consolidated weight for a ship
+// request whose status the caller has confirmed via expected_status.
+//
+// Pass 3 HIGH-04: previously this handler did a blind UPDATE of
+// consolidated_weight_lbs WHERE id = ? and never re-checked status, so
+// two warehouse clerks scanning the same package could both record
+// weights silently and the row would land in whichever write serialised
+// last. The schema's status CHECK constraint does not include a
+// 'weighed' state — Weighed is a sub-step within 'processing' rather
+// than a discrete lifecycle status — so we cannot drive the optimistic
+// lock through AdminUpdateShipRequestStatus alone (that would be a
+// no-op same-status flip and both writers would still succeed).
+//
+// Instead the handler runs an inline UPDATE that combines the
+// expected_status guard with a `consolidated_weight_lbs IS NULL` guard:
+// only the first clerk to weigh wins, the second sees rows-affected=0
+// and gets a 409 STALE_STATUS with details.current_status and
+// details.current_weight so the front-end can refresh just that row.
+// Re-weighing requires a separate clear/override flow (out of scope
+// for this fix). The inline SQL here is intentionally bypassing sqlc
+// rather than introducing a new generated query, since the user
+// instructed not to hand-edit internal/db/gen/ship_requests.sql.go.
 func warehouseShipQueueWeighed(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
@@ -419,6 +477,7 @@ func warehouseShipQueueWeighed(c *fiber.Ctx) error {
 	}
 	var body struct {
 		ConsolidatedWeightLbs *float64 `json:"consolidated_weight_lbs"`
+		ExpectedStatus        string   `json:"expected_status"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -426,60 +485,158 @@ func warehouseShipQueueWeighed(c *fiber.Ctx) error {
 	if body.ConsolidatedWeightLbs == nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "consolidated_weight_lbs required"))
 	}
-	_, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
-	if err != nil {
+	if strings.TrimSpace(body.ExpectedStatus) == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "expected_status required"))
+	}
+	if _, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id); err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
 	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	err = db.Queries().UpdateShipRequestConsolidatedWeight(c.Context(), gen.UpdateShipRequestConsolidatedWeightParams{
-		ConsolidatedWeightLbs: sql.NullFloat64{Float64: *body.ConsolidatedWeightLbs, Valid: true},
-		UpdatedAt:             now,
-		ID:                    id,
-	})
+	res, err := db.DB().ExecContext(c.Context(),
+		`UPDATE ship_requests
+		    SET consolidated_weight_lbs = ?, updated_at = ?
+		  WHERE id = ?
+		    AND status = ?
+		    AND consolidated_weight_lbs IS NULL`,
+		*body.ConsolidatedWeightLbs, now, id, body.ExpectedStatus,
+	)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update weight"))
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		// Distinguish stale-status from already-weighed so the staff
+		// banner in ship-queue.js is actionable. Both cases surface
+		// under STALE_STATUS so the front-end can route them through
+		// one 409 handler.
+		latest, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
+		er := ErrorResponse{}
+		er.Error.Code = "STALE_STATUS"
+		switch {
+		case latest.Status != body.ExpectedStatus:
+			er.Error.Message = "Ship request is no longer in status " + body.ExpectedStatus + "; refresh and retry"
+		case latest.ConsolidatedWeightLbs.Valid:
+			er.Error.Message = "Ship request was already weighed by another staff member; refresh and retry"
+		default:
+			er.Error.Message = "Ship request was modified concurrently; refresh and retry"
+		}
+		details := fiber.Map{
+			"ship_request_id":  id,
+			"expected_status":  body.ExpectedStatus,
+			"current_status":   latest.Status,
+			"attempted_status": "weighed",
+		}
+		if latest.ConsolidatedWeightLbs.Valid {
+			details["current_weight"] = latest.ConsolidatedWeightLbs.Float64
+		}
+		er.Error.Details = details
+		return c.Status(409).JSON(er)
 	}
 	updated, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	return c.JSON(fiber.Map{"data": updated})
 }
 
+// warehouseShipQueueStaged transitions a ship request from its current
+// staff-claimed status (typically "processing") to "staged", recording
+// the staging bay and manifest assignment in the same atomic
+// transaction.
+//
+// Pass 3 HIGH-04: previously this handler called UpdateShipRequestStaged
+// (a blind UPDATE WHERE id = ?) so a stale client could overwrite a
+// concurrent staff member's bay assignment without warning. The fix
+// runs AdminUpdateShipRequestStatus (optimistic-locked on
+// expected_status) followed by UpdateShipRequestStaged in a single
+// BeginTx; if the status guard fails the side-field write is rolled
+// back and the second clerk sees a 409 STALE_STATUS. The redundant
+// status='staged' SET inside UpdateShipRequestStaged is intentional and
+// idempotent — see the matching note in sql/queries/ship_requests.sql.
 func warehouseShipQueueStaged(c *fiber.Ctx) error {
 	id := c.Params("id")
 	if id == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
 	}
 	var body struct {
-		StagingBay *string `json:"staging_bay"`
-		ManifestID *string `json:"manifest_id"`
+		StagingBay     *string `json:"staging_bay"`
+		ManifestID     *string `json:"manifest_id"`
+		ExpectedStatus string  `json:"expected_status"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
-	_, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
-	if err != nil {
+	if strings.TrimSpace(body.ExpectedStatus) == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "expected_status required"))
+	}
+	if _, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id); err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
 	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	arg := gen.UpdateShipRequestStagedParams{
-		StagingBay: toNullString(body.StagingBay),
-		ManifestID: toNullString(body.ManifestID),
-		Status:     "staged",
-		UpdatedAt:  now,
-		ID:         id,
+	// Run the tx in a dedicated scope so the deferred tx.Rollback() (and
+	// its held pool connection) fires BEFORE the post-commit re-read at
+	// the end of the handler. Without this scope, the deferred rollback
+	// blocks a single-connection test pool during the final
+	// GetShipRequestByIDOnly read, causing the Fiber test to time out.
+	latestStatus, txErr, httpStatus, httpResp := func() (string, error, int, any) {
+		tx, err := db.DB().BeginTx(c.Context(), nil)
+		if err != nil {
+			return "", err, 500, ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction")
+		}
+		defer func() {
+			if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+				log.Printf("warehouseShipQueueStaged rollback: %v", rbErr)
+			}
+		}()
+		qtx := db.Queries().WithTx(tx)
+
+		rows, err := qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+			Status:    "staged",
+			UpdatedAt: now,
+			ID:        id,
+			Status_2:  body.ExpectedStatus,
+		})
+		if err != nil {
+			return "", err, 500, ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update status")
+		}
+		if rows == 0 {
+			latest, _ := qtx.GetShipRequestByIDOnly(c.Context(), id)
+			return latest.Status, errStaleStatus, 409, nil
+		}
+		if err := qtx.UpdateShipRequestStaged(c.Context(), gen.UpdateShipRequestStagedParams{
+			StagingBay: toNullString(body.StagingBay),
+			ManifestID: toNullString(body.ManifestID),
+			Status:     "staged",
+			UpdatedAt:  now,
+			ID:         id,
+		}); err != nil {
+			return "", err, 500, ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update staged")
+		}
+		if err := tx.Commit(); err != nil {
+			return "", err, 500, ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit staged transition")
+		}
+		return "", nil, 0, nil
+	}()
+	if txErr == errStaleStatus {
+		return staleStatusConflict(c, id, body.ExpectedStatus, "staged", latestStatus)
 	}
-	err = db.Queries().UpdateShipRequestStaged(c.Context(), arg)
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update staged"))
+	if txErr != nil {
+		return c.Status(httpStatus).JSON(httpResp)
 	}
 	updated, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	return c.JSON(fiber.Map{"data": updated})
 }
+
+// errStaleStatus is a sentinel error used by warehouseShipQueueStaged's
+// inner tx scope to signal "optimistic-lock guard failed" back to the
+// outer handler so it can render the canonical STALE_STATUS 409 after
+// the tx (and its pool connection) are released.
+var errStaleStatus = fmt.Errorf("stale status")
 
 func warehouseBays(c *fiber.Ctx) error {
 	list, err := db.Queries().ListWarehouseBays(c.Context())

@@ -35,16 +35,23 @@ func RegisterBookings(g fiber.Router) {
 
 func bookingList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-	list, err := db.Queries().ListBookingsByUser(c.Context(), userID)
+	// Pass 3 HIGH-07: paginate at the SQL layer with LIMIT/OFFSET +
+	// COUNT(*) instead of fetching the entire user history and slicing
+	// the result in Go.
+	limit, offset := pagination(c)
+	page := pageFromOffset(offset, limit)
+	total, err := db.Queries().CountBookingsByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list bookings"))
 	}
-	// Pass 2.5 MED-08: bound the response payload size. The sqlc query
-	// ListBookingsByUser does not currently accept LIMIT/OFFSET, so we
-	// fetch the user's full set (already user-scoped) and slice in Go.
-	// A future PR can push pagination into the query.
-	page, limit, total, sliced := paginateInGo(c, len(list))
-	list = list[sliced.start:sliced.end]
+	list, err := db.Queries().ListBookingsByUser(c.Context(), gen.ListBookingsByUserParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list bookings"))
+	}
 	return c.JSON(fiber.Map{
 		"data":  list,
 		"page":  page,
@@ -369,42 +376,6 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
-}
-
-// listSliceRange is the half-open [start, end) slice computed from a
-// caller-supplied page/limit pair. Pass 2.5 MED-08.
-type listSliceRange struct {
-	start int
-	end   int
-}
-
-// paginateInGo computes a page/limit/total triple plus a safe
-// half-open slice window for an in-Go-sliced list endpoint. It is used
-// by handlers whose underlying sqlc query does not yet accept LIMIT
-// /OFFSET — bookings, invoices, shipments, inbound_tracking — to cap
-// the response payload (Pass 2.5 MED-08). Defaults: limit=defaultLimit
-// (20), capped at maxLimit (100); page=1.
-func paginateInGo(c *fiber.Ctx, total int) (page, limit, totalOut int, slice listSliceRange) {
-	limit = c.QueryInt("limit", defaultLimit)
-	if limit <= 0 {
-		limit = defaultLimit
-	}
-	if limit > maxLimit {
-		limit = maxLimit
-	}
-	page = c.QueryInt("page", 1)
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * limit
-	if offset >= total {
-		return page, limit, total, listSliceRange{start: 0, end: 0}
-	}
-	end := offset + limit
-	if end > total {
-		end = total
-	}
-	return page, limit, total, listSliceRange{start: offset, end: end}
 }
 
 func validateBookingRecipient(ctx context.Context, userID, destinationID string, recipientID *string) (sql.NullString, error) {

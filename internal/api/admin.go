@@ -77,6 +77,38 @@ func pagination(c *fiber.Ctx) (limit, offset int64) {
 	return limit, offset
 }
 
+// paginationWithCaps is a customizable variant of pagination() for
+// per-endpoint caps that differ from the generic defaultLimit/maxLimit
+// (e.g. recipients which historically used 50/200 — see Pass 2.5
+// MED-02). It clamps `limit` into [1, maxL] with a fallback to def, and
+// `page` to >= 1.
+func paginationWithCaps(c *fiber.Ctx, def, maxL int64) (limit, offset int64) {
+	limit = int64(c.QueryInt("limit", int(def)))
+	if limit <= 0 {
+		limit = def
+	}
+	if limit > maxL {
+		limit = maxL
+	}
+	page := int64(c.QueryInt("page", 1))
+	if page < 1 {
+		page = 1
+	}
+	offset = (page - 1) * limit
+	return limit, offset
+}
+
+// pageFromOffset reconstructs the 1-based page number from an offset/
+// limit pair so list handlers can echo the current page back to the
+// client without re-parsing the query string. limit is assumed > 0
+// (caller obtained it from pagination()/paginationWithCaps()).
+func pageFromOffset(offset, limit int64) int64 {
+	if limit <= 0 {
+		return 1
+	}
+	return offset/limit + 1
+}
+
 func adminDashboard(c *fiber.Ctx) error {
 	row, err := db.Queries().AdminDashboardCounts(c.Context())
 	if err != nil {

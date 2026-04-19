@@ -6,8 +6,6 @@ qcs-migrate
 *.dll
 *.so
 *.dylib
-web/app.wasm
-web/wasm_exec.js
 
 # Database
 *.db

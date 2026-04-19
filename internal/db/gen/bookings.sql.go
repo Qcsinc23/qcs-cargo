@@ -162,6 +162,17 @@ func (q *Queries) AdminUpdateBookingStatus(ctx context.Context, arg AdminUpdateB
 	return err
 }
 
+const countBookingsByUser = `-- name: CountBookingsByUser :one
+SELECT COUNT(*) FROM bookings WHERE user_id = ?
+`
+
+func (q *Queries) CountBookingsByUser(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countBookingsByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createBooking = `-- name: CreateBooking :one
 INSERT INTO bookings (
     id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
@@ -416,10 +427,20 @@ SELECT id, user_id, confirmation_code, status, service_type, destination_id, rec
 FROM bookings
 WHERE user_id = ?
 ORDER BY scheduled_date DESC, created_at DESC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListBookingsByUser(ctx context.Context, userID string) ([]Booking, error) {
-	rows, err := q.db.QueryContext(ctx, listBookingsByUser, userID)
+type ListBookingsByUserParams struct {
+	UserID string `json:"user_id"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+}
+
+// Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination so the handler can
+// bound the result set in the database instead of fetching the full
+// user history and slicing the result in Go.
+func (q *Queries) ListBookingsByUser(ctx context.Context, arg ListBookingsByUserParams) ([]Booking, error) {
+	rows, err := q.db.QueryContext(ctx, listBookingsByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

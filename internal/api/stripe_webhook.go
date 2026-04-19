@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -22,8 +23,7 @@ import (
 // alert log entry is also emitted.
 var errAmountMismatch = errors.New("payment amount or currency mismatch")
 
-// RegisterStripeWebhook mounts POST /webhooks/stripe. Must be mounted on a router that serves /api (e.g. app.Group("/api")).
-// Raw body is required for signature verification; do not use body parser middleware for this route.
+// RegisterStripeWebhook mounts POST /webhooks/stripe.
 func RegisterStripeWebhook(g fiber.Router) {
 	g.Post("/webhooks/stripe", stripeWebhookHandler)
 }
@@ -53,16 +53,12 @@ func stripeWebhookHandler(c *fiber.Ctx) error {
 		}
 		if err := reconcileShipRequestByPaymentIntent(c, &pi); err != nil {
 			if errors.Is(err, errAmountMismatch) {
-				// 400 so Stripe does not keep retrying. The reconciliation
-				// helper has already logged the mismatch and recorded an
-				// observability event for ops to investigate.
 				return c.Status(400).SendString("Amount mismatch")
 			}
 			log.Printf("[stripe webhook] reconcile: %v", err)
 			return c.Status(500).SendString("Reconcile failed")
 		}
 	case "payment_intent.payment_failed", "payment_intent.canceled", "payment_intent.requires_action":
-		// Log only; no DB update
 		log.Printf("[stripe webhook] %s: %s", event.Type, event.ID)
 	default:
 		log.Printf("[stripe webhook] unhandled event type: %s", event.Type)
@@ -70,17 +66,11 @@ func stripeWebhookHandler(c *fiber.Ctx) error {
 	return c.SendStatus(200)
 }
 
-// reconcileShipRequestByPaymentIntent marks the ship request paid only when
-// the PaymentIntent's amount, currency, and status all match expectations, and
-// only sends a "Paid" email exactly once per ship request even if Stripe
-// retries the webhook. Pass 2 audit fixes C-3 (amount/currency verification)
-// and L-4 (idempotent paid email).
 func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, pi *stripe.PaymentIntent) error {
 	if pi == nil {
 		return errors.New("nil payment intent")
 	}
 	if pi.Status != stripe.PaymentIntentStatusSucceeded {
-		// We should only get here for the .succeeded event, but be defensive.
 		log.Printf("[stripe webhook] payment_intent %s status=%s, ignoring", pi.ID, pi.Status)
 		return nil
 	}
@@ -88,7 +78,7 @@ func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, pi *stripe.PaymentIntent)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("[stripe webhook] no ship request for payment_intent %s", pi.ID)
-			return nil // idempotent: already reconciled or unknown
+			return nil
 		}
 		return err
 	}
@@ -97,8 +87,6 @@ func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, pi *stripe.PaymentIntent)
 	if pi.Amount != expectedCents || !strings.EqualFold(string(pi.Currency), "usd") {
 		log.Printf("[stripe webhook][ALERT] amount/currency mismatch for ship_request %s pi=%s pi_amount=%d pi_currency=%s expected=%d expected_currency=usd",
 			sr.ID, pi.ID, pi.Amount, pi.Currency, expectedCents)
-		// Mark the ship request for manual review rather than silently flipping
-		// to paid. We do not fail the request so the customer is not double-blocked.
 		now := time.Now().UTC().Format(time.RFC3339)
 		_, _ = db.DB().ExecContext(c.Context(),
 			`UPDATE ship_requests SET payment_status = ?, updated_at = ? WHERE id = ? AND payment_status IS NOT 'paid'`,
@@ -107,11 +95,24 @@ func reconcileShipRequestByPaymentIntent(c *fiber.Ctx, pi *stripe.PaymentIntent)
 		return errAmountMismatch
 	}
 
-	// Atomic state transition: only flip to paid if not already paid, and only
-	// then send the paid email. Without this, every retried webhook event for
-	// the same successful PI would re-send a "Paid" email.
+	// Pass 3 CRIT-02 fix: the ship_requests UPDATE that flips payment_status
+	// to 'paid' AND the outbound_emails INSERT that enqueues the customer's
+	// "paid" confirmation email must share a single atomic boundary.
+	// Previously they were two separate ExecContext calls; if the process
+	// died between them, the customer would be marked paid but never
+	// receive the confirmation, with no observable signal because the
+	// worker only ever drains rows that exist. Stripe also retries this
+	// webhook on non-200, so we want the failure mode to be
+	// "tx aborts -> 500 -> Stripe retries" rather than "partial commit
+	// -> silent data loss".
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := db.DB().ExecContext(c.Context(), `
+	tx, err := db.DB().BeginTx(c.Context(), nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(c.Context(), `
 UPDATE ship_requests
 SET status = 'paid',
     payment_status = 'paid',
@@ -124,23 +125,24 @@ WHERE id = ? AND user_id = ? AND COALESCE(payment_status, '') <> 'paid'
 	}
 	rows, _ := res.RowsAffected()
 	if rows == 0 {
-		// Already reconciled; nothing more to do.
-		return nil
+		// Already reconciled; commit no-op so Stripe stops retrying.
+		return tx.Commit()
 	}
 
-	// Phase 3.2 (INC-001b): paid-email send is now enqueued onto the
-	// outbound_emails queue. The atomic SQL transition above already
-	// guarantees exactly-once enqueue per ship request (paid_email_sent_at
-	// is set in the same UPDATE). The queue worker dispatches the actual
-	// provider call with bounded retry so a transient Resend outage no
-	// longer silently drops the customer's payment-confirmation email.
-	u, err := db.Queries().GetUserByID(c.Context(), sr.UserID)
-	if err == nil {
-		if err := services.EnqueueEmail(c.Context(), services.TemplateShipRequestPaid, u.Email, map[string]any{
-			"confirmation_code": sr.ConfirmationCode,
-		}); err != nil {
-			log.Printf("[stripe webhook] enqueue payment success email failed for ship_request %s user %s: %v", sr.ID, sr.UserID, err)
-		}
+	u, err := db.Queries().WithTx(tx).GetUserByID(c.Context(), sr.UserID)
+	if err != nil {
+		return fmt.Errorf("stripe webhook: lookup user %s for ship_request %s: %w", sr.UserID, sr.ID, err)
+	}
+
+	if err := services.EnqueueEmailTx(c.Context(), tx, services.TemplateShipRequestPaid, u.Email, map[string]any{
+		"confirmation_code": sr.ConfirmationCode,
+	}); err != nil {
+		log.Printf("[stripe webhook] enqueue payment success email failed for ship_request %s user %s: %v", sr.ID, sr.UserID, err)
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("stripe webhook: commit reconciliation tx for ship_request %s: %w", sr.ID, err)
 	}
 	return nil
 }

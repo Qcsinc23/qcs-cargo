@@ -43,12 +43,12 @@
         result.innerHTML = `
           <article class="card">
             <p class="text-small text-mono">${escHtml(d.tracking_number || number)}</p>
-            <div class="status-line" style="margin:8px 0 12px;"><span class="dot ${entry[1]}"></span><strong>${entry[0]}</strong></div>
+            <div class="status-line" style="margin:8px 0 12px;"><span class="dot ${escHtml(entry[1])}"></span><strong>${escHtml(entry[0])}</strong></div>
             <div class="grid-2">
               ${d.destination_id ? `<div><p class="text-small">Destination</p><p>${escHtml(d.destination_id)}</p></div>` : ''}
               ${d.carrier ? `<div><p class="text-small">Carrier</p><p>${escHtml(d.carrier)}</p></div>` : ''}
-              ${d.total_weight ? `<div><p class="text-small">Weight</p><p>${d.total_weight} lbs</p></div>` : ''}
-              ${d.package_count ? `<div><p class="text-small">Packages</p><p>${d.package_count}</p></div>` : ''}
+              ${d.total_weight ? `<div><p class="text-small">Weight</p><p>${escHtml(d.total_weight)} lbs</p></div>` : ''}
+              ${d.package_count ? `<div><p class="text-small">Packages</p><p>${escHtml(d.package_count)}</p></div>` : ''}
               ${d.estimated_delivery ? `<div><p class="text-small">Estimated delivery</p><p>${escHtml(d.estimated_delivery)}</p></div>` : ''}
             </div>
           </article>`;
