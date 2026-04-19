@@ -121,6 +121,23 @@ jobs:
             git diff --stat -- internal/static/css/tailwind.css
             exit 1
           fi
+      # Pass 3 HIGH-06: XSS regression guard for innerHTML.
+      # Catches `el.innerHTML = `...${var}...`` patterns where var is a
+      # plain identifier or member access (raw, unescaped). Function-call
+      # interpolations like ${escHtml(x)} are intentionally allowed, so
+      # the fix is to wrap unsafe sites with escHtml() (or use textContent).
+      - name: Guard against unescaped innerHTML template-literal interpolation
+        run: |
+          set -euo pipefail
+          if rg -nU --multiline-dotall --no-heading \
+              'innerHTML\s*=\s*`[^`]*\$\{\s*[A-Za-z_$][\w$.\[\]\s]*\}' \
+              internal/static/ \
+              -g '!*tailwind*' \
+              -g '!*/node_modules/*' \
+              --glob '*.js'; then
+            echo "::error::Found unescaped innerHTML with template-literal interpolation. Use escHtml() or textContent." >&2
+            exit 1
+          fi
 
   lint:
     runs-on: ubuntu-latest
