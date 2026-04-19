@@ -5,228 +5,226 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Recipients | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/recipients'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      // Helper function to escape HTML for safe rendering
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/recipients');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
 
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
+      var state = { list: [], editingId: null };
+
+      Promise.all([
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/recipients').catch(function () { return { data: [] }; })
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        state.list = (results[1] && results[1].data) || [];
+        renderShell();
+        QCS.bindLogout();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to load recipients',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
         });
-
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
-      }
+      });
 
       function val(r, key) {
-        const v = r[key];
+        var v = r[key];
         if (v && typeof v === 'object' && 'String' in v) return v.Valid ? v.String : '';
         return (typeof v === 'string' || typeof v === 'number') ? String(v) : '';
       }
 
-      function renderMain(user, list, editingId) {
-        const isEditing = editingId !== null;
-        let formHtml = '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-8">' +
-          '<h2 class="text-lg font-semibold text-[#0F172A] mb-4">' + (isEditing ? 'Edit recipient' : 'Add recipient') + '</h2>' +
-          '<form id="recipient-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">' +
-          '<input type="hidden" id="form-id" value="' + (editingId || '') + '">' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Name *</label><input type="text" id="form-name" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Full name"></div>' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Phone</label><input type="text" id="form-phone" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Phone"></div>' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Destination *</label><input type="text" id="form-destination_id" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="e.g. guyana, jamaica"></div>' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Street *</label><input type="text" id="form-street" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Street address"></div>' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">Apt / Unit</label><input type="text" id="form-apt" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Apt, suite"></div>' +
-          '<div><label class="block text-sm font-medium text-slate-600 mb-1">City *</label><input type="text" id="form-city" required class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="City"></div>' +
-          '<div class="md:col-span-2"><label class="block text-sm font-medium text-slate-600 mb-1">Delivery instructions</label><textarea id="form-delivery_instructions" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2" placeholder="Optional instructions"></textarea></div>' +
-          '<div class="flex items-center"><input type="checkbox" id="form-is_default" class="rounded border-slate-300"> <label for="form-is_default" class="ml-2 text-sm text-slate-600">Default recipient</label></div>' +
-          '<div class="flex gap-2">' +
-          '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">' + (isEditing ? 'Update' : 'Add') + '</button>' +
-          (isEditing ? '<button type="button" id="form-cancel" class="bg-slate-200 text-slate-700 px-6 py-2 rounded-lg font-medium">Cancel</button>' : '') +
-          '</div></form></div>';
-
-        let tableHtml = '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr class="text-left text-sm text-slate-600">' +
-          '<th class="p-4">Name</th><th class="p-4">Destination</th><th class="p-4">Address</th><th class="p-4">Default</th><th class="p-4 w-28">Actions</th></tr></thead><tbody id="recipients-tbody">';
-        (list || []).forEach(function (r) {
-          const name = val(r, 'name');
-          const dest = val(r, 'destination_id');
-          const street = val(r, 'street');
-          const apt = val(r, 'apt');
-          const city = val(r, 'city');
-
-          const addr = street + (apt ? ', ' + apt : '') + ', ' + city;
-
-          tableHtml += '<tr class="border-t border-slate-100 hover:bg-slate-50">' +
-            '<td class="p-4 font-medium">' + qcsEscapeHTML(name) + '</td>' +
-            '<td class="p-4">' + qcsEscapeHTML(dest) + '</td>' +
-            '<td class="p-4 text-slate-600">' + qcsEscapeHTML(addr) + '</td>' +
-            '<td class="p-4">' + (r.is_default ? 'Yes' : '') + '</td>' +
-            '<td class="p-4"><button type="button" class="edit-btn text-[#2563EB] font-medium mr-2" data-id="' + r.id + '">Edit</button>' +
-            '<button type="button" class="delete-btn text-red-600 font-medium" data-id="' + r.id + '">Delete</button></td></tr>';
-        });
-        tableHtml += '</tbody></table></div>';
-        if (!list || list.length === 0) tableHtml = '<div class="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-600">No recipients yet. Add one above.</div>';
-
-        return '<main class="flex-1 p-8">' +
-          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Recipients</li></ol></nav>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Recipients</h1>' +
-          '<p class="text-slate-600 mb-6">Shipping addresses for your packages.</p>' +
-          formHtml + tableHtml + '</main></div>';
+      function renderShell() {
+        var sidebar = QCS.renderSidebar('recipients');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Recipients</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Recipients</h1>'
+          + '<p class="text-slate-600 mb-6">Saved shipping addresses for your packages.</p>'
+          + '<div id="recipient-form-section">' + renderForm() + '</div>'
+          + '<div id="recipient-list-section" class="mt-6">' + renderList() + '</div>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+        bindForm();
+        bindList();
       }
 
-      function loadRecipients() {
-        return fetch('/api/v1/recipients', auth).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) { return j && j.data ? j.data : []; });
+      function renderForm() {
+        var rec = state.editingId ? state.list.filter(function (r) { return r.id === state.editingId; })[0] : null;
+        var isEditing = !!rec;
+        return '<section class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<h2 class="text-lg font-semibold text-[#0F172A] mb-4">' + (isEditing ? 'Edit recipient' : 'Add recipient') + '</h2>'
+          + '<form id="recipient-form" class="grid grid-cols-1 md:grid-cols-2 gap-4">'
+          + '<input type="hidden" id="form-id" value="' + window.qcsEscapeHTML(state.editingId || '') + '">'
+          + textField('form-name', 'Name', 'text', rec ? val(rec, 'name') : '', 'Full name', true)
+          + textField('form-phone', 'Phone', 'tel', rec ? val(rec, 'phone') : '', 'Phone')
+          + textField('form-destination_id', 'Destination', 'text', rec ? val(rec, 'destination_id') : '', 'e.g. guyana', true)
+          + textField('form-street', 'Street', 'text', rec ? val(rec, 'street') : '', 'Street address', true)
+          + textField('form-apt', 'Apt / Unit', 'text', rec ? val(rec, 'apt') : '', 'Apt, suite')
+          + textField('form-city', 'City', 'text', rec ? val(rec, 'city') : '', 'City', true)
+          + '<div class="md:col-span-2">'
+          + '<label for="form-delivery_instructions" class="block text-sm font-medium text-slate-700 mb-1">Delivery instructions</label>'
+          + '<textarea id="form-delivery_instructions" rows="2" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB]" placeholder="Optional instructions">' + window.qcsEscapeHTML(rec ? val(rec, 'delivery_instructions') : '') + '</textarea>'
+          + '</div>'
+          + '<label class="flex items-center gap-2 text-sm text-slate-700">'
+          + '<input type="checkbox" id="form-is_default" class="h-4 w-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB]"' + (rec && rec.is_default ? ' checked' : '') + '>'
+          + 'Default recipient'
+          + '</label>'
+          + '<div class="md:col-span-2 flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100">'
+          + '<button type="submit" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">' + (isEditing ? 'Update recipient' : 'Add recipient') + '</button>'
+          + (isEditing ? '<button type="button" id="form-cancel" class="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Cancel</button>' : '')
+          + '</div>'
+          + '</form></section>';
       }
 
-      function setForm(rec) {
-        document.getElementById('form-id').value = rec ? rec.id : '';
-        document.getElementById('form-name').value = rec ? val(rec, 'name') : '';
-        document.getElementById('form-phone').value = rec ? val(rec, 'phone') : '';
-        document.getElementById('form-destination_id').value = rec ? val(rec, 'destination_id') : '';
-        document.getElementById('form-street').value = rec ? val(rec, 'street') : '';
-        document.getElementById('form-apt').value = rec ? val(rec, 'apt') : '';
-        document.getElementById('form-city').value = rec ? val(rec, 'city') : '';
-        document.getElementById('form-delivery_instructions').value = rec ? val(rec, 'delivery_instructions') : '';
-        document.getElementById('form-is_default').checked = rec ? !!rec.is_default : false;
+      function textField(id, label, type, value, placeholder, required) {
+        return '<div>'
+          + '<label for="' + id + '" class="block text-sm font-medium text-slate-700 mb-1">' + window.qcsEscapeHTML(label) + (required ? ' *' : '') + '</label>'
+          + '<input type="' + (type || 'text') + '" id="' + id + '" value="' + window.qcsEscapeHTML(value || '') + '"' + (required ? ' required' : '') + ' class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB]" placeholder="' + window.qcsEscapeHTML(placeholder || '') + '">'
+          + '</div>';
       }
 
-      function getFormPayload() {
-        return {
-          name: document.getElementById('form-name').value.trim(),
-          phone: document.getElementById('form-phone').value.trim(),
-          destination_id: document.getElementById('form-destination_id').value.trim(),
-          street: document.getElementById('form-street').value.trim(),
-          apt: document.getElementById('form-apt').value.trim(),
-          city: document.getElementById('form-city').value.trim(),
-          delivery_instructions: document.getElementById('form-delivery_instructions').value.trim(),
-          is_default: document.getElementById('form-is_default').checked ? 1 : 0
-        };
-      }
-
-      Promise.all([
-        fetch('/api/v1/me', auth).then(function (r) { return r.ok ? r.json() : null; }),
-        loadRecipients()
-      ]).then(function (results) {
-        const me = results[0];
-        const list = results[1];
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        const container = document.getElementById('app');
-        let editingId = null;
-
-        function render() {
-          container.innerHTML = sidebar(user, 'recipients') + renderMain(user, list, editingId);
-
-          document.getElementById('recipient-form').onsubmit = function (e) {
-            e.preventDefault();
-            const id = document.getElementById('form-id').value;
-            const payload = getFormPayload();
-            if (!payload.name || !payload.destination_id || !payload.street || !payload.city) {
-              alert('Please fill name, destination, street, and city.');
-              return;
-            }
-            if (id) {
-              fetch('/api/v1/recipients/' + id, { method: 'PATCH', ...auth, body: JSON.stringify(payload) })
-                .then(function (r) { return r.json(); })
-                .then(function (j) {
-                  if (j.error) { alert(j.error.message || 'Update failed'); return; }
-                  editingId = null;
-                  return loadRecipients();
-                })
-                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); render(); } });
-            } else {
-              fetch('/api/v1/recipients', { method: 'POST', ...auth, body: JSON.stringify(payload) })
-                .then(function (r) { return r.json(); })
-                .then(function (j) {
-                  if (j.error) { alert(j.error.message || 'Create failed'); return; }
-                  return loadRecipients();
-                })
-                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); setForm(null); render(); } });
-            }
-          };
-
-          var cancelBtn = document.getElementById('form-cancel');
-          if (cancelBtn) cancelBtn.onclick = function () { editingId = null; setForm(null); render(); };
-
-          document.querySelectorAll('.edit-btn').forEach(function (btn) {
-            btn.onclick = function () {
-              const id = btn.getAttribute('data-id');
-              const rec = list.find(function (r) { return r.id === id; });
-              if (rec) { editingId = id; setForm(rec); render(); }
-            };
+      function renderList() {
+        if (!state.list.length) {
+          return QCS.renderEmptyState({
+            title: 'No recipients yet',
+            description: 'Add a recipient above so you can ship packages to them.',
+            actionHref: '/dashboard/mailbox',
+            actionLabel: 'Open mailbox'
           });
-          document.querySelectorAll('.delete-btn').forEach(function (btn) {
-            btn.onclick = function () {
-              if (!confirm('Delete this recipient?')) return;
-              const id = btn.getAttribute('data-id');
-              fetch('/api/v1/recipients/' + id, { method: 'DELETE', ...auth })
-                .then(function (r) { return r.ok ? loadRecipients() : null; })
-                .then(function (newList) { if (newList) { list.length = 0; newList.forEach(function (x) { list.push(x); }); render(); } });
-            };
-          });
-
-          document.getElementById('logout-btn').onclick = function () {
-            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function () { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-          };
         }
+        var html = '<section class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">'
+          + '<div class="overflow-x-auto"><table class="w-full">'
+          + '<thead class="bg-slate-50 border-b border-slate-200"><tr>'
+          + th('Name') + th('Destination') + th('Address') + th('Default') + '<th class="py-3 px-4"></th>'
+          + '</tr></thead><tbody>';
+        state.list.forEach(function (r) {
+          var name = val(r, 'name');
+          var dest = val(r, 'destination_id');
+          var street = val(r, 'street');
+          var apt = val(r, 'apt');
+          var city = val(r, 'city');
+          var addr = street + (apt ? ', ' + apt : '') + (city ? ', ' + city : '');
+          html += '<tr class="border-b border-slate-100 hover:bg-slate-50">'
+            + '<td class="py-3 px-4 font-medium">' + window.qcsEscapeHTML(name) + '</td>'
+            + '<td class="py-3 px-4">' + window.qcsEscapeHTML(dest) + '</td>'
+            + '<td class="py-3 px-4 text-slate-600">' + window.qcsEscapeHTML(addr) + '</td>'
+            + '<td class="py-3 px-4">' + (r.is_default ? '<span class="qcs-badge qcs-badge-info">Default</span>' : '<span class="text-slate-400 text-sm">—</span>') + '</td>'
+            + '<td class="py-3 px-4 text-right whitespace-nowrap">'
+            + '<button type="button" class="edit-btn text-[#2563EB] hover:underline font-medium mr-3" data-id="' + window.qcsEscapeHTML(r.id) + '">Edit</button>'
+            + '<button type="button" class="delete-btn text-red-600 hover:underline font-medium" data-id="' + window.qcsEscapeHTML(r.id) + '">Delete</button>'
+            + '</td></tr>';
+        });
+        html += '</tbody></table></div></section>';
+        return html;
+      }
 
-        render();
-      });
+      function th(label) {
+        return '<th class="text-left py-3 px-4 font-medium text-slate-600 text-sm whitespace-nowrap">' + window.qcsEscapeHTML(label) + '</th>';
+      }
+
+      function bindForm() {
+        var form = document.getElementById('recipient-form');
+        if (!form) return;
+        form.addEventListener('submit', function (e) {
+          e.preventDefault();
+          var id = document.getElementById('form-id').value;
+          var payload = {
+            name: document.getElementById('form-name').value.trim(),
+            phone: document.getElementById('form-phone').value.trim(),
+            destination_id: document.getElementById('form-destination_id').value.trim(),
+            street: document.getElementById('form-street').value.trim(),
+            apt: document.getElementById('form-apt').value.trim(),
+            city: document.getElementById('form-city').value.trim(),
+            delivery_instructions: document.getElementById('form-delivery_instructions').value.trim(),
+            is_default: document.getElementById('form-is_default').checked ? 1 : 0
+          };
+          if (!payload.name || !payload.destination_id || !payload.street || !payload.city) {
+            QCS.toast('Name, destination, street, and city are required', 'warning');
+            return;
+          }
+          var req = id
+            ? QCS.fetchJson('/api/v1/recipients/' + encodeURIComponent(id), { method: 'PATCH', body: payload })
+            : QCS.fetchJson('/api/v1/recipients', { method: 'POST', body: payload });
+          req.then(function () {
+            QCS.toast(id ? 'Recipient updated' : 'Recipient added', 'success');
+            state.editingId = null;
+            return QCS.fetchJson('/api/v1/recipients');
+          }).then(function (j) {
+            state.list = (j && j.data) || [];
+            refresh();
+          }).catch(function (err) {
+            QCS.toast((err && err.message) || 'Save failed', 'error');
+          });
+        });
+
+        var cancel = document.getElementById('form-cancel');
+        if (cancel) cancel.addEventListener('click', function () { state.editingId = null; refresh(); });
+      }
+
+      function bindList() {
+        document.querySelectorAll('.edit-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.editingId = btn.getAttribute('data-id');
+            refresh();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        });
+        document.querySelectorAll('.delete-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            if (!confirm('Delete this recipient?')) return;
+            var id = btn.getAttribute('data-id');
+            QCS.fetchJson('/api/v1/recipients/' + encodeURIComponent(id), { method: 'DELETE' })
+              .then(function () { return QCS.fetchJson('/api/v1/recipients'); })
+              .then(function (j) {
+                state.list = (j && j.data) || [];
+                refresh();
+                QCS.toast('Recipient deleted', 'success');
+              })
+              .catch(function (err) { QCS.toast((err && err.message) || 'Delete failed', 'error'); });
+          });
+        });
+      }
+
+      function refresh() {
+        var formSection = document.getElementById('recipient-form-section');
+        var listSection = document.getElementById('recipient-list-section');
+        if (formSection) formSection.innerHTML = renderForm();
+        if (listSection) listSection.innerHTML = renderList();
+        bindForm();
+        bindList();
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

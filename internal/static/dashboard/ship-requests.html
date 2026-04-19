@@ -5,112 +5,107 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ship Requests | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/ship-requests'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/ship-requests');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
 
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
-        });
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
 
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
-      }
       Promise.all([
-        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/ship-requests', auth).then(r => r.ok ? r.json() : null)
-      ]).then(([me, res]) => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        const list = (res && res.data) || [];
-        let main = '<main class="flex-1 p-8">' +
-          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Ship Requests</li></ol></nav>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Ship Requests</h1>' +
-          '<p class="text-slate-600 mb-6">' + list.length + ' request(s)</p>' +
-          '<a href="/dashboard/ship" class="inline-block bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium mb-6">New Ship Request</a>';
-        if (list.length === 0) {
-          main += '<div class="bg-white rounded-xl border border-slate-200 p-12 text-center">' +
-            '<p class="text-slate-600 mb-4">No ship requests yet.</p>' +
-            '<a href="/dashboard/ship" class="text-[#2563EB] font-medium">Create your first ship request</a></div>';
-        } else {
-          main += '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">' +
-            '<table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Code</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Status</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Destination</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Created</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600"></th></tr></thead><tbody>';
-          // Pass 2 dashboard UX review: use shared QCSPWA.statusBadge.
-          var pwa = window.QCSPWA;
-          list.forEach(sr => {
-            const safeCode = qcsEscapeHTML(sr.confirmation_code || sr.id);
-            const safeDest = qcsEscapeHTML(sr.destination_id || '—');
-            main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
-              '<td class="py-3 px-4 font-mono text-sm">' + safeCode + '</td>' +
-              '<td class="py-3 px-4">' + (pwa ? pwa.statusBadge(sr.status || 'draft') : qcsEscapeHTML(sr.status || 'draft')) + '</td>' +
-              '<td class="py-3 px-4">' + safeDest + '</td>' +
-              '<td class="py-3 px-4 text-slate-500 text-sm">' + qcsEscapeHTML(sr.created_at ? sr.created_at.slice(0, 10) : '—') + '</td>' +
-              '<td class="py-3 px-4"><a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '" class="text-[#2563EB] font-medium">View</a></td></tr>';
-          });
-          main += '</tbody></table></div>';
-        }
-        main += '</main></div>';
-        document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + main;
-        document.getElementById('logout-btn').onclick = () => {
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-        };
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/ship-requests').catch(function () { return { data: [] }; })
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        var list = (results[1] && results[1].data) || [];
+        renderShell(list);
+        QCS.bindLogout();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to load ship requests',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
+        });
       });
+
+      function renderShell(list) {
+        var sidebar = QCS.renderSidebar('ship-requests');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Ship Requests</li></ol></nav>'
+          + '<div class="flex flex-wrap items-end justify-between gap-3 mb-6">'
+          + '<div>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A]">Ship Requests</h1>'
+          + '<p class="text-slate-600 mt-1">' + list.length + ' total</p>'
+          + '</div>'
+          + '<a href="/dashboard/ship" class="bg-[#F97316] text-white px-5 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">New ship request</a>'
+          + '</div>'
+          + (list.length === 0 ? QCS.renderEmptyState({
+              title: 'No ship requests yet',
+              description: 'Create your first ship request from packages in your locker.',
+              actionHref: '/dashboard/ship',
+              actionLabel: 'Start a ship request'
+            }) : renderTable(list))
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
+      function renderTable(list) {
+        var html = '<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">'
+          + '<div class="overflow-x-auto"><table class="w-full">'
+          + '<thead class="bg-slate-50 border-b border-slate-200"><tr>'
+          + th('Code') + th('Status') + th('Destination') + th('Total') + th('Created') + '<th class="py-3 px-4"></th>'
+          + '</tr></thead><tbody>';
+        list.forEach(function (sr) {
+          var code = sr.confirmation_code || (sr.id ? String(sr.id).slice(0, 8) : '—');
+          var dest = sr.destination_id || '—';
+          var total = QCS.formatMoney(sr.total || 0, 'USD');
+          var date = sr.created_at ? QCS.formatDate(sr.created_at) : '—';
+          html += '<tr class="border-b border-slate-100 hover:bg-slate-50">'
+            + '<td class="py-3 px-4 font-mono text-sm font-medium">' + window.qcsEscapeHTML(code) + '</td>'
+            + '<td class="py-3 px-4">' + QCS.statusBadge(sr.status || 'draft') + '</td>'
+            + '<td class="py-3 px-4">' + window.qcsEscapeHTML(dest) + '</td>'
+            + '<td class="py-3 px-4 font-medium">' + window.qcsEscapeHTML(total) + '</td>'
+            + '<td class="py-3 px-4 text-slate-500 text-sm">' + window.qcsEscapeHTML(date) + '</td>'
+            + '<td class="py-3 px-4 text-right"><a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '" class="text-[#2563EB] hover:underline font-medium">View →</a></td>'
+            + '</tr>';
+        });
+        html += '</tbody></table></div></div>';
+        return html;
+      }
+
+      function th(label) {
+        return '<th class="text-left py-3 px-4 font-medium text-slate-600 text-sm whitespace-nowrap">' + window.qcsEscapeHTML(label) + '</th>';
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

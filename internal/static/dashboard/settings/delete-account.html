@@ -5,178 +5,141 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Delete account | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/delete-account'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      // Helper function to escape HTML for safe rendering
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/settings/delete-account');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
+
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
+
+      QCS.fetchJson('/api/v1/me')
+        .then(function (j) {
+          if (!j || !j.data) { window.location.href = loginRedirect; return; }
+          renderShell();
+          QCS.bindLogout();
+          bindActions();
+        })
+        .catch(function (err) {
+          QCS.mountError(app, {
+            title: 'Unable to load account settings',
+            description: (err && err.message) || 'Network error.',
+            actionLabel: 'Sign in again',
+            onRetry: function () { window.location.href = loginRedirect; }
+          });
+        });
+
+      function renderShell() {
+        var sidebar = QCS.renderSidebar('settings');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Account lifecycle</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Account lifecycle</h1>'
+          + '<p class="text-slate-600 mb-6">Deactivate to pause account access, or delete to anonymize personal data and close the account.</p>'
+          + '<div class="grid gap-6 max-w-2xl">'
+          + '<section class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<h2 class="text-xl font-semibold text-[#0F172A] mb-2">Deactivate account</h2>'
+          + '<p class="text-slate-600 mb-4">Your account is set to inactive and all active sessions are revoked. Contact support to reactivate.</p>'
+          + '<button type="button" id="deactivate-btn" class="bg-amber-600 text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:bg-amber-700">Deactivate account</button>'
+          + '</section>'
+          + '<section class="bg-white rounded-xl border border-red-200 shadow-sm p-6">'
+          + '<h2 class="text-xl font-semibold text-red-700 mb-2">Delete account</h2>'
+          + '<p class="text-slate-600 mb-4">This action is permanent. Personal profile fields are anonymized and all sessions are revoked.</p>'
+          + '<label for="delete-confirm" class="block text-sm font-medium text-slate-700 mb-1">Type DELETE to confirm</label>'
+          + '<input id="delete-confirm" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="DELETE" />'
+          + '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:bg-red-700">Delete my account</button>'
+          + '</section>'
+          + '</div>'
+          + '<p id="account-msg" class="mt-4 text-sm hidden" aria-live="polite"></p>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
+      function setMessage(text, isError) {
+        var el = document.getElementById('account-msg');
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.textContent = text;
+        el.className = 'mt-4 text-sm ' + (isError ? 'text-red-600' : 'text-emerald-600');
       }
 
       function clearLocalAuth() {
-        localStorage.removeItem('qcs_access_token');
-        localStorage.removeItem('qcs_session_id');
+        try {
+          localStorage.removeItem('qcs_access_token');
+          localStorage.removeItem('qcs_session_id');
+        } catch (e) {}
       }
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
-
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
+      function closeAndRedirect(successText) {
+        clearLocalAuth();
+        setMessage(successText + ' Redirecting…', false);
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).finally(function () {
+          setTimeout(function () { window.location.href = '/'; }, 1200);
         });
-
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
       }
-      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        const main = '<main class="flex-1 p-8">' +
-          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Delete Account</li></ol></nav>' +
-          '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Account lifecycle</h1>' +
-          '<p class="text-slate-600 mb-6">Deactivate to pause account access, or delete to anonymize personal data and close the account.</p>' +
-          '<div class="grid gap-6 max-w-2xl">' +
-          '<section class="bg-white rounded-xl border border-slate-200 p-6">' +
-          '<h2 class="text-xl font-semibold text-[#0F172A] mb-2">Deactivate account</h2>' +
-          '<p class="text-slate-600 mb-4">Your account is set to inactive and all active sessions are revoked. Contact support to reactivate.</p>' +
-          '<button type="button" id="deactivate-btn" class="bg-amber-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-amber-700">Deactivate account</button>' +
-          '</section>' +
-          '<section class="bg-white rounded-xl border border-red-200 p-6">' +
-          '<h2 class="text-xl font-semibold text-red-700 mb-2">Delete account</h2>' +
-          '<p class="text-slate-600 mb-4">This action is permanent. Personal profile fields are anonymized and all sessions are revoked.</p>' +
-          '<label class="block text-sm font-medium text-slate-700 mb-1">Type DELETE to confirm</label>' +
-          '<input id="delete-confirm" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3" placeholder="DELETE" />' +
-          '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-red-700">Delete my account</button>' +
-          '</section>' +
-          '</div>' +
-          '<p id="account-msg" class="mt-4 text-sm hidden"></p>' +
-          '</main></div>';
-        document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
-        document.getElementById('logout-btn').onclick = () => {
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => {
-            clearLocalAuth();
-            window.location.href = '/';
-          });
-        };
 
-        function setMessage(text, isError) {
-          const el = document.getElementById('account-msg');
-          el.classList.remove('hidden');
-          el.textContent = text;
-          el.className = 'mt-4 text-sm ' + (isError ? 'text-red-600' : 'text-emerald-600');
-        }
-
-        function closeAndRedirect(successText) {
-          clearLocalAuth();
-          setMessage(successText + ' Redirecting…', false);
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).finally(() => {
-            setTimeout(() => { window.location.href = '/'; }, 1200);
+      function bindActions() {
+        var deactivateBtn = document.getElementById('deactivate-btn');
+        if (deactivateBtn) {
+          deactivateBtn.addEventListener('click', function () {
+            if (!confirm('Deactivate account and sign out all sessions?')) return;
+            deactivateBtn.disabled = true;
+            QCS.fetchJson('/api/v1/account/deactivate', { method: 'POST' })
+              .then(function () { closeAndRedirect('Account deactivated.'); })
+              .catch(function (err) {
+                deactivateBtn.disabled = false;
+                setMessage((err && err.message) || 'Failed to deactivate account.', true);
+              });
           });
         }
 
-        document.getElementById('deactivate-btn').onclick = function () {
-          if (!confirm('Deactivate account and sign out all sessions?')) return;
-          this.disabled = true;
-          fetch('/api/v1/account/deactivate', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } })
-            .then(async (r) => {
-              if (r.ok) {
-                closeAndRedirect('Account deactivated.');
-                return;
-              }
-              let msg = 'Failed to deactivate account.';
-              try {
-                const j = await r.json();
-                if (j && j.error && j.error.message) msg = j.error.message;
-              } catch (_) { }
-              this.disabled = false;
-              setMessage(msg, true);
-            })
-            .catch(() => {
-              this.disabled = false;
-              setMessage('Network error. Please try again.', true);
-            });
-        };
-
-        document.getElementById('delete-btn').onclick = function () {
-          const confirmText = (document.getElementById('delete-confirm').value || '').trim().toUpperCase();
-          if (confirmText !== 'DELETE') {
-            setMessage('Type DELETE in the confirmation box to continue.', true);
-            return;
-          }
-          if (!confirm('Delete account permanently and anonymize personal data?')) return;
-          this.disabled = true;
-          fetch('/api/v1/account/delete', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } })
-            .then(async (r) => {
-              if (r.ok) {
-                closeAndRedirect('Account deleted and personal data anonymized.');
-                return;
-              }
-              let msg = 'Failed to delete account.';
-              try {
-                const j = await r.json();
-                if (j && j.error && j.error.message) msg = j.error.message;
-              } catch (_) { }
-              this.disabled = false;
-              setMessage(msg, true);
-            })
-            .catch(() => {
-              this.disabled = false;
-              setMessage('Network error. Please try again.', true);
-            });
-        };
-      });
+        var deleteBtn = document.getElementById('delete-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', function () {
+            var confirmText = (document.getElementById('delete-confirm').value || '').trim().toUpperCase();
+            if (confirmText !== 'DELETE') {
+              setMessage('Type DELETE in the confirmation box to continue.', true);
+              return;
+            }
+            if (!confirm('Delete account permanently and anonymize personal data?')) return;
+            deleteBtn.disabled = true;
+            QCS.fetchJson('/api/v1/account/delete', { method: 'POST' })
+              .then(function () { closeAndRedirect('Account deleted and personal data anonymized.'); })
+              .catch(function (err) {
+                deleteBtn.disabled = false;
+                setMessage((err && err.message) || 'Failed to delete account.', true);
+              });
+          });
+        }
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
