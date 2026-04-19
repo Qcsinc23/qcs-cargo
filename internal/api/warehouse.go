@@ -16,8 +16,14 @@ import (
 )
 
 // RegisterWarehouse mounts warehouse routes under /warehouse. All require auth + staff or admin. PRD §6.10.
+//
+// Pass 2 audit fix M-9: warehouse mutations are wrapped with
+// IdempotencyMiddleware so a service-worker offline replay carrying a
+// repeated Idempotency-Key returns the cached response instead of
+// re-executing the handler. This pairs with the SW changes in
+// internal/static/sw.js (H-6 + M-9).
 func RegisterWarehouse(g fiber.Router) {
-	wh := g.Group("/warehouse", middleware.RequireAuth, middleware.RequireStaffOrAdmin)
+	wh := g.Group("/warehouse", middleware.RequireAuth, middleware.RequireStaffOrAdmin, middleware.IdempotencyMiddleware)
 	wh.Get("/stats", warehouseStats)
 	wh.Get("/bookings/today", warehouseBookingsToday)
 	wh.Post("/packages/receive-from-booking", warehouseReceiveFromBooking)

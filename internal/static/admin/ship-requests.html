@@ -46,12 +46,14 @@
             '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b"><tr>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Code</th><th class="text-left py-3 px-4 font-medium text-slate-600">User</th><th class="text-left py-3 px-4 font-medium text-slate-600">Status</th>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Created</th></tr></thead><tbody>';
+          // Pass 2 audit fix C-1: HTML-escape every server-supplied field.
+          const esc = window.QCSAdmin.escapeHTML;
           list.forEach(sr => {
             main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
-              '<td class="py-3 px-4 font-mono text-sm">' + (sr.confirmation_code || sr.id) + '</td>' +
-              '<td class="py-3 px-4 text-sm">' + (sr.user_id ? sr.user_id.slice(0, 8) + '…' : '—') + '</td>' +
-              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm bg-slate-100">' + (sr.status || '—') + '</span></td>' +
-              '<td class="py-3 px-4 text-slate-500 text-sm">' + (sr.created_at ? sr.created_at.slice(0, 10) : '—') + '</td></tr>';
+              '<td class="py-3 px-4 font-mono text-sm">' + esc(sr.confirmation_code || sr.id) + '</td>' +
+              '<td class="py-3 px-4 text-sm">' + esc(sr.user_id ? sr.user_id.slice(0, 8) + '…' : '—') + '</td>' +
+              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm bg-slate-100">' + esc(sr.status || '—') + '</span></td>' +
+              '<td class="py-3 px-4 text-slate-500 text-sm">' + esc(sr.created_at ? sr.created_at.slice(0, 10) : '—') + '</td></tr>';
           });
           main += '</tbody></table></div></main></div>';
           document.getElementById('app').innerHTML = adminSidebar('ship-requests') + main;

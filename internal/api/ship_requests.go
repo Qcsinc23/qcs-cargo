@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -218,6 +219,14 @@ func shipRequestEstimate(c *fiber.Ctx) error {
 	})
 }
 
+// shipRequestPay creates (or returns) a Stripe PaymentIntent for the ship
+// request. Pass 2 audit fixes:
+//
+//   - C-2: rejects already-paid requests, reuses an existing reusable
+//     PaymentIntent when one is on file, and sends a deterministic
+//     Idempotency-Key so a network retry does not create a second charge.
+//   - M-3: uses math.Round when converting the float total to cents so amounts
+//     such as $19.99 are not silently truncated to $19.98.
 func shipRequestPay(c *fiber.Ctx) error {
 	const maxPaymentCents = 5_000_000 // $50,000 safety guardrail
 
@@ -233,10 +242,13 @@ func shipRequestPay(c *fiber.Ctx) error {
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
 	}
-	if sr.Status != "pending_payment" && sr.Status != "paid" {
+	if sr.Status == "paid" {
+		return c.Status(409).JSON(ErrorResponse{}.withCode("ALREADY_PAID", "Ship request is already paid"))
+	}
+	if sr.Status != "pending_payment" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Ship request must be pending_payment before payment"))
 	}
-	amountCents := int64(sr.Total * 100)
+	amountCents := int64(math.Round(sr.Total * 100))
 	if amountCents < 50 {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Minimum charge is $0.50"))
 	}
@@ -245,7 +257,6 @@ func shipRequestPay(c *fiber.Ctx) error {
 	}
 	secretKey := os.Getenv("STRIPE_SECRET_KEY")
 	if secretKey == "" {
-		// Dev: return mock client_secret so frontend can show "Payment coming soon" or test flow
 		return c.Status(501).JSON(fiber.Map{
 			"error":         "payment_not_configured",
 			"message":       "Stripe is not configured. Set STRIPE_SECRET_KEY for live payments.",
@@ -253,14 +264,39 @@ func shipRequestPay(c *fiber.Ctx) error {
 		})
 	}
 	stripe.Key = secretKey
+
+	// C-2: if we already have a PaymentIntent on file and it is still
+	// reusable (requires_payment_method, requires_confirmation, requires_action,
+	// processing) we hand the existing client_secret back to the user instead
+	// of opening a second intent that could lead to a duplicate charge.
+	if sr.StripePaymentIntentID.Valid && strings.TrimSpace(sr.StripePaymentIntentID.String) != "" {
+		existing, getErr := paymentintent.Get(sr.StripePaymentIntentID.String, nil)
+		if getErr == nil && existing != nil && isReusablePaymentIntent(existing) && existing.Amount == amountCents && string(existing.Currency) == strings.ToLower(string(stripe.CurrencyUSD)) {
+			return c.JSON(fiber.Map{"data": fiber.Map{"client_secret": existing.ClientSecret}})
+		}
+		// Otherwise (canceled, expired, amount changed, lookup failed) fall
+		// through to creating a fresh intent. We do not attempt to cancel the
+		// old one here so Stripe retains a record; webhook reconciliation
+		// guards against amount drift (see C-3 in stripe_webhook.go).
+	}
+
+	// C-2: deterministic Idempotency-Key keyed off the ship request and its
+	// last update time. A double-submit (e.g. user double-clicks "Pay") within
+	// the same logical state collapses to one PaymentIntent at Stripe.
+	idemKey := "ship_request:" + sr.ID + ":" + sr.UpdatedAt
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(amountCents),
 		Currency: stripe.String(string(stripe.CurrencyUSD)),
-		Metadata: map[string]string{"ship_request_id": id},
+		Metadata: map[string]string{
+			"ship_request_id":   sr.ID,
+			"ship_request_user": sr.UserID,
+		},
 	}
+	params.IdempotencyKey = stripe.String(idemKey)
 	pi, err := paymentintent.New(params)
 	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create payment intent"))
+		log.Printf("[ship_requests] paymentintent.New failed for ship_request %s: %v", sr.ID, err)
+		return c.Status(502).JSON(ErrorResponse{}.withCode("PAYMENT_PROVIDER_ERROR", "Failed to create payment intent"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := db.Queries().UpdateShipRequestPaymentIntent(c.Context(), gen.UpdateShipRequestPaymentIntentParams{
@@ -272,6 +308,23 @@ func shipRequestPay(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to save payment intent"))
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"client_secret": pi.ClientSecret}})
+}
+
+// isReusablePaymentIntent reports whether a Stripe PaymentIntent is in a state
+// where the existing client_secret can still be used to complete payment.
+func isReusablePaymentIntent(pi *stripe.PaymentIntent) bool {
+	if pi == nil {
+		return false
+	}
+	switch pi.Status {
+	case stripe.PaymentIntentStatusRequiresPaymentMethod,
+		stripe.PaymentIntentStatusRequiresConfirmation,
+		stripe.PaymentIntentStatusRequiresAction,
+		stripe.PaymentIntentStatusProcessing:
+		return true
+	default:
+		return false
+	}
 }
 
 func shipRequestReconcile(c *fiber.Ctx) error {

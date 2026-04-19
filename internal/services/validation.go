@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -113,6 +115,107 @@ func ValidateDestination(destID string) error {
 	}
 	if !ValidDestinations[destID] {
 		return errors.New("invalid destination_id: " + destID + " (valid: guyana, jamaica, trinidad, barbados, suriname)")
+	}
+	return nil
+}
+
+// ValidateName checks a user display name against length and character class
+// rules so that registration / profile updates cannot inject HTML/JS that
+// later renders in admin or warehouse UIs. Pass 2 audit fix C-1 (server-side).
+func ValidateName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", errors.New("name is required")
+	}
+	if len(name) > 80 {
+		return "", errors.New("name must be 80 characters or fewer")
+	}
+	for _, r := range name {
+		// Permit letters, marks, numbers, spaces, hyphen, apostrophe, period,
+		// comma. Reject angle brackets, quotes, control chars, etc.
+		switch r {
+		case ' ', '-', '\'', '.', ',':
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsMark(r) || unicode.IsNumber(r) {
+			continue
+		}
+		return "", errors.New("name contains invalid characters")
+	}
+	return name, nil
+}
+
+// ValidateUploadedFileURL constrains a user-supplied file_url to safe schemes
+// and hosts. Pass 2 audit fix H-5.
+//
+// Rules:
+//   - must parse as a URL
+//   - scheme must be https
+//   - host must be in UPLOAD_HOST_ALLOWLIST (comma-separated env var) when set;
+//     otherwise we accept the configured CDN_BASE_URL host or the app host.
+//   - length capped at 2048 bytes
+func ValidateUploadedFileURL(raw string) error {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return errors.New("file_url is required")
+	}
+	if len(raw) > 2048 {
+		return errors.New("file_url is too long")
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return errors.New("file_url must be a valid URL")
+	}
+	if !strings.EqualFold(parsed.Scheme, "https") {
+		return errors.New("file_url must use https")
+	}
+	if parsed.Host == "" {
+		return errors.New("file_url is missing a host")
+	}
+	if isUploadHostAllowed(parsed.Host) {
+		return nil
+	}
+	return errors.New("file_url host is not in the upload allowlist")
+}
+
+func isUploadHostAllowed(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	allowlist := strings.TrimSpace(os.Getenv("UPLOAD_HOST_ALLOWLIST"))
+	if allowlist != "" {
+		for _, h := range strings.Split(allowlist, ",") {
+			if strings.EqualFold(strings.TrimSpace(h), host) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, envName := range []string{"CDN_BASE_URL", "APP_URL"} {
+		if v := strings.TrimSpace(os.Getenv(envName)); v != "" {
+			if u, err := url.Parse(v); err == nil && strings.EqualFold(u.Host, host) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+var fileNameRegex = regexp.MustCompile(`^[A-Za-z0-9._\- ()]+$`)
+
+// ValidateFileName ensures user-provided filenames do not contain HTML
+// metacharacters or path separators. Pass 2 audit fix H-5.
+func ValidateFileName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("file_name is required")
+	}
+	if len(name) > 255 {
+		return errors.New("file_name is too long")
+	}
+	if !fileNameRegex.MatchString(name) {
+		return errors.New("file_name contains invalid characters")
+	}
+	if strings.Contains(name, "..") {
+		return errors.New("file_name cannot contain '..'")
 	}
 	return nil
 }

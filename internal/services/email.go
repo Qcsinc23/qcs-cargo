@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/resend/resend-go/v3"
@@ -20,13 +21,24 @@ func fromAddress() string {
 	return "onboarding@resend.dev"
 }
 
+// fakeResendKeyPrefixes are obvious test fixtures; treat them as no-op so we
+// do not make real HTTP calls during integration tests. Pass 2 audit follow-up:
+// stabilizes test runs under the race detector where the SDK's HTTPS attempt
+// to a placeholder key adds enough latency to trip Fiber's 1s test timeout.
+var fakeResendKeyPrefixes = []string{"re_test_fake", "re_fake_", "re_dummy_"}
+
 func resendClient() *resend.Client {
-	key := os.Getenv("RESEND_API_KEY")
+	key := strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
 	if key == "" {
 		missingResendKeyLogOnce.Do(func() {
 			log.Print("[email] RESEND_API_KEY not set; email sends are no-op")
 		})
 		return nil
+	}
+	for _, p := range fakeResendKeyPrefixes {
+		if strings.HasPrefix(key, p) {
+			return nil
+		}
 	}
 	return resend.NewClient(key)
 }
@@ -565,6 +577,29 @@ func SendShipmentStatus(to, trackingNumber, status string) error {
 		From:    "QCS Cargo <" + fromAddress() + ">",
 		To:      []string{to},
 		Subject: "Shipment update – QCS Cargo",
+		Html:    html,
+		Text:    text,
+	})
+	return err
+}
+
+// SendSecurityAlert sends a generic security notification (e.g. MFA disabled,
+// password changed, new sign-in). Pass 2 audit fix H-2 / defense-in-depth.
+func SendSecurityAlert(to, subject, message string) error {
+	client := resendClient()
+	if client == nil {
+		return nil
+	}
+	body := emailParagraph(escapeHTML(message)) +
+		emailParagraph("If this was not you, please reset your password and contact "+supportEmail+".") +
+		emailButton(appURL()+"/dashboard/settings/security", "Review security", brandBlue)
+	html := emailLayout("Security notice: "+subject, "Security Notice", body)
+	text := subject + "\n\n" + message + "\n\nIf this was not you, contact " + supportEmail + "."
+
+	_, err := client.Emails.Send(&resend.SendEmailRequest{
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
+		Subject: "Security notice – QCS Cargo",
 		Html:    html,
 		Text:    text,
 	})

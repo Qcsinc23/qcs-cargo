@@ -74,6 +74,15 @@ func securityMFASetup(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to setup MFA"))
 	}
+	// Pass 2 audit fix H-3: encrypt the TOTP shared secret before persisting
+	// so a read-only DB compromise (backup leak, replica access) does not
+	// hand attackers a working seed for every MFA-protected account. The raw
+	// secret is still returned to the client once at setup time so the user
+	// can scan/store it.
+	storedSecret, err := services.EncryptSecret(secret)
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to setup MFA"))
+	}
 
 	_, err = db.DB().ExecContext(c.Context(), `
 INSERT INTO user_mfa (id, user_id, method, secret, enabled, created_at, updated_at)
@@ -83,7 +92,7 @@ ON CONFLICT(user_id) DO UPDATE SET
     secret = excluded.secret,
     enabled = 0,
     updated_at = excluded.updated_at
-`, uuid.NewString(), userID, method, secret, now, now)
+`, uuid.NewString(), userID, method, storedSecret, now, now)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to setup MFA"))
 	}
@@ -121,10 +130,15 @@ WHERE user_id = ?
 		if secErr != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create MFA challenge"))
 		}
+		// Pass 2 audit fix H-3: encrypt-at-rest.
+		storedSecret, encErr := services.EncryptSecret(secret)
+		if encErr != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create MFA challenge"))
+		}
 		_, err = db.DB().ExecContext(c.Context(), `
 INSERT INTO user_mfa (id, user_id, method, secret, enabled, created_at, updated_at)
 VALUES (?, ?, ?, ?, 0, ?, ?)
-`, mfaID, userID, method, secret, nowStr, nowStr)
+`, mfaID, userID, method, storedSecret, nowStr, nowStr)
 	}
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create MFA challenge"))
@@ -228,14 +242,62 @@ WHERE user_id = ?
 	return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{"mfa_enabled": true}})
 }
 
+// securityMFADisable disables MFA for the current user.
+//
+// Pass 2 audit fix H-2: requires step-up — the caller must provide a current,
+// unused OTP code (within the same 10-minute challenge window the user just
+// completed) so a brief session compromise cannot silently strip MFA from
+// the victim account. If MFA was never enabled the call is a no-op.
 func securityMFADisable(c *fiber.Ctx) error {
 	userID := currentUserID(c)
 	if userID == "" {
 		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Authorization required"))
 	}
 
+	var body struct {
+		Code string `json:"code"`
+	}
+	if err := c.BodyParser(&body); err != nil && len(c.Body()) > 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
+	}
+	code := strings.TrimSpace(body.Code)
+
+	// Look up MFA state. If the user has no row or MFA is disabled there is
+	// nothing to do (idempotent). If MFA is enabled we require a current OTP.
+	var (
+		mfaEnabled              int
+		otpHash, otpExpiresAtNS sql.NullString
+	)
+	err := db.DB().QueryRowContext(c.Context(), `
+SELECT enabled, otp_code_hash, otp_expires_at
+FROM user_mfa
+WHERE user_id = ?
+`, userID).Scan(&mfaEnabled, &otpHash, &otpExpiresAtNS)
+	if err == sql.ErrNoRows || (err == nil && mfaEnabled == 0) {
+		// Nothing to disable.
+		return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{"mfa_enabled": false}})
+	}
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to disable MFA"))
+	}
+
+	if code == "" {
+		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "current MFA code required to disable MFA"))
+	}
+	if !otpHash.Valid || strings.TrimSpace(otpHash.String) == "" {
+		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "no active MFA challenge; request a new code"))
+	}
+	if otpExpiresAtNS.Valid && strings.TrimSpace(otpExpiresAtNS.String) != "" {
+		if exp, parseErr := time.Parse(time.RFC3339, otpExpiresAtNS.String); parseErr == nil && time.Now().UTC().After(exp) {
+			return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "MFA code expired; request a new code"))
+		}
+	}
+	if hashString(code) != strings.TrimSpace(otpHash.String) {
+		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_INVALID", "invalid MFA code"))
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.DB().ExecContext(c.Context(), `
+	_, err = db.DB().ExecContext(c.Context(), `
 UPDATE user_mfa
 SET enabled = 0,
     otp_code_hash = NULL,
@@ -246,6 +308,13 @@ WHERE user_id = ?
 `, now, userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to disable MFA"))
+	}
+
+	// Best-effort notification to the user that MFA was disabled.
+	if u, lookupErr := db.Queries().GetUserByID(c.Context(), userID); lookupErr == nil {
+		if mailErr := services.SendSecurityAlert(u.Email, "MFA disabled", "Multi-factor authentication was disabled on your account. If you did not do this, contact support immediately."); mailErr != nil {
+			log.Printf("[security] failed to send MFA-disabled email to %s: %v", u.Email, mailErr)
+		}
 	}
 
 	return c.JSON(fiber.Map{"status": "success", "data": fiber.Map{"mfa_enabled": false}})

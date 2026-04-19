@@ -47,28 +47,29 @@ func RunStorageFeeJob(ctx context.Context) error {
 			return fmt.Errorf("storage fee job scan: %w", err)
 		}
 
-		// Skip if we already charged this package for today (idempotent)
-		var existing int
-		err := conn.QueryRowContext(ctx, `
-			SELECT 1 FROM storage_fees WHERE locker_package_id = ? AND fee_date = ?
-		`, id, today).Scan(&existing)
-		if err == nil {
-			continue // already charged today
-		}
-		if err != sql.ErrNoRows {
-			return fmt.Errorf("storage fee check existing: %w", err)
-		}
-
 		amount := DefaultDailyStorageFeeAmount
 		feeID := "sf_" + uuid.New().String()
 		createdAt := time.Now().UTC().Format(time.RFC3339)
 
-		_, err = conn.ExecContext(ctx, `
+		// Pass 2 audit fix H-7: atomic dedupe via UNIQUE
+		// (locker_package_id, fee_date) added by migration
+		// 20260418120000_storage_fee_unique.sql. INSERT ... ON CONFLICT
+		// DO NOTHING means concurrent invocations or replicas cannot
+		// double-bill. RowsAffected tells us whether to send a notification
+		// for a freshly recorded charge versus a duplicate suppressed by
+		// the constraint.
+		res, err := conn.ExecContext(ctx, `
 			INSERT INTO storage_fees (id, user_id, locker_package_id, fee_date, amount, invoiced, created_at)
 			VALUES (?, ?, ?, ?, ?, 0, ?)
+			ON CONFLICT(locker_package_id, fee_date) DO NOTHING
 		`, feeID, userID, id, today, amount, createdAt)
 		if err != nil {
 			return fmt.Errorf("storage fee insert %s: %w", id, err)
+		}
+		inserted, _ := res.RowsAffected()
+		if inserted == 0 {
+			// Already charged today by a prior run; do not resend the email.
+			continue
 		}
 
 		// Notify customer if Resend is configured

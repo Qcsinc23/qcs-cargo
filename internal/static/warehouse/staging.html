@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Staging Bays | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/admin/common.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
@@ -36,9 +37,11 @@
           Promise.all([fetch('/api/v1/warehouse/bays', auth).then(r => r.json()), fetch('/api/v1/warehouse/packages', auth).then(r => r.json())]).then(([baysRes, pkgRes]) => {
             const bays = (baysRes.data || []);
             const packages = (pkgRes.data || []);
-            const bayRows = bays.map(b => '<tr class="border-b border-slate-200"><td class="py-2 px-4">' + (b.name || b.id) + '</td><td class="py-2 px-4">' + (b.zone || '—') + '</td><td class="py-2 px-4">' + (b.current_count ?? 0) + ' / ' + (b.capacity ?? 0) + '</td></tr>').join('');
-            const pkgRows = packages.map(p => '<tr class="border-b border-slate-200"><td class="py-2 px-4"><input type="checkbox" class="pkg-cb" value="' + p.id + '"></td><td class="py-2 px-4">' + (p.suite_code || '') + '</td><td class="py-2 px-4">' + (p.storage_bay || '—') + '</td><td class="py-2 px-4">' + (p.id.substring(0, 8) + '…') + '</td></tr>').join('');
-            const baySelect = '<option value="">Select bay</option>' + bays.map(b => '<option value="' + b.id + '">' + (b.name || b.id) + '</option>').join('');
+            // Pass 2 audit fix C-1: HTML-escape bay names, suite codes, etc.
+            const esc = window.QCSAdmin.escapeHTML;
+            const bayRows = bays.map(b => '<tr class="border-b border-slate-200"><td class="py-2 px-4">' + esc(b.name || b.id) + '</td><td class="py-2 px-4">' + esc(b.zone || '—') + '</td><td class="py-2 px-4">' + esc(b.current_count ?? 0) + ' / ' + esc(b.capacity ?? 0) + '</td></tr>').join('');
+            const pkgRows = packages.map(p => '<tr class="border-b border-slate-200"><td class="py-2 px-4"><input type="checkbox" class="pkg-cb" value="' + esc(p.id) + '"></td><td class="py-2 px-4">' + esc(p.suite_code || '') + '</td><td class="py-2 px-4">' + esc(p.storage_bay || '—') + '</td><td class="py-2 px-4">' + esc(p.id.substring(0, 8) + '…') + '</td></tr>').join('');
+            const baySelect = '<option value="">Select bay</option>' + bays.map(b => '<option value="' + esc(b.id) + '">' + esc(b.name || b.id) + '</option>').join('');
             const main = '<main class="flex-1 p-8"><nav class="mb-4 text-sm text-slate-600"><a href="/warehouse" class="hover:underline">Warehouse</a> / Staging</nav>' +
               '<h1 class="text-3xl font-bold mb-6">Staging Bays</h1>' +
               '<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">' +

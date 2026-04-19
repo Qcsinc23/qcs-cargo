@@ -73,8 +73,34 @@ func TestSecurityMFAFlow_HappyAndDeny(t *testing.T) {
 	defer goodVerifyResp.Body.Close()
 	require.Equal(t, http.StatusOK, goodVerifyResp.StatusCode)
 
-	disableReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", nil)
+	// Pass 2 audit fix H-2: disabling MFA now requires step-up. Issue a
+	// fresh challenge and present the new OTP to disable cleanly. A bare
+	// disable without a code must be rejected.
+	bareDisableReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", nil)
+	bareDisableReq.Header.Set("Authorization", "Bearer "+accessToken)
+	bareDisableResp, err := app.Test(bareDisableReq)
+	require.NoError(t, err)
+	defer bareDisableResp.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, bareDisableResp.StatusCode)
+
+	stepUpChallengeReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", bytes.NewReader([]byte(`{}`)))
+	stepUpChallengeReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stepUpChallengeReq.Header.Set("Content-Type", "application/json")
+	stepUpChallengeResp, err := app.Test(stepUpChallengeReq)
+	require.NoError(t, err)
+	defer stepUpChallengeResp.Body.Close()
+	require.Equal(t, http.StatusOK, stepUpChallengeResp.StatusCode)
+	var stepUpChallengeBody struct {
+		Data struct {
+			OTPCode string `json:"otp_code"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(stepUpChallengeResp.Body).Decode(&stepUpChallengeBody))
+	require.Len(t, stepUpChallengeBody.Data.OTPCode, 6)
+
+	disableReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{"code":"`+stepUpChallengeBody.Data.OTPCode+`"}`)))
 	disableReq.Header.Set("Authorization", "Bearer "+accessToken)
+	disableReq.Header.Set("Content-Type", "application/json")
 	disableResp, err := app.Test(disableReq)
 	require.NoError(t, err)
 	defer disableResp.Body.Close()

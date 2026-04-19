@@ -1,12 +1,82 @@
 /**
+ * Admin shared utilities. Loaded on every admin page.
+ *
+ * Exports on window:
+ *   QCSAdmin.escapeHTML(str)                    -> HTML-escaped string
+ *   QCSAdmin.escapeAttr(str)                    -> attribute-safe escape
+ *   QCSAdmin.safeURL(url)                       -> sanitized URL or "#"
+ *   QCSAdmin.text(el, str)                      -> el.textContent = str
+ *   adminSearchOpen()                           -> Cmd+K modal opener (back-compat)
+ *
+ * Pass 2 audit fix C-1: server-supplied strings are HTML-escaped on every
+ * admin/warehouse render path so a malicious customer-controlled value
+ * (e.g. user.name = "<img src=x onerror=...>") cannot execute when an admin
+ * opens a list view that includes the value.
+ */
+(function () {
+  function escapeHTML(value) {
+    if (value === null || value === undefined) return '';
+    var s = String(value);
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var ch = s.charCodeAt(i);
+      switch (ch) {
+        case 38: out += '&amp;';  break; // &
+        case 60: out += '&lt;';   break; // <
+        case 62: out += '&gt;';   break; // >
+        case 34: out += '&quot;'; break; // "
+        case 39: out += '&#39;';  break; // '
+        case 96: out += '&#96;';  break; // `
+        default: out += s.charAt(i);
+      }
+    }
+    return out;
+  }
+
+  function escapeAttr(value) {
+    return escapeHTML(value);
+  }
+
+  // Returns the URL if it is a same-origin absolute path or an http(s) URL on
+  // the same origin; otherwise returns "#". Prevents javascript:, data:, and
+  // other non-navigational schemes from sneaking into href/src.
+  function safeURL(url) {
+    if (url === null || url === undefined) return '#';
+    var s = String(url).trim();
+    if (s === '') return '#';
+    if (s.charAt(0) === '/' && (s.length === 1 || s.charAt(1) !== '/')) return s; // absolute path
+    var lower = s.toLowerCase();
+    if (lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0) {
+      try {
+        var parsed = new URL(s);
+        if (parsed.origin === window.location.origin) return parsed.pathname + parsed.search + parsed.hash;
+      } catch (e) { /* fallthrough */ }
+    }
+    return '#';
+  }
+
+  function text(el, value) {
+    if (!el) return;
+    el.textContent = (value === null || value === undefined) ? '' : String(value);
+  }
+
+  window.QCSAdmin = window.QCSAdmin || {};
+  window.QCSAdmin.escapeHTML = escapeHTML;
+  window.QCSAdmin.escapeAttr = escapeAttr;
+  window.QCSAdmin.safeURL = safeURL;
+  window.QCSAdmin.text = text;
+})();
+
+/**
  * Admin shared: Cmd+K / Ctrl+K global search modal.
- * Include this script on every admin page.
  */
 (function () {
   var modal = null;
   var inputEl = null;
   var resultsEl = null;
   var debounceTimer = null;
+  var esc = (window.QCSAdmin && window.QCSAdmin.escapeHTML) || function (v) { return String(v == null ? '' : v); };
+  var safeURL = (window.QCSAdmin && window.QCSAdmin.safeURL) || function (u) { return String(u == null ? '#' : u); };
 
   function authHeaders() {
     var token = localStorage.getItem('qcs_access_token');
@@ -89,9 +159,10 @@
     if (users.length) {
       html += '<p class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Users</p><ul class="mb-4">';
       users.forEach(function (u) {
-        html += '<li><a href="/admin/users/' + (u.id || '') + '" class="block py-2 px-3 rounded-lg hover:bg-slate-100 text-[#0F172A]">' +
-          (u.name || u.email || u.id) + ' <span class="text-slate-500 text-sm">' + (u.email || '') + '</span> ' +
-          (u.suite_code ? '<span class="font-mono text-xs text-slate-400">' + u.suite_code + '</span>' : '') + '</a></li>';
+        var href = safeURL('/admin/users/' + (u.id || ''));
+        html += '<li><a href="' + esc(href) + '" class="block py-2 px-3 rounded-lg hover:bg-slate-100 text-[#0F172A]">' +
+          esc(u.name || u.email || u.id) + ' <span class="text-slate-500 text-sm">' + esc(u.email || '') + '</span> ' +
+          (u.suite_code ? '<span class="font-mono text-xs text-slate-400">' + esc(u.suite_code) + '</span>' : '') + '</a></li>';
       });
       html += '</ul>';
     }
@@ -99,7 +170,7 @@
       html += '<p class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Ship Requests</p><ul class="mb-4">';
       shipRequests.forEach(function (sr) {
         html += '<li><a href="/admin/ship-requests?code=' + encodeURIComponent(sr.confirmation_code || sr.id) + '" class="block py-2 px-3 rounded-lg hover:bg-slate-100 text-[#0F172A]">' +
-          (sr.confirmation_code || sr.id) + ' <span class="text-slate-500 text-sm">' + (sr.status || '') + '</span></a></li>';
+          esc(sr.confirmation_code || sr.id) + ' <span class="text-slate-500 text-sm">' + esc(sr.status || '') + '</span></a></li>';
       });
       html += '</ul>';
     }
@@ -107,7 +178,7 @@
       html += '<p class="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">Locker Packages</p><ul class="mb-4">';
       lockerPackages.forEach(function (p) {
         html += '<li><a href="/admin/locker-packages?suite=' + encodeURIComponent(p.suite_code || '') + '" class="block py-2 px-3 rounded-lg hover:bg-slate-100 text-[#0F172A]">' +
-          (p.suite_code || p.id) + ' ' + (p.sender_name ? '<span class="text-slate-500 text-sm">' + p.sender_name + '</span>' : '') + '</a></li>';
+          esc(p.suite_code || p.id) + ' ' + (p.sender_name ? '<span class="text-slate-500 text-sm">' + esc(p.sender_name) + '</span>' : '') + '</a></li>';
       });
       html += '</ul>';
     }

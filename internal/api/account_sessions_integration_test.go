@@ -180,7 +180,9 @@ func TestRequireAuth_RejectsInactiveUserStatus(t *testing.T) {
 		Role:   "customer",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(secret)[:32])
+	// Pass 2 audit fix M-2: getJWTSecret no longer truncates JWT_SECRET
+	// to 32 bytes, so the signing key here must be the full secret too.
+	signed, err := token.SignedString([]byte(secret))
 	require.NoError(t, err)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/bookings", nil)

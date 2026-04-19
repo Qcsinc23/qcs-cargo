@@ -27,6 +27,16 @@ func main() {
 	if services.IsProductionRuntime() && len(strings.TrimSpace(os.Getenv("JWT_SECRET"))) < 32 {
 		log.Fatal("JWT_SECRET must be at least 32 characters in production")
 	}
+	// Pass 2 audit fix M-8: in production, refuse to start if Stripe is
+	// configured but the webhook signing secret is missing. Without the
+	// secret the webhook handler returns 503 to every Stripe event, which
+	// silently breaks payment reconciliation and triggers Stripe's 3-day
+	// retry storm.
+	if services.IsProductionRuntime() &&
+		strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")) != "" &&
+		strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")) == "" {
+		log.Fatal("STRIPE_WEBHOOK_SECRET must be set when STRIPE_SECRET_KEY is configured in production")
+	}
 	if os.Getenv("RESEND_API_KEY") != "" {
 		log.Print("Resend: configured (transactional email enabled)")
 	} else {
@@ -49,6 +59,10 @@ func main() {
 	app := fiber.New(fiber.Config{
 		DisableStartupMessage: os.Getenv("PORT") == "",
 		ErrorHandler:          api.ErrorHandler,
+		// Pass 2 audit fix L-1: explicit body limit so the configured
+		// per-feature limits (e.g. 5 MB avatar) are not silently capped by
+		// the framework's 4 MiB default.
+		BodyLimit: 8 << 20, // 8 MiB
 	})
 
 	app.Use(requestid.New())

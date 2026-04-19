@@ -8,6 +8,23 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// csrfExemptAuthRoutes lists the unauthenticated /auth/* routes that legitimately
+// run without a CSRF check (registration, login, refresh, logout, password
+// recovery, email verification, magic link). Any future authenticated route
+// under /auth/* will NOT be exempted, closing the latent footgun called out by
+// Pass 2 audit fix H-4.
+var csrfExemptAuthRoutes = map[string]struct{}{
+	"/api/v1/auth/register":             {},
+	"/api/v1/auth/verify-email":         {},
+	"/api/v1/auth/resend-verification":  {},
+	"/api/v1/auth/magic-link/request":   {},
+	"/api/v1/auth/magic-link/verify":    {},
+	"/api/v1/auth/refresh":              {},
+	"/api/v1/auth/logout":               {},
+	"/api/v1/auth/password/forgot":      {},
+	"/api/v1/auth/password/reset":       {},
+}
+
 // CSRFProtection enforces same-origin checks for state-changing requests that carry
 // the refresh-token cookie. Bearer-token and machine-to-machine calls (no cookie) pass through.
 func CSRFProtection(c *fiber.Ctx) error {
@@ -21,7 +38,8 @@ func CSRFProtection(c *fiber.Ctx) error {
 	if strings.HasPrefix(c.Path(), "/api/webhooks/") {
 		return c.Next()
 	}
-	if strings.HasPrefix(c.Path(), "/api/v1/auth/") {
+	// Pass 2 audit fix H-4: explicit allowlist instead of /api/v1/auth/* prefix.
+	if _, ok := csrfExemptAuthRoutes[c.Path()]; ok {
 		return c.Next()
 	}
 

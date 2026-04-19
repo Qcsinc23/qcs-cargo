@@ -256,6 +256,15 @@ WHERE id = ? AND user_id = ? AND read_at IS NULL
 	return c.JSON(fiber.Map{"data": fiber.Map{"id": id, "read_at": now}})
 }
 
+// notificationsStream returns a single SSE "snapshot" event per HTTP
+// connection. The browser EventSource then reconnects, which re-runs
+// authenticateNotificationStream — that re-check already covers token
+// blacklisting and account-status changes (Pass 2 audit fix M-5: revocation
+// becomes effective on the next reconnect, normally within a few seconds).
+//
+// We send a `retry:` directive so the client reconnects predictably even on
+// browsers with longer default backoff, and we explicitly disable proxy
+// caching of the snapshot.
 func notificationsStream(c *fiber.Ctx) error {
 	userID, status, code, message := authenticateNotificationStream(c)
 	if status != 0 {
@@ -298,9 +307,14 @@ LIMIT 10
 		"generated_at":  time.Now().UTC().Format(time.RFC3339),
 	})
 	c.Set(fiber.HeaderContentType, "text/event-stream")
-	c.Set(fiber.HeaderCacheControl, "no-cache")
+	c.Set(fiber.HeaderCacheControl, "no-store, no-cache, must-revalidate, max-age=0")
+	c.Set("Pragma", "no-cache")
+	c.Set("X-Accel-Buffering", "no")
 	c.Set("Connection", "keep-alive")
-	return c.SendString(fmt.Sprintf("event: snapshot\ndata: %s\n\n", payload))
+	// Retry directive: tell the EventSource to reconnect after 15s. Each
+	// reconnect re-runs authenticateNotificationStream(), which is how we
+	// revoke streams for blacklisted tokens / deactivated accounts.
+	return c.SendString(fmt.Sprintf("retry: 15000\nevent: snapshot\ndata: %s\n\n", payload))
 }
 
 func notificationsPushSubscribe(c *fiber.Ctx) error {

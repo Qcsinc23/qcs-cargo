@@ -2,18 +2,30 @@ package api
 
 import (
 	"database/sql"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 const maxAvatarSize = 5 << 20 // 5MB
+
+// allowedAvatarMIME lists the image content types we accept after sniffing the
+// uploaded file's first 512 bytes. Anything outside this set (including SVG,
+// which can host inline JavaScript) is rejected. Pass 2 audit fix H-9.
+var allowedAvatarMIME = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
 
 // RegisterMe mounts PATCH /me (profile update) and POST /me/avatar. GET /me is registered in main.
 func RegisterMe(g fiber.Router) {
@@ -44,7 +56,13 @@ func MeUpdate(c *fiber.Ctx) error {
 	}
 	name := u.Name
 	if body.Name != nil && *body.Name != "" {
-		name = *body.Name
+		// Pass 2 audit fix C-1 (server-side): validate display name on every
+		// PATCH /me so existing accounts cannot be relabeled into XSS payloads.
+		cleanName, vErr := services.ValidateName(*body.Name)
+		if vErr != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", vErr.Error()))
+		}
+		name = cleanName
 	}
 	phone := u.Phone
 	if body.Phone != nil {
@@ -84,7 +102,17 @@ func MeUpdate(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": userToMap(u)})
 }
 
-// MeAvatarUpload handles POST /me/avatar — multipart file (image, max 5MB). Saves to UPLOAD_DIR/avatars, updates user.avatar_url. PRD 6.6.
+// MeAvatarUpload handles POST /me/avatar — multipart file (image, max 5MB).
+// Saves to UPLOAD_DIR/avatars, updates user.avatar_url. PRD 6.6.
+//
+// Pass 2 audit fix H-9:
+//   - sniff the file's first 512 bytes with http.DetectContentType so the
+//     uploader cannot lie about Content-Type via the multipart header
+//   - allowlist only JPEG/PNG/WEBP (SVG is rejected because it can host JS)
+//   - filename is a fresh UUID so users cannot be enumerated by avatar URL
+//     and an attacker cannot guess/overwrite another user's avatar
+//   - Content-Type for the stored file is derived from the sniffed bytes,
+//     not the client-supplied header
 func MeAvatarUpload(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
 	file, err := c.FormFile("file")
@@ -94,11 +122,24 @@ func MeAvatarUpload(c *fiber.Ctx) error {
 	if file.Size > maxAvatarSize {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "file too large (max 5MB)"))
 	}
-	ct := file.Header.Get("Content-Type")
-	if ct == "" || !strings.HasPrefix(ct, "image/") {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "only image/* allowed"))
+
+	// Sniff the actual bytes rather than trusting the multipart header.
+	src, err := file.Open()
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Could not read file"))
 	}
-	ext := imageExtFromContentType(ct)
+	header := make([]byte, 512)
+	n, _ := src.Read(header)
+	_ = src.Close()
+	if n == 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Empty file"))
+	}
+	sniffed := http.DetectContentType(header[:n])
+	ext, ok := allowedAvatarMIME[sniffed]
+	if !ok {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "only JPEG, PNG or WEBP avatars are allowed"))
+	}
+
 	uploadDir := os.Getenv("UPLOAD_DIR")
 	if uploadDir == "" {
 		uploadDir = "./uploads"
@@ -107,7 +148,8 @@ func MeAvatarUpload(c *fiber.Ctx) error {
 	if err := os.MkdirAll(avatarsDir, 0755); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create upload directory"))
 	}
-	filename := userID + "_" + strings.ReplaceAll(time.Now().UTC().Format(time.RFC3339), ":", "-") + ext
+	// Random UUID filename; do not embed userID so avatars cannot be enumerated.
+	filename := uuid.NewString() + ext
 	savePath := filepath.Join(avatarsDir, filename)
 	if err := c.SaveFile(file, savePath); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to save file"))
@@ -127,17 +169,19 @@ func MeAvatarUpload(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": userToMap(u)})
 }
 
+// imageExtFromContentType is retained for backward compatibility with callers
+// outside the avatar upload flow (e.g. tests). It is no longer used by the
+// avatar handler — H-9 derives the extension from sniffed bytes.
 func imageExtFromContentType(ct string) string {
 	switch {
 	case strings.Contains(ct, "jpeg") || strings.Contains(ct, "jpg"):
 		return ".jpg"
 	case strings.Contains(ct, "png"):
 		return ".png"
-	case strings.Contains(ct, "gif"):
-		return ".gif"
 	case strings.Contains(ct, "webp"):
 		return ".webp"
 	default:
 		return ".jpg"
 	}
 }
+
