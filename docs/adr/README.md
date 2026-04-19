@@ -10,6 +10,7 @@ This directory tracks accepted architecture decisions that are already implement
 | [0002](./0002-sqlite-first-migrations.md) | SQLite-first persistence with SQL up/down migrations | Accepted | 2026-02-28 |
 | [0003](./0003-jwt-access-session-refresh.md) | JWT access tokens with DB-backed refresh sessions | Accepted | 2026-02-28 |
 | [0004](./0004-observability-prometheus-events-sentry.md) | Observability baseline: Prometheus + events table + optional Sentry | Accepted | 2026-02-28 |
+| [0005](./0005-single-replica-until.md) | Single-replica until measured load crosses defined thresholds | Accepted | 2026-04-19 |
 
 ## ADR Format
 

@@ -12,8 +12,8 @@ info:
 servers:
   - url: http://localhost:8080
     description: Local development
-  - url: https://api.qcs-cargo.com
-    description: Production (example)
+  - url: https://qcs-cargo.com
+    description: Production
 tags:
   - name: Health
     description: Runtime liveness and degradation checks.

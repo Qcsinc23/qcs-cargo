@@ -1,6 +1,6 @@
 # Database Schema Reference
 
-Last verified: 2026-02-28
+Last verified: 2026-04-19
 
 ## Scope and Sources
 
@@ -497,17 +497,48 @@ Operational caveats:
 - `20260301030000_inc_011_014_db_hardening.sql` performs dedupe/normalization for `suite_code` and email before creating stricter unique indexes.
 - That migration explicitly notes these data cleanup steps are not fully reversible in `Down`.
 
-## Legacy Tables from Initial Migration
+## Wave 11 and post-wave 11 tables
 
-`20260221120000_initial_schema.sql` also created tables that are not currently represented in `sql/schema` sqlc models:
+Migrations under `sql/migrations/2026030106*` and later add the following operational tables. They are documented at this summary level; column inventories live in the migration files themselves.
 
+### Security and compliance
+
+- `user_mfa` — per-user MFA factor metadata (method, secret hash, status).
+- `api_keys` — hashed machine-auth API keys with rotation/revocation lifecycle.
+- `ip_access_rules` — IP allow/deny rules enforced for `X-API-Key` requests.
+- `feature_flags` — runtime feature toggle registry.
+- `cookie_consents` — versioned per-user cookie consent capture.
+- `resource_versions` — generic version-history ledger for compliance/security mutations (feature flags, GDPR requests, API key lifecycle, cookie consent updates, recipient restore actions).
+- `auth_request_log` — per-account auth-throttle bucket for `services.CheckAndRecordAuthRequest`. Bounded at 1000 rows per bucket.
+
+### Parcel features (parcel-plus)
+
+- `assisted_purchase_requests` — customer-submitted assisted purchase orders.
+- `parcel_consolidation_previews` — saved consolidation preview snapshots.
+- `customs_preclearance_docs` — customs document metadata per ship request.
+- `delivery_signatures` — delivery signature capture (image bytes, captured_at).
+- `loyalty_ledger` — per-user loyalty point ledger.
+- `data_import_jobs` — recipient (and other) import job audit metadata.
+
+### Notifications and outbound mail
+
+- `in_app_notifications` — per-user in-app notification feed (drives `/api/v1/notifications` and the SSE stream).
+- `push_subscriptions` — Web Push endpoint registrations. UNIQUE on `(endpoint)` (post-`20260422120000` migration) to prevent cross-account re-registration.
+- `outbound_emails` — durable outbound email queue. Workers claim rows with conditional `UPDATE ... WHERE status='pending' AND id=?` (`:execrows`) so multi-worker / multi-replica processing is race-safe. The supervisor reaps `in_progress` rows older than 5 minutes back to `pending`.
+
+### Moderation
+
+- `moderation_items` — admin moderation queue.
+
+## Legacy tables from initial migration
+
+`20260221120000_initial_schema.sql` also created the following tables. Some are still actively used at runtime (`locker_photos`, `activity_log`, `settings`, `packages`, `manifests`, `exceptions`, `weight_discrepancies`, `communications`); they are listed here because they are outside the active `sql/schema` sqlc model set used for generated query models. Handlers that read these tables use raw SQL.
+
+- `activity_log`
+- `communications`
+- `exceptions`
 - `locker_photos`
 - `manifests`
 - `packages`
-- `exceptions`
-- `weight_discrepancies`
-- `communications`
-- `activity_log`
 - `settings`
-
-These may exist in deployed databases created from full migration history, but they are outside the active sqlc table set used for generated query models.
+- `weight_discrepancies`
