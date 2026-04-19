@@ -620,7 +620,6 @@ func userToMap(u gen.User) fiber.Map {
 		"address_city":      addressCity,
 		"address_state":     addressState,
 		"address_zip":       addressZip,
-		"storage_plan":      u.StoragePlan,
 		"free_storage_days": u.FreeStorageDays,
 		"email_verified":    u.EmailVerified != 0,
 		"status":            u.Status,

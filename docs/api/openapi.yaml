@@ -721,7 +721,6 @@ components:
         - email
         - role
         - suite_code
-        - storage_plan
         - free_storage_days
         - email_verified
         - status
@@ -752,8 +751,6 @@ components:
         address_state:
           type: string
         address_zip:
-          type: string
-        storage_plan:
           type: string
         free_storage_days:
           type: integer

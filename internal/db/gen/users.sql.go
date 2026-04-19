@@ -49,7 +49,7 @@ func (q *Queries) AnonymizeUserForDeletion(ctx context.Context, arg AnonymizeUse
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE email = ?
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE email = ?
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -68,7 +68,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.AddressCity,
 		&i.AddressState,
 		&i.AddressZip,
-		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
 		&i.EmailVerificationToken,
@@ -81,7 +80,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE id = ?
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE id = ?
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -100,7 +99,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.AddressCity,
 		&i.AddressState,
 		&i.AddressZip,
-		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
 		&i.EmailVerificationToken,
@@ -113,7 +111,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 }
 
 const getUserBySuiteCode = `-- name: GetUserBySuiteCode :one
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE suite_code = ?
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users WHERE suite_code = ?
 `
 
 func (q *Queries) GetUserBySuiteCode(ctx context.Context, suiteCode sql.NullString) (User, error) {
@@ -132,7 +130,6 @@ func (q *Queries) GetUserBySuiteCode(ctx context.Context, suiteCode sql.NullStri
 		&i.AddressCity,
 		&i.AddressState,
 		&i.AddressZip,
-		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
 		&i.EmailVerificationToken,
@@ -145,7 +142,7 @@ func (q *Queries) GetUserBySuiteCode(ctx context.Context, suiteCode sql.NullStri
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
 ORDER BY created_at DESC
 LIMIT ? OFFSET ?
 `
@@ -177,7 +174,6 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.AddressCity,
 			&i.AddressState,
 			&i.AddressZip,
-			&i.StoragePlan,
 			&i.FreeStorageDays,
 			&i.EmailVerified,
 			&i.EmailVerificationToken,

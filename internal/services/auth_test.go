@@ -182,7 +182,6 @@ func TestRefreshSession_ReturnsCurrentUserRowFields(t *testing.T) {
 		    address_city = ?,
 		    address_state = ?,
 		    address_zip = ?,
-		    storage_plan = ?,
 		    free_storage_days = ?,
 		    status = ?,
 		    updated_at = ?
@@ -193,7 +192,6 @@ func TestRefreshSession_ReturnsCurrentUserRowFields(t *testing.T) {
 		"Georgetown",
 		"Region 4",
 		"00000",
-		"premium",
 		45,
 		"active",
 		time.Now().UTC().Format(time.RFC3339),
@@ -210,7 +208,6 @@ func TestRefreshSession_ReturnsCurrentUserRowFields(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, accessToken)
 	assert.Equal(t, testdata.CustomerAliceID, user.ID)
-	assert.Equal(t, "premium", user.StoragePlan)
 	assert.Equal(t, 45, user.FreeStorageDays)
 	assert.Equal(t, "active", user.Status)
 	assert.True(t, user.AvatarUrl.Valid)

@@ -365,7 +365,6 @@ type User struct {
 	AddressCity             sql.NullString `json:"address_city"`
 	AddressState            sql.NullString `json:"address_state"`
 	AddressZip              sql.NullString `json:"address_zip"`
-	StoragePlan             string         `json:"storage_plan"`
 	FreeStorageDays         int            `json:"free_storage_days"`
 	EmailVerified           int            `json:"email_verified"`
 	EmailVerificationToken  sql.NullString `json:"email_verification_token"`

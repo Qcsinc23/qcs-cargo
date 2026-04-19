@@ -25,11 +25,11 @@ fi
 
 echo "== Seeding users..."
 sqlite3 "$DB_FILE" <<'SQL'
-INSERT OR REPLACE INTO users (id, name, email, phone, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
+INSERT OR REPLACE INTO users (id, name, email, phone, role, suite_code, free_storage_days, email_verified, status, created_at, updated_at)
 VALUES
-  ('usr_dev_admin',    'Dev Admin',    'admin@qcs-cargo.local',    NULL, 'admin',  NULL,        'free', 30, 1, 'active', datetime('now'), datetime('now')),
-  ('usr_dev_staff',    'Dev Staff',    'staff@qcs-cargo.local',    NULL, 'staff',  NULL,        'free', 30, 1, 'active', datetime('now'), datetime('now')),
-  ('usr_dev_customer', 'Dev Customer', 'customer@qcs-cargo.local', NULL, 'customer', 'QCS-DEV01', 'free', 30, 1, 'active', datetime('now'), datetime('now'));
+  ('usr_dev_admin',    'Dev Admin',    'admin@qcs-cargo.local',    NULL, 'admin',  NULL,        30, 1, 'active', datetime('now'), datetime('now')),
+  ('usr_dev_staff',    'Dev Staff',    'staff@qcs-cargo.local',    NULL, 'staff',  NULL,        30, 1, 'active', datetime('now'), datetime('now')),
+  ('usr_dev_customer', 'Dev Customer', 'customer@qcs-cargo.local', NULL, 'customer', 'QCS-DEV01', 30, 1, 'active', datetime('now'), datetime('now'));
 SQL
 
 echo "  ✓ admin@qcs-cargo.local (admin)"

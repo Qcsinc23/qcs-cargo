@@ -196,9 +196,9 @@ func (q *Queries) CreateTokenBlacklist(ctx context.Context, arg CreateTokenBlack
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, storage_plan, free_storage_days, email_verified, status, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, 'customer', ?, 'free', 30, 0, 'active', ?, ?)
-RETURNING id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at
+INSERT INTO users (id, name, email, phone, password_hash, role, suite_code, free_storage_days, email_verified, status, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, 'customer', ?, 30, 0, 'active', ?, ?)
+RETURNING id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -237,7 +237,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AddressCity,
 		&i.AddressState,
 		&i.AddressZip,
-		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
 		&i.EmailVerificationToken,
@@ -387,7 +386,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, arg GetSessionByIDParams) 
 }
 
 const getUserByEmailVerificationToken = `-- name: GetUserByEmailVerificationToken :one
-SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, storage_plan, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
+SELECT id, name, email, phone, role, avatar_url, password_hash, suite_code, address_street, address_city, address_state, address_zip, free_storage_days, email_verified, email_verification_token, email_verification_sent_at, status, created_at, updated_at FROM users
 WHERE email_verification_token = ?
 `
 
@@ -407,7 +406,6 @@ func (q *Queries) GetUserByEmailVerificationToken(ctx context.Context, emailVeri
 		&i.AddressCity,
 		&i.AddressState,
 		&i.AddressZip,
-		&i.StoragePlan,
 		&i.FreeStorageDays,
 		&i.EmailVerified,
 		&i.EmailVerificationToken,
