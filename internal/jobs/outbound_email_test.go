@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
@@ -77,5 +78,46 @@ func TestEnqueueEmail_RequiresRecipient(t *testing.T) {
 	err := services.EnqueueEmail(context.Background(), services.TemplateStorageWarning5d, "  ", json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("expected error for empty recipient")
+	}
+}
+
+// TestOutboundEmail_ReapStuckRows is the HIGH-10 regression test. A row
+// stuck in 'in_progress' beyond the 5-minute cutoff must be transitioned
+// back to 'pending' on the next RunOutboundEmailJob invocation so it can
+// be retried.
+func TestOutboundEmail_ReapStuckRows(t *testing.T) {
+	conn := testdata.NewSeededDB(t)
+	db.SetConnForTest(conn)
+	t.Setenv("RESEND_API_KEY", "")
+
+	ctx := context.Background()
+	stuckTime := time.Now().UTC().Add(-10 * time.Minute).Format(time.RFC3339)
+	payload := `{"sender_name":"Acme"}`
+	_, err := conn.Exec(
+		`INSERT INTO outbound_emails (id, template, recipient, payload_json, status, attempt_count, scheduled_at, created_at)
+		 VALUES (?, ?, ?, ?, 'in_progress', 0, ?, ?)`,
+		"oe_stuck_001", "storage_warning_5d", "alice@test.com", payload, stuckTime, stuckTime,
+	)
+	if err != nil {
+		t.Fatalf("seed stuck row: %v", err)
+	}
+
+	if err := RunOutboundEmailJob(ctx); err != nil {
+		t.Fatalf("RunOutboundEmailJob: %v", err)
+	}
+
+	var status string
+	var attemptCount int
+	if err := conn.QueryRow(
+		`SELECT status, attempt_count FROM outbound_emails WHERE id = ?`,
+		"oe_stuck_001",
+	).Scan(&status, &attemptCount); err != nil {
+		t.Fatalf("read stuck row: %v", err)
+	}
+	if status == "in_progress" {
+		t.Fatalf("expected stuck row to be reaped (status pending or sent), got status=%q", status)
+	}
+	if attemptCount < 1 {
+		t.Fatalf("expected attempt_count to be incremented by reap (>=1), got %d", attemptCount)
 	}
 }

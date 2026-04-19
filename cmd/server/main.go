@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"io/fs"
 	"log"
 	"mime"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/api"
@@ -172,6 +176,18 @@ func main() {
 			c.Set("Cache-Control", "no-store, no-cache, must-revalidate")
 		} else {
 			setAssetCacheHeaders(c, path)
+			// Pass 2.5 HIGH-09: emit ETag + Last-Modified so revalidating
+			// clients get a 304 instead of a 200 + full body. Reduces
+			// bandwidth on every dashboard load past the 5-minute cache
+			// window. Skipped for the dashboard SPA shell HTML (no-store)
+			// and for the SPA fallback path; those need to actually
+			// re-render.
+			etag := computeAssetETag(path, data)
+			c.Set("ETag", etag)
+			c.Set("Last-Modified", startTime.Format(http.TimeFormat))
+			if match := c.Get("If-None-Match"); match != "" && match == etag {
+				return c.SendStatus(304)
+			}
 		}
 		c.Set("Content-Type", contentType(path))
 		return c.Send(data)
@@ -252,6 +268,31 @@ var hashedAssetRe = regexp.MustCompile(`\.[0-9a-f]{8,}\.[a-z0-9]+$`)
 func isHashedAsset(path string) bool {
 	return hashedAssetRe.MatchString(strings.ToLower(path))
 }
+
+// Pass 2.5 HIGH-09 fix: cache content ETags for embed.FS-served assets.
+// Embed.FS contents are immutable per binary, so an ETag computed once
+// per (path, content) is stable for the process lifetime. The map key is
+// the resolved path (e.g. "css/tailwind.css"); the value is the
+// already-formatted ETag header value, e.g. `"sha256-abc123..."`.
+var assetETagCache sync.Map // map[string]string
+
+// computeAssetETag returns the cached ETag for path or computes and
+// caches it from data. Returns the value formatted ready for the
+// `ETag` response header (including the surrounding double quotes).
+func computeAssetETag(path string, data []byte) string {
+	if v, ok := assetETagCache.Load(path); ok {
+		return v.(string)
+	}
+	sum := sha256.Sum256(data)
+	etag := `"sha256-` + base64.RawURLEncoding.EncodeToString(sum[:])[:22] + `"`
+	assetETagCache.Store(path, etag)
+	return etag
+}
+
+// startTime is set at process start; used as Last-Modified for embed.FS
+// assets since the embedded file system has no per-file mtime and the
+// content is immutable per binary.
+var startTime = time.Now().UTC()
 
 // isClientSPAFallback reports whether an unknown path should be served
 // the marketing landing page (200 OK), instead of a real 404. We scope

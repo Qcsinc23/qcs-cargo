@@ -7,6 +7,16 @@ INSERT INTO blog_posts (
 RETURNING *;
 
 -- name: GetBlogPostBySlug :one
+-- Pass 2.5 CRIT-02 fix: public route MUST only return published posts whose
+-- publish time has arrived. Drafts and scheduled posts must not leak to
+-- unauthenticated visitors who guess or harvest a slug.
+SELECT * FROM blog_posts
+WHERE slug = ? AND status = 'published' AND published_at <= CURRENT_TIMESTAMP
+LIMIT 1;
+
+-- name: GetBlogPostBySlugForAdmin :one
+-- Admin preview path: returns blog posts regardless of status/published_at.
+-- MUST only be wired to admin-gated routes.
 SELECT * FROM blog_posts
 WHERE slug = ? LIMIT 1;
 

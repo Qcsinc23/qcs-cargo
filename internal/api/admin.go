@@ -43,6 +43,11 @@ func RegisterAdmin(g fiber.Router) {
 	admin.Get("/unmatched-packages", adminUnmatchedPackages)
 	admin.Patch("/unmatched-packages/:id", adminUnmatchedPackageUpdate)
 	admin.Get("/bookings", adminBookings)
+	// Pass 2.5 CRIT-01 / HIGH-01: lifecycle + payment_status transitions
+	// for bookings live behind RequireAdmin. Customer PATCH /bookings/:id
+	// can only set status to pending/cancelled and cannot touch
+	// payment_status.
+	admin.Patch("/bookings/:id/status", bookingAdminUpdateStatus)
 	admin.Get("/users", adminUsersList)
 	admin.Get("/users/:id", adminUserGet)
 	admin.Patch("/users/:id", adminUserUpdate)

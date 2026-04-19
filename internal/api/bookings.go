@@ -168,6 +168,14 @@ func bookingUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load booking"))
 	}
 
+	// Pass 2.5 CRIT-01 / HIGH-01: customer-facing PATCH must NOT accept
+	// payment_status (only the Stripe webhook or admin reconcile may set it)
+	// and must NOT drive the booking through staff lifecycle states. The
+	// PaymentStatus field has been removed from the body struct entirely so
+	// the JSON decoder simply discards any "payment_status" key sent by a
+	// customer client. Lifecycle transitions beyond pending/cancelled are
+	// gated behind the admin-only PATCH /admin/bookings/:id/status route
+	// (bookingAdminUpdateStatus).
 	var body struct {
 		Status              *string  `json:"status"`
 		SpecialInstructions *string  `json:"special_instructions"`
@@ -177,7 +185,6 @@ func bookingUpdate(c *fiber.Ctx) error {
 		HeightIn            *float64 `json:"height_in"`
 		ValueUSD            *float64 `json:"value_usd"`
 		AddInsurance        *bool    `json:"add_insurance"`
-		PaymentStatus       *string  `json:"payment_status"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -185,10 +192,11 @@ func bookingUpdate(c *fiber.Ctx) error {
 
 	status := existing.Status
 	if body.Status != nil {
-		if !isAllowedBookingStatus(strings.TrimSpace(*body.Status)) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid status"))
+		s := strings.TrimSpace(*body.Status)
+		if !isCustomerWritableBookingStatus(s) {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status must be one of: pending, cancelled (admin-only for other transitions)"))
 		}
-		status = *body.Status
+		status = s
 	}
 	specialInstructions := existing.SpecialInstructions
 	if body.SpecialInstructions != nil {
@@ -260,13 +268,11 @@ func bookingUpdate(c *fiber.Ctx) error {
 		total = price.Total
 	}
 
+	// Pass 2.5 CRIT-01: payment_status is intentionally carried over from the
+	// existing row unchanged. It can only be mutated by the Stripe webhook
+	// (stripe_webhook.go) or an admin via shipRequestReconcile / the new
+	// admin booking status route (bookingAdminUpdateStatus).
 	paymentStatus := existing.PaymentStatus
-	if body.PaymentStatus != nil {
-		if !isAllowedBookingPaymentStatus(strings.TrimSpace(*body.PaymentStatus)) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid payment_status"))
-		}
-		paymentStatus = sql.NullString{String: *body.PaymentStatus, Valid: true}
-	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	b, err := db.Queries().UpdateBooking(c.Context(), gen.UpdateBookingParams{
@@ -368,9 +374,25 @@ func isAllowedBookingTimeSlot(slot string) bool {
 	}
 }
 
+// isAllowedBookingStatus is the full lifecycle set used by admin/staff
+// transitions (bookingAdminUpdateStatus). Customer-facing PATCH must use
+// isCustomerWritableBookingStatus instead — see Pass 2.5 CRIT-01 / HIGH-01.
 func isAllowedBookingStatus(status string) bool {
 	switch status {
 	case "pending", "confirmed", "received", "completed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+// isCustomerWritableBookingStatus is the subset of booking statuses a
+// customer can set on their own booking via PATCH /bookings/:id. Pass 2.5
+// HIGH-01 fix: confirmed/received/completed are staff-driven and must not
+// be reachable by a customer JWT.
+func isCustomerWritableBookingStatus(status string) bool {
+	switch status {
+	case "pending", "cancelled":
 		return true
 	default:
 		return false

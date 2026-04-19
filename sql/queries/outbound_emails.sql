@@ -38,3 +38,16 @@ WHERE id = ?;
 
 -- name: CountOutboundEmailsByStatus :one
 SELECT COUNT(*) FROM outbound_emails WHERE status = ?;
+
+-- name: ReapStuckOutboundEmails :execrows
+-- Pass 2.5 HIGH-10 fix: rows that the worker marked 'in_progress' but
+-- never finished (panic, host crash, kill mid-send) are stuck forever
+-- since ClaimPendingOutboundEmails only sees 'pending'. Reset stale
+-- in_progress rows back to pending and increment attempt_count so the
+-- existing maxOutboundAttempts budget still bounds total retries.
+UPDATE outbound_emails
+SET status = 'pending',
+    attempt_count = attempt_count + 1,
+    scheduled_at = ?,
+    last_error = COALESCE(last_error, '') || ';reaped'
+WHERE status = 'in_progress' AND scheduled_at < ?;
