@@ -134,6 +134,34 @@ func (q *Queries) AdminListBookingsToday(ctx context.Context, scheduledDate stri
 	return items, nil
 }
 
+const adminUpdateBookingStatus = `-- name: AdminUpdateBookingStatus :exec
+UPDATE bookings
+SET status = ?, payment_status = ?, updated_at = ?
+WHERE id = ?
+`
+
+type AdminUpdateBookingStatusParams struct {
+	Status        string         `json:"status"`
+	PaymentStatus sql.NullString `json:"payment_status"`
+	UpdatedAt     string         `json:"updated_at"`
+	ID            string         `json:"id"`
+}
+
+// DEF (Pass 2.5 CRIT-01 / HIGH-01): admin-only lifecycle transition for
+// bookings. Customer-facing bookingUpdate cannot set status beyond
+// pending/cancelled or change payment_status at all. Mirrors the
+// UpdateShipRequestPaymentReconcileForAdmin pattern (id-only WHERE,
+// gated upstream by RequireAdmin in admin.go).
+func (q *Queries) AdminUpdateBookingStatus(ctx context.Context, arg AdminUpdateBookingStatusParams) error {
+	_, err := q.db.ExecContext(ctx, adminUpdateBookingStatus,
+		arg.Status,
+		arg.PaymentStatus,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	return err
+}
+
 const createBooking = `-- name: CreateBooking :one
 INSERT INTO bookings (
     id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
@@ -261,6 +289,52 @@ type GetBookingByIDParams struct {
 
 func (q *Queries) GetBookingByID(ctx context.Context, arg GetBookingByIDParams) (Booking, error) {
 	row := q.db.QueryRowContext(ctx, getBookingByID, arg.ID, arg.UserID)
+	var i Booking
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ConfirmationCode,
+		&i.Status,
+		&i.ServiceType,
+		&i.DestinationID,
+		&i.RecipientID,
+		&i.ScheduledDate,
+		&i.TimeSlot,
+		&i.SpecialInstructions,
+		&i.WeightLbs,
+		&i.LengthIn,
+		&i.WidthIn,
+		&i.HeightIn,
+		&i.ValueUsd,
+		&i.AddInsurance,
+		&i.Subtotal,
+		&i.Discount,
+		&i.Insurance,
+		&i.Total,
+		&i.PaymentStatus,
+		&i.StripePaymentIntentID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getBookingByIDForAdmin = `-- name: GetBookingByIDForAdmin :one
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE id = ?
+`
+
+// DEF (Pass 2.5 CRIT-01 / HIGH-01): admin-only read used to load a booking
+// without scoping by user_id, mirroring GetShipRequestByIDForAdmin. Column
+// list intentionally matches GetBookingByID exactly so handler code can use
+// the same gen.Booking row shape.
+func (q *Queries) GetBookingByIDForAdmin(ctx context.Context, id string) (Booking, error) {
+	row := q.db.QueryRowContext(ctx, getBookingByIDForAdmin, id)
 	var i Booking
 	err := row.Scan(
 		&i.ID,

@@ -8,11 +8,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
@@ -164,6 +166,16 @@ func complianceGDPRCreateRequest(c *fiber.Ctx, changeType string) error {
 		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Authorization required"))
 	}
 
+	// Pass 2.5 MED-18: rate-limit per-user GDPR submissions. Each user
+	// gets 3 GDPR requests per rolling 24h window. The bucket is keyed
+	// on userID (not (userID, changeType)) so a delete-request
+	// immediately followed by another delete-request still spends both
+	// budget slots — the work behind a delete is destructive enough
+	// that rapid repeats are almost certainly accidental or abusive.
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "gdpr_request:"+userID, 3, 24*time.Hour); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "too many GDPR requests; try again later"))
+	}
+
 	requestID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339)
 	payload := fiber.Map{
@@ -174,11 +186,37 @@ func complianceGDPRCreateRequest(c *fiber.Ctx, changeType string) error {
 		"user_id":      userID,
 	}
 
+	// Pass 2.5 CRIT-04 fix: a delete_request must actually erase data,
+	// not merely log intent. Run the same anonymization the customer
+	// would get from /api/v1/account/delete; mark the audit row
+	// 'processed' once it succeeds.
+	if changeType == "delete_request" {
+		deletedEmail := "deleted+" + strings.TrimSpace(userID) + "@qcs.invalid"
+		if err := services.AnonymizeUserData(c.Context(), userID, "Deleted User", deletedEmail); err != nil {
+			log.Printf("[gdpr] anonymize on delete_request user=%s: %v", userID, err)
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to process delete request"))
+		}
+		payload["status"] = "processed"
+		payload["processed_at"] = time.Now().UTC().Format(time.RFC3339)
+	}
+
 	if err := appendResourceVersion(c.Context(), "gdpr_request", requestID, changeType, userID, payload); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create GDPR request"))
 	}
 
 	return c.Status(201).JSON(fiber.Map{"status": "success", "data": payload})
+}
+
+// redactedResourceTypes lists resource_type values whose payload must
+// not be stored verbatim in resource_versions. The GDPR endpoint and any
+// future PII-bearing audit trail belongs here so the audit table itself
+// does not become a permanent backup of the data the user asked to be
+// deleted.
+//
+// Pass 2.5 CRIT-04 fix complement.
+var redactedResourceTypes = map[string]struct{}{
+	"gdpr_request":   {},
+	"cookie_consent": {},
 }
 
 
@@ -352,7 +390,20 @@ WHERE resource_type = ? AND resource_id = ?
 	if nextVersion <= 0 {
 		nextVersion = 1
 	}
-	payloadJSON, err := json.Marshal(payload)
+
+	// Pass 2.5 CRIT-04 fix: redact PII for resource types whose audit
+	// trail must not retain the very data the user is asking to be
+	// erased. We keep the version row itself (so the audit trail of
+	// "request happened" is preserved) but strip the body to a marker.
+	storedPayload := payload
+	if _, redacted := redactedResourceTypes[resourceType]; redacted {
+		storedPayload = map[string]any{
+			"_redacted":   true,
+			"reason":      "pii_excluded_from_audit",
+			"change_type": changeType,
+		}
+	}
+	payloadJSON, err := json.Marshal(storedPayload)
 	if err != nil {
 		return err
 	}

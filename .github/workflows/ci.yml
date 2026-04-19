@@ -43,6 +43,85 @@ jobs:
           echo "go.mod go version: ${{ steps.go_version.outputs.value }}"
           go version
 
+  static-asset-guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [go-version-policy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve Go version from go.mod
+        id: go_version
+        shell: bash
+        run: |
+          if [[ -f go.mod ]]; then
+            version="$(awk '/^go /{print $2; exit}' go.mod)"
+            if [[ -n "$version" ]]; then
+              if [[ "$version" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+                version="${BASH_REMATCH[1]}"
+              fi
+              echo "value=$version" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "value=stable" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.go_version.outputs.value }}
+          check-latest: true
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # Pass 2.5 OPS-01: inline-script regression guard.
+      # The CSP dropped 'unsafe-inline' in Pass 2; any new inline <script>
+      # block in internal/static/**/*.html or web/index.html would silently
+      # break that page in browsers. Fail the build if one reappears.
+      - name: No inline <script> blocks in static HTML
+        shell: bash
+        run: |
+          set -euo pipefail
+          violations=$(python3 -c "
+          import re, glob, sys
+          inline = re.compile(r'<script(?![^>]*\\bsrc=)[^>]*>[\\s\\S]*?</script>')
+          files = sorted(glob.glob('internal/static/**/*.html', recursive=True)) + ['web/index.html']
+          total = 0
+          for f in files:
+              try:
+                  s = open(f).read()
+              except FileNotFoundError:
+                  continue
+              matches = inline.findall(s)
+              if matches:
+                  total += len(matches)
+                  print(f'{f}: {len(matches)} inline <script> block(s)')
+          sys.exit(0 if total == 0 else 1)
+          ")
+          if [ -n "$violations" ]; then
+            echo "$violations"
+            exit 1
+          fi
+      # Pass 2.5 OPS-02: tailwind drift guard.
+      # If a developer adds a new utility class to HTML but doesn't
+      # rebuild internal/static/css/tailwind.css, the rendered page
+      # silently lacks the class. Re-run the build and fail if the
+      # output differs from the committed file.
+      - name: Tailwind CSS is rebuilt
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Tailwind toolchain lives in tools/tailwind/.
+          if [ ! -d tools/tailwind ]; then
+            echo "tools/tailwind not present; skipping"
+            exit 0
+          fi
+          (cd tools/tailwind && npm install --no-fund --no-audit)
+          (cd tools/tailwind && npm run --silent build)
+          if ! git diff --quiet -- internal/static/css/tailwind.css; then
+            echo "::error::internal/static/css/tailwind.css is stale; run 'make assets' and commit the result"
+            git diff --stat -- internal/static/css/tailwind.css
+            exit 1
+          fi
+
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 15

@@ -39,6 +39,22 @@ const (
 
 func RunOutboundEmailJob(ctx context.Context) error {
 	q := db.Queries()
+
+	// Pass 2.5 HIGH-10 fix: reap rows stuck in 'in_progress' for >5min.
+	// The previous worker run may have crashed mid-dispatch; without this
+	// the rows would be invisible to ClaimPendingOutboundEmails forever.
+	reapCutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
+	rescheduleAt := time.Now().UTC().Format(time.RFC3339)
+	if reaped, err := q.ReapStuckOutboundEmails(ctx, gen.ReapStuckOutboundEmailsParams{
+		ScheduledAt:   rescheduleAt,
+		ScheduledAt_2: reapCutoff,
+	}); err != nil {
+		log.Printf("[outbound email] reap stuck rows: %v", err)
+	} else if reaped > 0 {
+		log.Printf("[outbound email] reaped %d stuck row(s)", reaped)
+		middleware.RecordOutboundEmailReaped(int(reaped))
+	}
+
 	rows, err := q.ClaimPendingOutboundEmails(ctx, gen.ClaimPendingOutboundEmailsParams{
 		ScheduledAt: time.Now().UTC().Format(time.RFC3339),
 		Limit:       drainBatchSize,

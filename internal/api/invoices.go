@@ -26,7 +26,16 @@ func invoiceList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list invoices"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	// Pass 2.5 MED-08: bound the response payload size. The sqlc query
+	// does not yet accept LIMIT/OFFSET; cap the slice in Go.
+	page, limit, total, slice := paginateInGo(c, len(list))
+	list = list[slice.start:slice.end]
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func invoiceGetByID(c *fiber.Ctx) error {
@@ -132,15 +141,18 @@ func formatMoney(v float64) string {
 }
 
 func invoiceToMap(inv gen.Invoice) fiber.Map {
+	// Pass 2.5 LOW-02: drop user_id from the response. The route is
+	// already user-scoped by RequireAuth + WHERE user_id = ?, so echoing
+	// the owner's UUID back to the client is gratuitous data exposure
+	// (and a small Insecure-Direct-Object-Reference enumeration risk).
 	m := fiber.Map{
-		"id":              inv.ID,
-		"user_id":         inv.UserID,
-		"invoice_number":  inv.InvoiceNumber,
-		"subtotal":        inv.Subtotal,
-		"tax":             inv.Tax,
-		"total":           inv.Total,
-		"status":          inv.Status,
-		"created_at":      inv.CreatedAt,
+		"id":             inv.ID,
+		"invoice_number": inv.InvoiceNumber,
+		"subtotal":       inv.Subtotal,
+		"tax":            inv.Tax,
+		"total":          inv.Total,
+		"status":         inv.Status,
+		"created_at":     inv.CreatedAt,
 	}
 	if inv.BookingID.Valid {
 		m["booking_id"] = inv.BookingID.String

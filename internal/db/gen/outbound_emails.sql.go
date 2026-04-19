@@ -158,3 +158,30 @@ func (q *Queries) MarkOutboundEmailSent(ctx context.Context, arg MarkOutboundEma
 	_, err := q.db.ExecContext(ctx, markOutboundEmailSent, arg.SentAt, arg.ID)
 	return err
 }
+
+const reapStuckOutboundEmails = `-- name: ReapStuckOutboundEmails :execrows
+UPDATE outbound_emails
+SET status = 'pending',
+    attempt_count = attempt_count + 1,
+    scheduled_at = ?,
+    last_error = COALESCE(last_error, '') || ';reaped'
+WHERE status = 'in_progress' AND scheduled_at < ?
+`
+
+type ReapStuckOutboundEmailsParams struct {
+	ScheduledAt   string `json:"scheduled_at"`
+	ScheduledAt_2 string `json:"scheduled_at_2"`
+}
+
+// Pass 2.5 HIGH-10 fix: rows that the worker marked 'in_progress' but
+// never finished (panic, host crash, kill mid-send) are stuck forever
+// since ClaimPendingOutboundEmails only sees 'pending'. Reset stale
+// in_progress rows back to pending and increment attempt_count so the
+// existing maxOutboundAttempts budget still bounds total retries.
+func (q *Queries) ReapStuckOutboundEmails(ctx context.Context, arg ReapStuckOutboundEmailsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reapStuckOutboundEmails, arg.ScheduledAt, arg.ScheduledAt_2)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

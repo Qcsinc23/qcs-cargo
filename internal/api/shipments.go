@@ -21,7 +21,16 @@ func shipmentList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list shipments"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	// Pass 2.5 MED-08: bound the response payload size. Cap in Go since
+	// the sqlc query does not yet accept LIMIT/OFFSET.
+	page, limit, total, slice := paginateInGo(c, len(list))
+	list = list[slice.start:slice.end]
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func shipmentGetByID(c *fiber.Ctx) error {

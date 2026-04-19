@@ -279,7 +279,7 @@ func SendContactFormSubmission(fromName, fromEmail, subject, body string) error 
 	}
 	subj := "Contact form: QCS Cargo"
 	if subject != "" {
-		subj = "Contact form: " + subject
+		subj = "Contact form: " + sanitizeEmailSubject(subject)
 	}
 	rows := emailInfoRow("From", escapeHTML(fromName)+" &lt;"+escapeHTML(fromEmail)+"&gt;") +
 		emailInfoRow("Subject", escapeHTML(subject))
@@ -361,7 +361,7 @@ func SendServiceComplete(to, serviceName, senderName string) error {
 		emailInfoCard(rows) +
 		emailButton(dashboardLink, "View package", brandBlue)
 
-	html := emailLayout(serviceName+" complete for "+senderName+" package", "Service Complete", body)
+	html := emailLayout(escapeHTML(serviceName)+" complete for "+escapeHTML(senderName)+" package", "Service Complete", body)
 	text := fmt.Sprintf("%s for package from %s is complete.", serviceName, senderName)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -387,7 +387,7 @@ func SendStorageWarning5Days(to, senderName string) error {
 	body := emailParagraph(fmt.Sprintf("Your package from <strong>%s</strong> will begin accruing daily storage fees in <strong>5 days</strong>. Ship or pick up your package before then to avoid charges.", escapeHTML(senderName))) +
 		emailButton(dashboardLink, "Manage package", brandOrange)
 
-	html := emailLayout("Storage fees starting soon for "+senderName+" package", "Storage Reminder", body)
+	html := emailLayout("Storage fees starting soon for "+escapeHTML(senderName)+" package", "Storage Reminder", body)
 	text := fmt.Sprintf("Package from %s starts storage fees in 5 days.", senderName)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -409,7 +409,7 @@ func SendStorageWarning1Day(to, senderName string) error {
 	body := emailParagraph(fmt.Sprintf("Today is the <strong>last day of free storage</strong> for your package from <strong>%s</strong>. Daily fees begin tomorrow.", escapeHTML(senderName))) +
 		emailButton(dashboardLink, "Ship now", brandOrange)
 
-	html := emailLayout("Last day of free storage for "+senderName+" package", "Storage – Final Day", body)
+	html := emailLayout("Last day of free storage for "+escapeHTML(senderName)+" package", "Storage – Final Day", body)
 	text := fmt.Sprintf("Last day of free storage for %s package.", senderName)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -482,7 +482,7 @@ func SendShipRequestPaid(to, code string) error {
 	body := emailParagraph(fmt.Sprintf("Payment received! Your ship request <strong>%s</strong> is confirmed and our warehouse team is preparing your package.", escapeHTML(code))) +
 		emailButton(dashboardLink, "Track ship request", brandBlue)
 
-	html := emailLayout("Ship request "+code+" confirmed", "Ship Request Confirmed", body)
+	html := emailLayout("Ship request "+escapeHTML(code)+" confirmed", "Ship Request Confirmed", body)
 	text := fmt.Sprintf("Ship request %s confirmed! Being prepared.", code)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -507,7 +507,7 @@ func SendShipRequestShipped(to, code, tracking string) error {
 		emailInfoCard(rows) +
 		emailButton(dashboardLink, "Track shipment", brandBlue)
 
-	html := emailLayout("Shipment "+code+" is on its way", "Shipped", body)
+	html := emailLayout("Shipment "+escapeHTML(code)+" is on its way", "Shipped", body)
 	text := fmt.Sprintf("Shipment %s on its way! Tracking: %s", code, tracking)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -530,7 +530,7 @@ func SendShipRequestDelivered(to, code, destination string) error {
 	body := emailParagraph("Great news — your shipment has been delivered!") +
 		emailInfoCard(rows)
 
-	html := emailLayout("Shipment "+code+" delivered", "Delivered", body)
+	html := emailLayout("Shipment "+escapeHTML(code)+" delivered", "Delivered", body)
 	text := fmt.Sprintf("Shipment %s delivered in %s!", code, destination)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -552,7 +552,7 @@ func SendInboundDelivered(to, retailerName string) error {
 	body := emailParagraph(fmt.Sprintf("Your package from <strong>%s</strong> has been delivered to QCS Cargo. It will appear in your locker once our team processes it.", escapeHTML(retailerName))) +
 		emailButton(dashboardLink, "View expected packages", brandBlue)
 
-	html := emailLayout(retailerName+" package delivered to QCS", "Inbound Delivered", body)
+	html := emailLayout(escapeHTML(retailerName)+" package delivered to QCS", "Inbound Delivered", body)
 	text := fmt.Sprintf("%s package delivered to QCS. Check locker shortly.", retailerName)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -574,7 +574,7 @@ func SendCustomsHold(to, code string) error {
 	body := emailParagraph(fmt.Sprintf("Ship request <strong>%s</strong> requires customs documentation before it can proceed. Please review and provide the necessary information.", escapeHTML(code))) +
 		emailButton(dashboardLink, "Resolve customs issue", brandOrange)
 
-	html := emailLayout("Customs attention needed for "+code, "Customs Notice", body)
+	html := emailLayout("Customs attention needed for "+escapeHTML(code), "Customs Notice", body)
 	text := fmt.Sprintf("Ship request %s needs customs attention.", code)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -599,7 +599,7 @@ func SendBookingConfirmed(to, code, date string) error {
 		emailInfoCard(rows) +
 		emailButton(dashboardLink, "View booking", brandBlue)
 
-	html := emailLayout("Booking "+code+" confirmed", "Booking Confirmed", body)
+	html := emailLayout("Booking "+escapeHTML(code)+" confirmed", "Booking Confirmed", body)
 	text := fmt.Sprintf("Booking %s confirmed for %s.", code, date)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -624,7 +624,7 @@ func SendShipmentStatus(to, trackingNumber, status string) error {
 		emailInfoCard(rows) +
 		emailButton(dashboardLink, "View shipment", brandBlue)
 
-	html := emailLayout("Shipment "+trackingNumber+" update: "+status, "Shipment Update", body)
+	html := emailLayout("Shipment "+escapeHTML(trackingNumber)+" update: "+escapeHTML(status), "Shipment Update", body)
 	text := fmt.Sprintf("Shipment %s: now %s", trackingNumber, status)
 
 	_, err := client.Emails.Send(&resend.SendEmailRequest{
@@ -678,6 +678,67 @@ func pluralVerb(n int) string {
 	return "are"
 }
 
+// SendMFAChallengeCode delivers an MFA email-OTP. Pass 2.5 HIGH-02 fix:
+// previously the challenge code was only returned to the client when
+// AllowDebugAuthArtifacts() was true, so production MFA was silently
+// inoperative. Now the code is enqueued via the outbound email worker.
+func SendMFAChallengeCode(to, code string) error {
+	client := resendClient()
+	if client == nil {
+		return nil
+	}
+	body := emailParagraph(fmt.Sprintf(
+		"Your QCS Cargo verification code is <strong>%s</strong>. It expires in 10 minutes. If you did not request this code, you can ignore this email.",
+		escapeHTML(code),
+	))
+	html := emailLayout("Your QCS Cargo verification code", "Verification Code", body)
+	text := fmt.Sprintf("Your QCS Cargo verification code is %s. It expires in 10 minutes.", code)
+
+	_, err := client.Emails.Send(&resend.SendEmailRequest{
+		From:    "QCS Cargo <" + fromAddress() + ">",
+		To:      []string{to},
+		Subject: "Your QCS Cargo verification code",
+		Html:    html,
+		Text:    text,
+	})
+	return err
+}
+
+// Pass 2.5 HIGH-02 registration. Kept in a separate init() so concurrent
+// edits to the original init() block (escapeHTML hardening etc.) don't
+// collide with this one.
+func init() {
+	type mfaChallengePayload struct {
+		Code string `json:"code"`
+	}
+	RegisterEmailTemplate(TemplateMFAChallengeCode, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p mfaChallengePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("mfa_challenge_code payload: %w", err)
+		}
+		return SendMFAChallengeCode(to, p.Code)
+	})
+}
+
+// sanitizeEmailSubject strips control characters (CR/LF/etc.) and caps
+// length so user-supplied content cannot inject mail headers via the
+// Subject field. Pass 2.5 HIGH-08 fix: previously SendContactFormSubmission
+// concatenated the raw user `subject` into the email Subject, depending
+// on the upstream provider to normalize.
+func sanitizeEmailSubject(s string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return -1
+		}
+		return r
+	}, s)
+	cleaned = strings.TrimSpace(cleaned)
+	if len(cleaned) > 200 {
+		cleaned = cleaned[:200]
+	}
+	return cleaned
+}
+
 func escapeHTML(s string) string {
 	var out []byte
 	for i := 0; i < len(s); i++ {
@@ -690,6 +751,8 @@ func escapeHTML(s string) string {
 			out = append(out, '&', 'g', 't', ';')
 		case '"':
 			out = append(out, '&', 'q', 'u', 'o', 't', ';')
+		case '\'':
+			out = append(out, '&', '#', '3', '9', ';')
 		default:
 			out = append(out, s[i])
 		}

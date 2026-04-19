@@ -97,11 +97,40 @@ func (q *Queries) GetBlogPostByID(ctx context.Context, id string) (BlogPost, err
 
 const getBlogPostBySlug = `-- name: GetBlogPostBySlug :one
 SELECT id, slug, title, excerpt, content_md, category, status, published_at, created_at, updated_at FROM blog_posts
+WHERE slug = ? AND status = 'published' AND published_at <= CURRENT_TIMESTAMP
+LIMIT 1
+`
+
+// Pass 2.5 CRIT-02 fix: public route MUST only return published posts whose
+// publish time has arrived. Drafts and scheduled posts must not leak to
+// unauthenticated visitors who guess or harvest a slug.
+func (q *Queries) GetBlogPostBySlug(ctx context.Context, slug string) (BlogPost, error) {
+	row := q.db.QueryRowContext(ctx, getBlogPostBySlug, slug)
+	var i BlogPost
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Title,
+		&i.Excerpt,
+		&i.ContentMd,
+		&i.Category,
+		&i.Status,
+		&i.PublishedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getBlogPostBySlugForAdmin = `-- name: GetBlogPostBySlugForAdmin :one
+SELECT id, slug, title, excerpt, content_md, category, status, published_at, created_at, updated_at FROM blog_posts
 WHERE slug = ? LIMIT 1
 `
 
-func (q *Queries) GetBlogPostBySlug(ctx context.Context, slug string) (BlogPost, error) {
-	row := q.db.QueryRowContext(ctx, getBlogPostBySlug, slug)
+// Admin preview path: returns blog posts regardless of status/published_at.
+// MUST only be wired to admin-gated routes.
+func (q *Queries) GetBlogPostBySlugForAdmin(ctx context.Context, slug string) (BlogPost, error) {
+	row := q.db.QueryRowContext(ctx, getBlogPostBySlugForAdmin, slug)
 	var i BlogPost
 	err := row.Scan(
 		&i.ID,

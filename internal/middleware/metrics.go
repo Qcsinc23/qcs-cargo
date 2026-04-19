@@ -27,6 +27,11 @@ var (
 
 	// DEF-003 + INC-001: outbound email reliability counter.
 	emailSendFailuresTotal *prometheus.CounterVec
+
+	// Pass 2.5 HIGH-10: number of outbound_emails rows reaped from stuck
+	// 'in_progress' state per job run. Non-zero means the previous run
+	// crashed mid-dispatch.
+	outboundEmailReapedTotal *prometheus.CounterVec
 )
 
 func registerMetrics() {
@@ -80,10 +85,17 @@ func registerMetrics() {
 		Help:      "Outbound email send failures by template and reason.",
 	}, []string{"template", "reason"})
 
+	outboundEmailReapedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "qcs",
+		Subsystem: "jobs",
+		Name:      "outbound_email_reaped_total",
+		Help:      "Outbound email rows reaped from stuck in_progress state.",
+	}, []string{})
+
 	prometheus.MustRegister(
 		httpRequestsTotal, httpRequestDurSec, httpRequestsInFly,
 		dailyJobLastSuccess, dailyJobRunsTotal, dailyJobPanicsTotal,
-		emailSendFailuresTotal,
+		emailSendFailuresTotal, outboundEmailReapedTotal,
 	)
 }
 
@@ -129,6 +141,15 @@ func LastSuccessfulJobRun(job string) int64 {
 func RecordEmailSendFailure(template, reason string) {
 	EnsureMetricsRegistered()
 	emailSendFailuresTotal.WithLabelValues(template, reason).Inc()
+}
+
+// RecordOutboundEmailReaped increments the reaped counter by n.
+func RecordOutboundEmailReaped(n int) {
+	if n <= 0 {
+		return
+	}
+	EnsureMetricsRegistered()
+	outboundEmailReapedTotal.WithLabelValues().Add(float64(n))
 }
 
 func normalizedRoute(c *fiber.Ctx) string {

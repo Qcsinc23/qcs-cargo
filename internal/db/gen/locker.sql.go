@@ -612,17 +612,33 @@ func (q *Queries) UpdateLockerPackageStatus(ctx context.Context, arg UpdateLocke
 	return err
 }
 
-const updateLockerPackageStorageBay = `-- name: UpdateLockerPackageStorageBay :exec
-UPDATE locker_packages SET storage_bay = ?, updated_at = ? WHERE id = ?
+const updateLockerPackageStorageBay = `-- name: UpdateLockerPackageStorageBay :execrows
+UPDATE locker_packages
+SET storage_bay = ?, updated_at = ?
+WHERE id = ? AND storage_bay = ?
 `
 
 type UpdateLockerPackageStorageBayParams struct {
-	StorageBay sql.NullString `json:"storage_bay"`
-	UpdatedAt  string         `json:"updated_at"`
-	ID         string         `json:"id"`
+	StorageBay   sql.NullString `json:"storage_bay"`
+	UpdatedAt    string         `json:"updated_at"`
+	ID           string         `json:"id"`
+	StorageBay_2 sql.NullString `json:"storage_bay_2"`
 }
 
-func (q *Queries) UpdateLockerPackageStorageBay(ctx context.Context, arg UpdateLockerPackageStorageBayParams) error {
-	_, err := q.db.ExecContext(ctx, updateLockerPackageStorageBay, arg.StorageBay, arg.UpdatedAt, arg.ID)
-	return err
+// Pass 2.5 HIGH-04 fix: optimistic concurrency check. The handler
+// supplies the bay value the caller expected to find on the row; the
+// UPDATE only succeeds if the row is still in that bay. RowsAffected==0
+// means another staff member moved the package first, and the handler
+// must surface a 409 Conflict so the client can refresh and retry.
+func (q *Queries) UpdateLockerPackageStorageBay(ctx context.Context, arg UpdateLockerPackageStorageBayParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateLockerPackageStorageBay,
+		arg.StorageBay,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.StorageBay_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

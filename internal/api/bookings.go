@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -17,11 +18,17 @@ import (
 )
 
 // RegisterBookings mounts booking routes. All require auth.
+//
+// Pass 2.5 MED-06: POST /bookings is wrapped in IdempotencyMiddleware so
+// a retried request that supplies the same Idempotency-Key header within
+// the cache TTL replays the previously cached response (status + body)
+// instead of creating a duplicate booking row. Other routes are
+// unaffected.
 func RegisterBookings(g fiber.Router) {
 	g.Get("/bookings/time-slots", middleware.RequireAuth, bookingsTimeSlots)
 	g.Get("/bookings", middleware.RequireAuth, bookingList)
 	g.Get("/bookings/:id", middleware.RequireAuth, bookingGetByID)
-	g.Post("/bookings", middleware.RequireAuth, bookingCreate)
+	g.Post("/bookings", middleware.RequireAuth, middleware.IdempotencyMiddleware, bookingCreate)
 	g.Patch("/bookings/:id", middleware.RequireAuth, bookingUpdate)
 	g.Delete("/bookings/:id", middleware.RequireAuth, bookingDelete)
 }
@@ -32,7 +39,18 @@ func bookingList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list bookings"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	// Pass 2.5 MED-08: bound the response payload size. The sqlc query
+	// ListBookingsByUser does not currently accept LIMIT/OFFSET, so we
+	// fetch the user's full set (already user-scoped) and slice in Go.
+	// A future PR can push pagination into the query.
+	page, limit, total, sliced := paginateInGo(c, len(list))
+	list = list[sliced.start:sliced.end]
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func bookingGetByID(c *fiber.Ctx) error {
@@ -105,7 +123,12 @@ func bookingCreate(c *fiber.Ctx) error {
 		if err == sql.ErrNoRows {
 			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient not found or not yours"))
 		}
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		// Pass 2.5 MED-07: do not leak the raw validator error string back
+		// to the customer (it can include internal SQL/driver detail and
+		// unrelated wrapped errors). Log the underlying cause and return a
+		// fixed customer-facing message instead.
+		log.Printf("[booking create] recipient validation user=%s: %v", userID, err)
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient validation failed"))
 	}
 	specialInstructions := sql.NullString{}
 	if body.SpecialInstructions != nil && *body.SpecialInstructions != "" {
@@ -168,6 +191,14 @@ func bookingUpdate(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load booking"))
 	}
 
+	// Pass 2.5 CRIT-01 / HIGH-01: customer-facing PATCH must NOT accept
+	// payment_status (only the Stripe webhook or admin reconcile may set it)
+	// and must NOT drive the booking through staff lifecycle states. The
+	// PaymentStatus field has been removed from the body struct entirely so
+	// the JSON decoder simply discards any "payment_status" key sent by a
+	// customer client. Lifecycle transitions beyond pending/cancelled are
+	// gated behind the admin-only PATCH /admin/bookings/:id/status route
+	// (bookingAdminUpdateStatus).
 	var body struct {
 		Status              *string  `json:"status"`
 		SpecialInstructions *string  `json:"special_instructions"`
@@ -177,7 +208,6 @@ func bookingUpdate(c *fiber.Ctx) error {
 		HeightIn            *float64 `json:"height_in"`
 		ValueUSD            *float64 `json:"value_usd"`
 		AddInsurance        *bool    `json:"add_insurance"`
-		PaymentStatus       *string  `json:"payment_status"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
@@ -185,10 +215,11 @@ func bookingUpdate(c *fiber.Ctx) error {
 
 	status := existing.Status
 	if body.Status != nil {
-		if !isAllowedBookingStatus(strings.TrimSpace(*body.Status)) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid status"))
+		s := strings.TrimSpace(*body.Status)
+		if !isCustomerWritableBookingStatus(s) {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status must be one of: pending, cancelled (admin-only for other transitions)"))
 		}
-		status = *body.Status
+		status = s
 	}
 	specialInstructions := existing.SpecialInstructions
 	if body.SpecialInstructions != nil {
@@ -260,13 +291,11 @@ func bookingUpdate(c *fiber.Ctx) error {
 		total = price.Total
 	}
 
+	// Pass 2.5 CRIT-01: payment_status is intentionally carried over from the
+	// existing row unchanged. It can only be mutated by the Stripe webhook
+	// (stripe_webhook.go) or an admin via shipRequestReconcile / the new
+	// admin booking status route (bookingAdminUpdateStatus).
 	paymentStatus := existing.PaymentStatus
-	if body.PaymentStatus != nil {
-		if !isAllowedBookingPaymentStatus(strings.TrimSpace(*body.PaymentStatus)) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid payment_status"))
-		}
-		paymentStatus = sql.NullString{String: *body.PaymentStatus, Valid: true}
-	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	b, err := db.Queries().UpdateBooking(c.Context(), gen.UpdateBookingParams{
@@ -342,6 +371,42 @@ func boolToInt(v bool) int {
 	return 0
 }
 
+// listSliceRange is the half-open [start, end) slice computed from a
+// caller-supplied page/limit pair. Pass 2.5 MED-08.
+type listSliceRange struct {
+	start int
+	end   int
+}
+
+// paginateInGo computes a page/limit/total triple plus a safe
+// half-open slice window for an in-Go-sliced list endpoint. It is used
+// by handlers whose underlying sqlc query does not yet accept LIMIT
+// /OFFSET — bookings, invoices, shipments, inbound_tracking — to cap
+// the response payload (Pass 2.5 MED-08). Defaults: limit=defaultLimit
+// (20), capped at maxLimit (100); page=1.
+func paginateInGo(c *fiber.Ctx, total int) (page, limit, totalOut int, slice listSliceRange) {
+	limit = c.QueryInt("limit", defaultLimit)
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	page = c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+	if offset >= total {
+		return page, limit, total, listSliceRange{start: 0, end: 0}
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return page, limit, total, listSliceRange{start: offset, end: end}
+}
+
 func validateBookingRecipient(ctx context.Context, userID, destinationID string, recipientID *string) (sql.NullString, error) {
 	if recipientID == nil || strings.TrimSpace(*recipientID) == "" {
 		return sql.NullString{}, nil
@@ -368,9 +433,25 @@ func isAllowedBookingTimeSlot(slot string) bool {
 	}
 }
 
+// isAllowedBookingStatus is the full lifecycle set used by admin/staff
+// transitions (bookingAdminUpdateStatus). Customer-facing PATCH must use
+// isCustomerWritableBookingStatus instead — see Pass 2.5 CRIT-01 / HIGH-01.
 func isAllowedBookingStatus(status string) bool {
 	switch status {
 	case "pending", "confirmed", "received", "completed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+// isCustomerWritableBookingStatus is the subset of booking statuses a
+// customer can set on their own booking via PATCH /bookings/:id. Pass 2.5
+// HIGH-01 fix: confirmed/received/completed are staff-driven and must not
+// be reachable by a customer JWT.
+func isCustomerWritableBookingStatus(status string) bool {
+	switch status {
+	case "pending", "cancelled":
 		return true
 	default:
 		return false

@@ -2,9 +2,12 @@ package api
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
@@ -12,6 +15,24 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+)
+
+// Pass 2.5 MED-02: cap recipients pagination so a malicious or buggy
+// caller cannot ask for an unbounded page size and force a large
+// PII-bearing response.
+const (
+	defaultRecipientLimit = 50
+	maxRecipientLimit     = 200
+)
+
+// Pass 2.5 MED-03 PII length caps for recipient address fields. Mirrors
+// the rules used elsewhere (see services.ValidateName for names).
+const (
+	maxRecipientStreetLen        = 200
+	maxRecipientCityLen          = 200
+	maxRecipientAptLen           = 50
+	maxRecipientPhoneLen         = 30
+	maxRecipientDeliveryInstrLen = 500
 )
 
 // RegisterRecipients mounts recipient CRUD routes. All require auth.
@@ -23,13 +44,79 @@ func RegisterRecipients(g fiber.Router) {
 	g.Delete("/recipients/:id", middleware.RequireAuth, recipientsDelete)
 }
 
+// sanitizeRecipientField trims, length-caps, and rejects HTML
+// metacharacters from a generic free-text PII field (street, city, apt,
+// delivery_instructions). Pass 2.5 MED-03.
+func sanitizeRecipientField(s string, maxLen int, allowAngle bool) (string, error) {
+	s = strings.TrimSpace(s)
+	if len(s) > maxLen {
+		return "", fmt.Errorf("value exceeds max length %d", maxLen)
+	}
+	if !allowAngle && strings.ContainsAny(s, "<>") {
+		return "", errors.New("invalid characters")
+	}
+	return s, nil
+}
+
+// sanitizeRecipientPhone applies a phone-specific length cap and rejects
+// control characters. Format validation is delegated to
+// services.ValidatePhone for non-empty values. Pass 2.5 MED-03.
+func sanitizeRecipientPhone(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if len(s) > maxRecipientPhoneLen {
+		return "", fmt.Errorf("phone exceeds max length %d", maxRecipientPhoneLen)
+	}
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			return "", errors.New("phone contains invalid characters")
+		}
+	}
+	return s, nil
+}
+
 func recipientsList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
+
+	// Pass 2.5 MED-02: pagination caps. The sqlc query
+	// ListRecipientsByUser does not currently accept LIMIT/OFFSET;
+	// rather than introduce a schema/sqlc regen in this scope (which
+	// would conflict with concurrent edits to other sql.go files), we
+	// enforce the cap in Go after fetch. This still bounds the response
+	// payload size for any single request. A future PR should add a
+	// proper :many query with LIMIT/OFFSET parameters.
+	limit := c.QueryInt("limit", defaultRecipientLimit)
+	if limit <= 0 {
+		limit = defaultRecipientLimit
+	}
+	if limit > maxRecipientLimit {
+		limit = maxRecipientLimit
+	}
+	page := c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+
 	list, err := db.Queries().ListRecipientsByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list recipients"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	total := len(list)
+	if offset >= total {
+		list = list[:0]
+	} else {
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		list = list[offset:end]
+	}
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func recipientsGetByID(c *fiber.Ctx) error {
@@ -66,6 +153,45 @@ func recipientsCreate(c *fiber.Ctx) error {
 	if body.Name == "" || body.DestinationID == "" || body.Street == "" || body.City == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name, destination_id, street, and city required"))
 	}
+	// Pass 2.5 MED-03: enforce per-field length + character validation
+	// on every PII field so we cannot persist HTML/JS that would later
+	// render in admin/warehouse UIs.
+	cleanName, err := services.ValidateName(body.Name)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	body.Name = cleanName
+	cleanStreet, err := sanitizeRecipientField(body.Street, maxRecipientStreetLen, false)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "street: "+err.Error()))
+	}
+	if cleanStreet == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "street is required"))
+	}
+	body.Street = cleanStreet
+	cleanCity, err := sanitizeRecipientField(body.City, maxRecipientCityLen, false)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "city: "+err.Error()))
+	}
+	if cleanCity == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "city is required"))
+	}
+	body.City = cleanCity
+	cleanApt, err := sanitizeRecipientField(body.Apt, maxRecipientAptLen, false)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "apt: "+err.Error()))
+	}
+	body.Apt = cleanApt
+	cleanInstr, err := sanitizeRecipientField(body.DeliveryInstructions, maxRecipientDeliveryInstrLen, false)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "delivery_instructions: "+err.Error()))
+	}
+	body.DeliveryInstructions = cleanInstr
+	cleanPhone, err := sanitizeRecipientPhone(body.Phone)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	body.Phone = cleanPhone
 	if err := services.ValidatePhone(body.Phone); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
@@ -148,17 +274,33 @@ func recipientsUpdate(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
+	// Pass 2.5 MED-03 + MED-04: validate every body field that the
+	// caller actually supplied, then verify the *merged* row still has
+	// the NOT NULL fields populated (a PATCH must never blank out a
+	// required column by sending an empty string).
 	name := rec.Name
-	if body.Name != nil && *body.Name != "" {
-		name = *body.Name
+	if body.Name != nil {
+		cleanName, err := services.ValidateName(*body.Name)
+		if err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		}
+		name = cleanName
 	}
 	street := rec.Street
 	if body.Street != nil {
-		street = *body.Street
+		clean, err := sanitizeRecipientField(*body.Street, maxRecipientStreetLen, false)
+		if err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "street: "+err.Error()))
+		}
+		street = clean
 	}
 	city := rec.City
 	if body.City != nil {
-		city = *body.City
+		clean, err := sanitizeRecipientField(*body.City, maxRecipientCityLen, false)
+		if err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "city: "+err.Error()))
+		}
+		city = clean
 	}
 	destID := rec.DestinationID
 	if body.DestinationID != nil && *body.DestinationID != "" {
@@ -167,22 +309,42 @@ func recipientsUpdate(c *fiber.Ctx) error {
 	if err := services.ValidateDestination(destID); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
+	// Pass 2.5 MED-04: post-merge required-field check. The recipients
+	// schema (sql/schema/007_recipients.sql) declares name, street, city
+	// and destination_id NOT NULL; if a PATCH cleared any of them by
+	// passing "" the row would still satisfy SQLite's affinity but
+	// violate our application contract.
+	if name == "" || street == "" || city == "" || destID == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "name, destination_id, street, and city must be non-empty"))
+	}
 	var phone, apt, deliveryInstructions sql.NullString
 	if body.Phone != nil {
-		if err := services.ValidatePhone(*body.Phone); err != nil {
+		cleanPhone, err := sanitizeRecipientPhone(*body.Phone)
+		if err != nil {
 			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 		}
-		phone = nullString(*body.Phone)
+		if err := services.ValidatePhone(cleanPhone); err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		}
+		phone = nullString(cleanPhone)
 	} else {
 		phone = rec.Phone
 	}
 	if body.Apt != nil {
-		apt = nullString(*body.Apt)
+		clean, err := sanitizeRecipientField(*body.Apt, maxRecipientAptLen, false)
+		if err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "apt: "+err.Error()))
+		}
+		apt = nullString(clean)
 	} else {
 		apt = rec.Apt
 	}
 	if body.DeliveryInstructions != nil {
-		deliveryInstructions = nullString(*body.DeliveryInstructions)
+		clean, err := sanitizeRecipientField(*body.DeliveryInstructions, maxRecipientDeliveryInstrLen, false)
+		if err != nil {
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "delivery_instructions: "+err.Error()))
+		}
+		deliveryInstructions = nullString(clean)
 	} else {
 		deliveryInstructions = rec.DeliveryInstructions
 	}
@@ -243,6 +405,18 @@ func recipientsDelete(c *fiber.Ctx) error {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
 	}
 	userID := c.Locals(middleware.CtxUserID).(string)
+	// Pass 2.5 LOW-01: preflight existence check. Without this the
+	// underlying DELETE silently succeeds with 0 rows affected for any
+	// id the caller does not own (or that does not exist), which makes
+	// the endpoint look like it accepts arbitrary ids and gives 200/OK
+	// for no-op deletes. Probe with the existing user-scoped read so a
+	// missing/foreign id returns 404.
+	if _, err := db.Queries().GetRecipientByID(c.Context(), gen.GetRecipientByIDParams{ID: id, UserID: userID}); err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Recipient not found"))
+		}
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load recipient"))
+	}
 	err := db.Queries().DeleteRecipient(c.Context(), gen.DeleteRecipientParams{ID: id, UserID: userID})
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete recipient"))

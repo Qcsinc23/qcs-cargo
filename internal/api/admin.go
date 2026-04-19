@@ -43,6 +43,11 @@ func RegisterAdmin(g fiber.Router) {
 	admin.Get("/unmatched-packages", adminUnmatchedPackages)
 	admin.Patch("/unmatched-packages/:id", adminUnmatchedPackageUpdate)
 	admin.Get("/bookings", adminBookings)
+	// Pass 2.5 CRIT-01 / HIGH-01: lifecycle + payment_status transitions
+	// for bookings live behind RequireAdmin. Customer PATCH /bookings/:id
+	// can only set status to pending/cancelled and cannot touch
+	// payment_status.
+	admin.Patch("/bookings/:id/status", bookingAdminUpdateStatus)
 	admin.Get("/users", adminUsersList)
 	admin.Get("/users/:id", adminUserGet)
 	admin.Patch("/users/:id", adminUserUpdate)
@@ -249,6 +254,12 @@ func adminSystemHealth(c *fiber.Ctx) error {
 	storageFeeLast := middleware.LastSuccessfulJobRun("storage_fee")
 	expiryNotifierLast := middleware.LastSuccessfulJobRun("expiry_notifier")
 
+	// Pass 2.5 OPS-03: surface the failed outbound-email backlog so ops
+	// can monitor it from the admin UI without scraping Prometheus. A
+	// query failure is non-fatal (the rest of system-health is still
+	// useful); we report 0 in that case.
+	failedEmails, _ := db.Queries().CountOutboundEmailsByStatus(c.Context(), "failed")
+
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"status":             status,
@@ -262,6 +273,7 @@ func adminSystemHealth(c *fiber.Ctx) error {
 			"service_queue":      counts.PendingServiceRequestsCount,
 			"unmatched_packages": counts.PendingUnmatchedPackagesCount,
 			"pending_ship_count": counts.PendingShipRequestsCount,
+			"failed_email_count": failedEmails,
 			"jobs": fiber.Map{
 				"storage_fee_last_success_unix":     storageFeeLast,
 				"expiry_notifier_last_success_unix": expiryNotifierLast,
@@ -611,7 +623,7 @@ func adminShipRequestUpdateStatus(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil || body.Status == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status required"))
 	}
-	_, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
+	current, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
@@ -619,13 +631,23 @@ func adminShipRequestUpdateStatus(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	err = db.Queries().AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+	// Pass 2.5 HIGH-04: AdminUpdateShipRequestStatus now requires the
+	// expected current status. This admin override path is a
+	// best-effort transition (admins can patch to any status), so we
+	// pass the just-read status as expected. A 0-row update here means
+	// another writer raced us between read and write; surface that as
+	// 409 so the admin re-reads and decides.
+	rows, err := db.Queries().AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
 		Status:    body.Status,
 		UpdatedAt: now,
 		ID:        id,
+		Status_2:  current.Status,
 	})
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update status"))
+	}
+	if rows == 0 {
+		return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Ship request was modified concurrently; refresh and retry"))
 	}
 	sr, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	adminID := c.Locals(middleware.CtxUserID).(string)

@@ -88,3 +88,26 @@ ORDER BY time_slot, created_at
 LIMIT 100;
 -- name: UpdateBookingStatus :exec
 UPDATE bookings SET status = ?, updated_at = ? WHERE id = ?;
+
+-- name: AdminUpdateBookingStatus :exec
+-- DEF (Pass 2.5 CRIT-01 / HIGH-01): admin-only lifecycle transition for
+-- bookings. Customer-facing bookingUpdate cannot set status beyond
+-- pending/cancelled or change payment_status at all. Mirrors the
+-- UpdateShipRequestPaymentReconcileForAdmin pattern (id-only WHERE,
+-- gated upstream by RequireAdmin in admin.go).
+UPDATE bookings
+SET status = ?, payment_status = ?, updated_at = ?
+WHERE id = ?;
+
+-- name: GetBookingByIDForAdmin :one
+-- DEF (Pass 2.5 CRIT-01 / HIGH-01): admin-only read used to load a booking
+-- without scoping by user_id, mirroring GetShipRequestByIDForAdmin. Column
+-- list intentionally matches GetBookingByID exactly so handler code can use
+-- the same gen.Booking row shape.
+SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+       scheduled_date, time_slot, special_instructions,
+       weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
+       subtotal, discount, insurance, total,
+       payment_status, stripe_payment_intent_id, created_at, updated_at
+FROM bookings
+WHERE id = ?;

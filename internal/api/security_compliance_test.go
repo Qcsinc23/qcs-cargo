@@ -17,6 +17,7 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/api"
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
+	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/Qcsinc23/qcs-cargo/internal/testdata"
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -301,4 +302,195 @@ WHERE id = ? AND user_id = ?
 func hashForTest(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+// TestMFAChallenge_EnqueuesEmail is the HIGH-02 regression test. The
+// challenge handler must enqueue an outbound_emails row with template
+// 'mfa_challenge_code', not silently produce a code the user never sees.
+func TestMFAChallenge_EnqueuesEmail(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	app := setupTestApp(t)
+	aliceToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
+
+	setupBody := []byte(`{"method":"email_otp"}`)
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader(setupBody))
+	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	setupReq.Header.Set("Content-Type", "application/json")
+	setupResp, err := app.Test(setupReq)
+	require.NoError(t, err)
+	defer setupResp.Body.Close()
+	require.Equal(t, http.StatusOK, setupResp.StatusCode, "MFA setup should succeed")
+
+	challengeReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", bytes.NewReader([]byte(`{}`)))
+	challengeReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	challengeReq.Header.Set("Content-Type", "application/json")
+	challengeResp, err := app.Test(challengeReq)
+	require.NoError(t, err)
+	defer challengeResp.Body.Close()
+	require.Equal(t, http.StatusOK, challengeResp.StatusCode)
+
+	var count int
+	err = db.DB().QueryRow(
+		`SELECT COUNT(*) FROM outbound_emails WHERE template = ? AND recipient = ?`,
+		"mfa_challenge_code", "alice@test.com",
+	).Scan(&count)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, count, 1, "MFA challenge must enqueue an outbound_emails row")
+}
+
+// TestMFAVerify_RejectsTOTPMethod asserts that until RFC 6238 verification
+// is implemented, a user enrolled via the "totp" method cannot verify and
+// gets a clear IMPLEMENTATION_PENDING response (not a generic 400/401 that
+// would look like an attacker-suppressed lockout).
+func TestMFAVerify_RejectsTOTPMethod(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	app := setupTestApp(t)
+	aliceToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
+
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader([]byte(`{"method":"totp"}`)))
+	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	setupReq.Header.Set("Content-Type", "application/json")
+	setupResp, err := app.Test(setupReq)
+	require.NoError(t, err)
+	defer setupResp.Body.Close()
+	require.Equal(t, http.StatusOK, setupResp.StatusCode)
+
+	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/verify", bytes.NewReader([]byte(`{"code":"123456"}`)))
+	verifyReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	verifyReq.Header.Set("Content-Type", "application/json")
+	verifyResp, err := app.Test(verifyReq)
+	require.NoError(t, err)
+	defer verifyResp.Body.Close()
+	require.Equal(t, http.StatusNotImplemented, verifyResp.StatusCode)
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(verifyResp.Body).Decode(&body))
+	assert.Equal(t, "IMPLEMENTATION_PENDING", body.Error.Code)
+}
+
+// TestSecurityFeatureFlagsList_RequiresAdmin is the Pass 2.5 MED-17
+// regression. GET /security/feature-flags must be admin-only — a
+// customer JWT must receive 403, not the full list of (potentially
+// pre-release) flag names.
+func TestSecurityFeatureFlagsList_RequiresAdmin(t *testing.T) {
+	app := setupTestApp(t)
+	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/security/feature-flags", nil)
+	req.Header.Set("Authorization", "Bearer "+aliceToken)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	// Sanity: an admin can still list.
+	adminToken := issueAccessTokenForUser(t, testdata.AdminID)
+	adminReq := httptest.NewRequest(http.MethodGet, "/api/v1/security/feature-flags", nil)
+	adminReq.Header.Set("Authorization", "Bearer "+adminToken)
+	adminResp, err := app.Test(adminReq)
+	require.NoError(t, err)
+	defer adminResp.Body.Close()
+	assert.Equal(t, http.StatusOK, adminResp.StatusCode)
+}
+
+// TestGDPRRequest_RateLimited is the Pass 2.5 MED-18 regression. The
+// per-user GDPR submission bucket allows 3 requests per 24h; the 4th
+// must be 429 RATE_LIMITED.
+func TestGDPRRequest_RateLimited(t *testing.T) {
+	app := setupTestApp(t)
+	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/compliance/gdpr/export-request", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		status := resp.StatusCode
+		resp.Body.Close()
+		require.Equal(t, http.StatusCreated, status, "attempt %d should succeed", i+1)
+	}
+
+	limitedReq := httptest.NewRequest(http.MethodPost, "/api/v1/compliance/gdpr/export-request", nil)
+	limitedReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	limitedResp, err := app.Test(limitedReq)
+	require.NoError(t, err)
+	defer limitedResp.Body.Close()
+	assert.Equal(t, http.StatusTooManyRequests, limitedResp.StatusCode)
+}
+
+// TestSecurityMFADisable_PasswordStepUp is the Pass 2.5 MED-20
+// regression. A user who lost access to their MFA OTP delivery method
+// must still be able to disable MFA by presenting their password.
+//
+// The 10s timeout on each app.Test call accommodates bcrypt cost=12
+// compares on slow CI runners (the Fiber default 1s is too tight).
+func TestSecurityMFADisable_PasswordStepUp(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	const testTimeoutMS = 10000
+	app := setupTestApp(t)
+	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	require.NoError(t, services.ChangePassword(context.Background(), testdata.CustomerAliceID, "", "passw0rd-for-test"))
+
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader([]byte(`{"method":"email_otp"}`)))
+	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	setupReq.Header.Set("Content-Type", "application/json")
+	setupResp, err := app.Test(setupReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer setupResp.Body.Close()
+	require.Equal(t, http.StatusOK, setupResp.StatusCode)
+
+	aliceToken = issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	challengeReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", bytes.NewReader([]byte(`{}`)))
+	challengeReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	challengeReq.Header.Set("Content-Type", "application/json")
+	challengeResp, err := app.Test(challengeReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer challengeResp.Body.Close()
+	require.Equal(t, http.StatusOK, challengeResp.StatusCode)
+
+	var challengeBody struct {
+		Data struct {
+			OTPCode string `json:"otp_code"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.NewDecoder(challengeResp.Body).Decode(&challengeBody))
+	require.NotEmpty(t, challengeBody.Data.OTPCode)
+
+	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/verify", bytes.NewReader([]byte(`{"code":"`+challengeBody.Data.OTPCode+`"}`)))
+	verifyReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	verifyReq.Header.Set("Content-Type", "application/json")
+	verifyResp, err := app.Test(verifyReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer verifyResp.Body.Close()
+	require.Equal(t, http.StatusOK, verifyResp.StatusCode)
+
+	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{"password":"definitely-not-it"}`)))
+	badReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	badReq.Header.Set("Content-Type", "application/json")
+	badResp, err := app.Test(badReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer badResp.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, badResp.StatusCode)
+
+	disableReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{"password":"passw0rd-for-test"}`)))
+	disableReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	disableReq.Header.Set("Content-Type", "application/json")
+	disableResp, err := app.Test(disableReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer disableResp.Body.Close()
+	require.Equal(t, http.StatusOK, disableResp.StatusCode)
+
+	repeatReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{}`)))
+	repeatReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	repeatReq.Header.Set("Content-Type", "application/json")
+	repeatResp, err := app.Test(repeatReq, testTimeoutMS)
+	require.NoError(t, err)
+	defer repeatResp.Body.Close()
+	assert.Equal(t, http.StatusOK, repeatResp.StatusCode)
 }

@@ -2,6 +2,7 @@ package services
 
 import (
 	"bufio"
+	"container/list"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -20,6 +21,12 @@ import (
 const (
 	defaultRedisPort    = "6379"
 	defaultRedisTimeout = 2 * time.Second
+
+	// defaultMemoryCacheCap caps the number of entries the in-process
+	// MemoryCache will hold before evicting the least-recently used key.
+	// Pass 2.5 MED-10: previously the map grew without bound, allowing a
+	// hostile or buggy caller to OOM the process by storing distinct keys.
+	defaultMemoryCacheCap = 4096
 )
 
 // Cache is a lightweight abstraction used by API handlers and middleware.
@@ -56,42 +63,73 @@ func NewCacheFromEnv() Cache {
 type memoryItem struct {
 	value     []byte
 	expiresAt time.Time
+	// elem points at this key's node in the LRU list so Get/Set can
+	// reorder in O(1) without scanning.
+	elem *list.Element
 }
 
 // MemoryCache is an in-process cache suitable for single-node deployments.
+//
+// Pass 2.5 MED-10: bounded LRU. The cache caps the number of entries at
+// `cap` (default defaultMemoryCacheCap). Each Set that would push the
+// cache past the cap evicts the least-recently used key first. Each Get
+// promotes the accessed key to the back of the LRU list. The previous
+// implementation grew the map without bound, which let any caller that
+// produced unbounded distinct keys (e.g. cache-keyed by IP, query
+// string, or per-request token) eventually exhaust process memory.
 type MemoryCache struct {
-	mu    sync.RWMutex
-	items map[string]memoryItem
+	mu    sync.Mutex
+	items map[string]*memoryItem
+	lru   *list.List // front = least recently used; back = most recent
+	cap   int
 }
 
 func NewMemoryCache() *MemoryCache {
+	return NewMemoryCacheWithCap(defaultMemoryCacheCap)
+}
+
+// NewMemoryCacheWithCap returns a MemoryCache with an explicit capacity.
+// A non-positive cap falls back to defaultMemoryCacheCap. Exposed for
+// test coverage of the eviction path; production callers should use
+// NewMemoryCache.
+func NewMemoryCacheWithCap(cap int) *MemoryCache {
+	if cap <= 0 {
+		cap = defaultMemoryCacheCap
+	}
 	return &MemoryCache{
-		items: make(map[string]memoryItem),
+		items: make(map[string]*memoryItem),
+		lru:   list.New(),
+		cap:   cap,
 	}
 }
 
 func (m *MemoryCache) Get(_ context.Context, key string) ([]byte, bool, error) {
 	now := time.Now().UTC()
 
-	m.mu.RLock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	item, ok := m.items[key]
-	m.mu.RUnlock()
 	if !ok {
 		return nil, false, nil
 	}
 
 	if !item.expiresAt.IsZero() && now.After(item.expiresAt) {
-		m.mu.Lock()
-		delete(m.items, key)
-		m.mu.Unlock()
+		m.removeLocked(key, item)
 		return nil, false, nil
+	}
+
+	// LRU promotion: most recently accessed entry moves to the back so
+	// the front of the list always points at the eviction candidate.
+	if item.elem != nil {
+		m.lru.MoveToBack(item.elem)
 	}
 
 	return append([]byte(nil), item.value...), true, nil
 }
 
 func (m *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
-	item := memoryItem{
+	item := &memoryItem{
 		value: append([]byte(nil), value...),
 	}
 	if ttl > 0 {
@@ -99,16 +137,69 @@ func (m *MemoryCache) Set(_ context.Context, key string, value []byte, ttl time.
 	}
 
 	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if existing, ok := m.items[key]; ok {
+		existing.value = item.value
+		existing.expiresAt = item.expiresAt
+		if existing.elem != nil {
+			m.lru.MoveToBack(existing.elem)
+		}
+		return nil
+	}
+
+	// Evict until there is room for the new entry. The eviction loop
+	// tolerates corrupt list entries by falling through and shrinking
+	// the map directly if the LRU list is empty for any reason.
+	for len(m.items) >= m.cap {
+		oldest := m.lru.Front()
+		if oldest == nil {
+			break
+		}
+		oldKey, _ := oldest.Value.(string)
+		if oldItem, ok := m.items[oldKey]; ok {
+			m.removeLocked(oldKey, oldItem)
+		} else {
+			m.lru.Remove(oldest)
+		}
+	}
+
+	item.elem = m.lru.PushBack(key)
 	m.items[key] = item
-	m.mu.Unlock()
 	return nil
 }
 
 func (m *MemoryCache) Delete(_ context.Context, key string) error {
 	m.mu.Lock()
-	delete(m.items, key)
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+	if item, ok := m.items[key]; ok {
+		m.removeLocked(key, item)
+	}
 	return nil
+}
+
+// removeLocked drops a key from both the map and the LRU list. Caller
+// must hold m.mu.
+func (m *MemoryCache) removeLocked(key string, item *memoryItem) {
+	if item != nil && item.elem != nil {
+		m.lru.Remove(item.elem)
+	}
+	delete(m.items, key)
+}
+
+// Len reports the current number of cached entries. Primarily used by
+// tests to assert the bounded-cache invariant.
+func (m *MemoryCache) Len() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.items)
+}
+
+// Cap reports the configured maximum number of entries.
+func (m *MemoryCache) Cap() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cap
 }
 
 func (m *MemoryCache) Ping(_ context.Context) error {

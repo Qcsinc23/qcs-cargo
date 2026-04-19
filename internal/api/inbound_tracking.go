@@ -25,7 +25,15 @@ func inboundTrackingList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list inbound tracking"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	// Pass 2.5 MED-08: cap response payload size in Go.
+	page, limit, total, slice := paginateInGo(c, len(list))
+	list = list[slice.start:slice.end]
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func inboundTrackingGetByID(c *fiber.Ctx) error {

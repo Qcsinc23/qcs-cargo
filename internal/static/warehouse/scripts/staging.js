@@ -31,7 +31,10 @@
             // Pass 2 audit fix C-1: HTML-escape bay names, suite codes, etc.
             const esc = window.QCSAdmin.escapeHTML;
             const bayRows = bays.map(b => '<tr class="border-b border-slate-200"><td class="py-2 px-4">' + esc(b.name || b.id) + '</td><td class="py-2 px-4">' + esc(b.zone || '—') + '</td><td class="py-2 px-4">' + esc(b.current_count ?? 0) + ' / ' + esc(b.capacity ?? 0) + '</td></tr>').join('');
-            const pkgRows = packages.map(p => '<tr class="border-b border-slate-200"><td class="py-2 px-4"><input type="checkbox" class="pkg-cb" value="' + esc(p.id) + '"></td><td class="py-2 px-4">' + esc(p.suite_code || '') + '</td><td class="py-2 px-4">' + esc(p.storage_bay || '—') + '</td><td class="py-2 px-4">' + esc(p.id.substring(0, 8) + '…') + '</td></tr>').join('');
+            // Pass 2.5 HIGH-04: stash each package's current bay on the
+            // checkbox via data-bay so the move handler can ship it as
+            // `previous_bay` and the API can reject stale moves.
+            const pkgRows = packages.map(p => '<tr class="border-b border-slate-200"><td class="py-2 px-4"><input type="checkbox" class="pkg-cb" value="' + esc(p.id) + '" data-bay="' + esc(p.storage_bay || '') + '"></td><td class="py-2 px-4">' + esc(p.suite_code || '') + '</td><td class="py-2 px-4">' + esc(p.storage_bay || '—') + '</td><td class="py-2 px-4">' + esc(p.id.substring(0, 8) + '…') + '</td></tr>').join('');
             const baySelect = '<option value="">Select bay</option>' + bays.map(b => '<option value="' + esc(b.id) + '">' + esc(b.name || b.id) + '</option>').join('');
             const main = '<main class="flex-1 p-8"><nav class="mb-4 text-sm text-slate-600"><a href="/warehouse" class="hover:underline">Warehouse</a> / Staging</nav>' +
               '<h1 class="text-3xl font-bold mb-6">Staging Bays</h1>' +
@@ -42,10 +45,35 @@
             document.getElementById('app').innerHTML = '<div class="flex min-h-screen">' + sidebar + main + '</div>';
             document.getElementById('move-btn').onclick = function() {
               const bayId = document.getElementById('move-bay').value;
-              const ids = Array.from(document.querySelectorAll('.pkg-cb:checked')).map(c => c.value);
+              const checked = Array.from(document.querySelectorAll('.pkg-cb:checked'));
+              const ids = checked.map(c => c.value);
               if (!bayId || ids.length === 0) { alert('Select a bay and at least one package'); return; }
-              fetch('/api/v1/warehouse/bays/move', { method: 'POST', headers: auth.headers, body: JSON.stringify({ package_ids: ids, bay_id: bayId }) })
-                .then(r => r.json()).then(j => { if (j.data) { load(); } else alert((j.error && j.error.message) || 'Failed'); });
+              // Pass 2.5 HIGH-04: previous_bay is a single value, so all
+              // selected packages must currently sit in the same source
+              // bay. Reject mixed-bay selections client-side; otherwise
+              // the server would 409 on the first stale row anyway.
+              const bays = checked.map(c => c.getAttribute('data-bay') || '');
+              const previousBay = bays[0];
+              if (!previousBay) { alert('Selected packages are missing a current bay; refresh the page.'); return; }
+              if (!bays.every(b => b === previousBay)) { alert('Pick packages from the same source bay (you selected packages from multiple bays).'); return; }
+              fetch('/api/v1/warehouse/bays/move', {
+                method: 'POST',
+                headers: auth.headers,
+                body: JSON.stringify({ package_ids: ids, to_bay: bayId, previous_bay: previousBay }),
+              }).then(r => {
+                // Pass 2.5 HIGH-04: 409 means another staff member moved
+                // (or status-advanced) one of these packages first. Tell
+                // the operator to refresh instead of silently retrying.
+                if (r.status === 409) {
+                  alert('This page is out of date. Another staff member moved one of these packages. Refresh and try again.');
+                  return null;
+                }
+                return r.json();
+              }).then(j => {
+                if (!j) return;
+                if (j.data) { load(); }
+                else alert((j.error && j.error.message) || 'Failed');
+              });
             };
             bindLogout();
           }).catch(() => { document.getElementById('app').innerHTML = '<div class="p-8">Failed to load.</div>'; });

@@ -317,6 +317,16 @@ func parcelCustomsDocCreate(c *fiber.Ctx) error {
 	if !isAllowedCustomsDocType(body.DocType) {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid doc_type"))
 	}
+	// Pass 2.5 MED-19: closed allowlist on mime_type. Customs preclearance
+	// docs must be PDFs or photos of paper documents — anything else
+	// (HTML, executables, scripts, archives) has no legitimate use here
+	// and would only serve as a way to stash hostile content behind a
+	// trusted-looking storage URL. We accept the empty/missing case as
+	// well so existing clients that omit the field continue to work
+	// (file_url + file_name are still required and validated).
+	if mt := strings.ToLower(strings.TrimSpace(body.MimeType)); mt != "" && !allowedCustomsMIMETypes[mt] {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "mime_type must be one of: application/pdf, image/jpeg, image/png, image/webp"))
+	}
 	if body.SizeBytes < 0 || body.SizeBytes > 25*1024*1024 {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "size_bytes must be between 0 and 25MB"))
 	}
@@ -470,6 +480,15 @@ func parcelDeliverySignatureCapture(c *fiber.Ctx) error {
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	id := uuid.NewString()
+	// Pass 2.5 LOW-06 note: the ON CONFLICT branch deliberately keeps
+	// signatures editable until the parent ship_request reaches a
+	// terminal status (delivered/closed/completed — see the freeze
+	// check above). This supports the legitimate "signature correction"
+	// workflow where the courier captures a name/squiggle, the customer
+	// re-signs cleanly, and the second capture overwrites the first.
+	// Once the ship_request is in a terminal state the freeze check
+	// returns SIGNATURE_LOCKED and the row becomes immutable. Clients
+	// MUST NOT assume the first capture is the final one.
 	if _, err := db.DB().ExecContext(c.Context(), `
 		INSERT INTO delivery_signatures (
 			id, user_id, ship_request_id, signer_name, signature_data, captured_at, created_at, updated_at
@@ -773,4 +792,16 @@ func isAllowedCustomsDocType(t string) bool {
 		return true
 	}
 	return false
+}
+
+// allowedCustomsMIMETypes is the closed allowlist of file content types
+// accepted for customs preclearance uploads. Pass 2.5 MED-19. Keep this
+// list narrow on purpose — every entry that lands here implies we may
+// later hand the bytes to a human reviewer, render a thumbnail, or feed
+// them through PDF tooling, so each new type is a fresh attack surface.
+var allowedCustomsMIMETypes = map[string]bool{
+	"application/pdf": true,
+	"image/jpeg":      true,
+	"image/png":       true,
+	"image/webp":      true,
 }

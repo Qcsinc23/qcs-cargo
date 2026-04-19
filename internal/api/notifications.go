@@ -273,6 +273,14 @@ func notificationsStream(c *fiber.Ctx) error {
 	if err := ensureNotificationSeed(c.Context(), userID); err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to open notification stream"))
 	}
+	// Pass 2.5 MED-15 audit note: the snapshot below echoes title/body
+	// straight from in_app_notifications. Today every writer is
+	// server-internal (createUserNotification called from our own
+	// handlers / workers with admin-curated copy), so no end-user
+	// content flows into this stream and there's nothing to redact.
+	// If a user-to-user or admin-broadcast-with-free-text path is
+	// ever added, redact identifiers (emails, phone numbers, suite
+	// codes, etc.) here before the payload is marshalled.
 	rows, err := db.DB().QueryContext(c.Context(), `
 SELECT id, title, body, level, link_url, read_at, created_at
 FROM in_app_notifications
@@ -335,14 +343,34 @@ func notificationsPushSubscribe(c *fiber.Ctx) error {
 	if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "endpoint and keys are required"))
 	}
+	// Pass 2.5 MED-16: push subscription endpoints are now globally
+	// unique (see migration 20260422120000). Before inserting/updating,
+	// look up whether this endpoint is already owned by a different
+	// account. If so, refuse — silently re-binding it would let an
+	// attacker who lifted another user's endpoint URL hijack their
+	// pushes by re-registering it under their own session. If it's
+	// already this user's row, the ON CONFLICT(endpoint) DO UPDATE
+	// branch refreshes the keys.
+	var existingUserID string
+	err := db.DB().QueryRowContext(c.Context(),
+		`SELECT user_id FROM push_subscriptions WHERE endpoint = ?`,
+		body.Endpoint,
+	).Scan(&existingUserID)
+	if err != nil && err != sql.ErrNoRows {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to verify push subscription"))
+	}
+	if err == nil && existingUserID != userID {
+		return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "endpoint already registered to another account"))
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.DB().ExecContext(c.Context(), `
+	_, err = db.DB().ExecContext(c.Context(), `
 INSERT INTO push_subscriptions (id, user_id, endpoint, p256dh, auth, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(user_id, endpoint) DO UPDATE SET
+ON CONFLICT(endpoint) DO UPDATE SET
     p256dh = excluded.p256dh,
     auth = excluded.auth,
     updated_at = excluded.updated_at
+WHERE push_subscriptions.user_id = excluded.user_id
 `, uuid.NewString(), userID, body.Endpoint, body.Keys.P256dh, body.Keys.Auth, now, now)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to save push subscription"))

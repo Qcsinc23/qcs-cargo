@@ -685,3 +685,34 @@ func ChangePassword(ctx context.Context, userID, currentPassword, newPassword st
 	}
 	return tx.Commit()
 }
+
+// VerifyUserPassword returns (true, nil) if the supplied plaintext
+// password bcrypt-matches the user's stored hash; (false, nil) if the
+// user has no password set or the password does not match; and a
+// non-nil error only on infrastructure failure (DB query failure).
+//
+// It does not throttle, audit, or log; callers are responsible for
+// rate-limiting (use services.CheckAndRecordAuthRequest) and for
+// deciding what to do with a non-match. Pass 2.5 MED-20 introduced
+// this helper for the MFA-disable password step-up alternative; reuse
+// it from any new flow that needs a password proof of presence.
+func VerifyUserPassword(ctx context.Context, userID, password string) (bool, error) {
+	if strings.TrimSpace(userID) == "" || password == "" {
+		return false, nil
+	}
+	var existingHash sql.NullString
+	err := db.DB().QueryRowContext(ctx, `SELECT password_hash FROM users WHERE id = ?`, userID).Scan(&existingHash)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	if !existingHash.Valid || strings.TrimSpace(existingHash.String) == "" {
+		return false, nil
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(existingHash.String), []byte(password)); err != nil {
+		return false, nil
+	}
+	return true, nil
+}

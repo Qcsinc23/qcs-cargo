@@ -3,6 +3,8 @@
 package api_test
 
 import (
+	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -400,4 +402,126 @@ func TestRequireAuth_UsesLiveDBRoleNotJWTClaim(t *testing.T) {
 	)
 	// Drop unused vars to satisfy strict linters.
 	_ = strings.TrimSpace
+}
+
+// seedBookingAlice1 inserts the deterministic BookingAlice1 fixture used by
+// the Pass 2.5 CRIT-01 / HIGH-01 regression tests. testdata.SeedAll does not
+// currently insert any bookings, and this file is the only consumer that
+// needs one, so the insert lives here rather than expanding the shared
+// seed surface.
+func seedBookingAlice1(t *testing.T) {
+	t.Helper()
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := db.DB().Exec(`
+		INSERT INTO bookings (
+			id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
+			scheduled_date, time_slot, weight_lbs, length_in, width_in, height_in,
+			value_usd, add_insurance, subtotal, discount, insurance, total,
+			payment_status, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`,
+		testdata.BookingAlice1, testdata.CustomerAliceID, "BK-PASS25001", "pending",
+		"standard", "guyana", testdata.RecipientGeorgetown,
+		"2099-01-01", "morning", 1.0, 1.0, 1.0, 1.0,
+		10.0, 0, 5.0, 0.0, 0.0, 5.0, "pending", now, now,
+	)
+	require.NoError(t, err)
+}
+
+// TestBookingUpdate_RejectsCustomerPaymentStatus is the CRIT-01 regression
+// test. Customers must not be able to mark themselves "paid" via PATCH.
+// The PATCH /bookings/:id handler now silently drops the payment_status
+// field (struct tag absent), so the request may succeed with 200 — what
+// matters is that the row's payment_status is unchanged.
+func TestBookingUpdate_RejectsCustomerPaymentStatus(t *testing.T) {
+	app := setupTestApp(t)
+	seedBookingAlice1(t)
+	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	payload := []byte(`{"payment_status":"paid"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/bookings/"+testdata.BookingAlice1, bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+aliceToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Handler may return 200 (silently ignoring the field) or 400 (rejecting).
+	// Either is acceptable; what matters is the row's payment_status MUST NOT
+	// have flipped to "paid".
+	var ps sql.NullString
+	err = db.DB().QueryRow(`SELECT payment_status FROM bookings WHERE id = ?`, testdata.BookingAlice1).Scan(&ps)
+	require.NoError(t, err)
+	assert.NotEqual(t, "paid", ps.String, "payment_status must not be customer-writable")
+}
+
+// TestBookingUpdate_RejectsCustomerLifecycleStatus is the HIGH-01 regression
+// test. Customer cannot drive booking through staff workflow states.
+func TestBookingUpdate_RejectsCustomerLifecycleStatus(t *testing.T) {
+	app := setupTestApp(t)
+	seedBookingAlice1(t)
+	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	payload := []byte(`{"status":"completed"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/bookings/"+testdata.BookingAlice1, bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+aliceToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// Belt-and-suspenders: the row must not have advanced to "completed".
+	var status string
+	err = db.DB().QueryRow(`SELECT status FROM bookings WHERE id = ?`, testdata.BookingAlice1).Scan(&status)
+	require.NoError(t, err)
+	assert.NotEqual(t, "completed", status)
+}
+
+// TestBookingAdminUpdateStatus_AllowsAdmin is the positive path for the new
+// admin route added by Pass 2.5: admin can set both status (to any allowed
+// lifecycle value) and payment_status on any user's booking.
+func TestBookingAdminUpdateStatus_AllowsAdmin(t *testing.T) {
+	app := setupTestApp(t)
+	seedBookingAlice1(t)
+	adminToken := issueAccessTokenForUser(t, testdata.AdminID)
+
+	payload := []byte(`{"status":"confirmed","payment_status":"paid"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/bookings/"+testdata.BookingAlice1+"/status", bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var status string
+	var ps sql.NullString
+	err = db.DB().QueryRow(`SELECT status, payment_status FROM bookings WHERE id = ?`, testdata.BookingAlice1).Scan(&status, &ps)
+	require.NoError(t, err)
+	assert.Equal(t, "confirmed", status)
+	assert.Equal(t, "paid", ps.String)
+}
+
+// TestBookingAdminUpdateStatus_NonAdminRejected guards the route gate.
+// A customer JWT must be 403'd by RequireAdmin before any handler logic
+// runs.
+func TestBookingAdminUpdateStatus_NonAdminRejected(t *testing.T) {
+	app := setupTestApp(t)
+	seedBookingAlice1(t)
+	customerToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
+
+	payload := []byte(`{"status":"confirmed","payment_status":"paid"}`)
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/admin/bookings/"+testdata.BookingAlice1+"/status", bytes.NewReader(payload))
+	req.Header.Set("Authorization", "Bearer "+customerToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+
+	var ps sql.NullString
+	err = db.DB().QueryRow(`SELECT payment_status FROM bookings WHERE id = ?`, testdata.BookingAlice1).Scan(&ps)
+	require.NoError(t, err)
+	assert.NotEqual(t, "paid", ps.String, "customer must not flip payment_status via admin route")
 }
