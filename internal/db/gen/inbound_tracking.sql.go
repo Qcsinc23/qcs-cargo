@@ -10,6 +10,17 @@ import (
 	"database/sql"
 )
 
+const countInboundTrackingByUser = `-- name: CountInboundTrackingByUser :one
+SELECT COUNT(*) FROM inbound_tracking WHERE user_id = ?
+`
+
+func (q *Queries) CountInboundTrackingByUser(ctx context.Context, userID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countInboundTrackingByUser, userID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createInboundTracking = `-- name: CreateInboundTracking :one
 INSERT INTO inbound_tracking (id, user_id, carrier, tracking_number, retailer_name, expected_items, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, 'tracking', ?)
@@ -92,10 +103,18 @@ SELECT id, user_id, carrier, tracking_number, retailer_name, expected_items,
 FROM inbound_tracking
 WHERE user_id = ?
 ORDER BY created_at DESC
+LIMIT ? OFFSET ?
 `
 
-func (q *Queries) ListInboundTrackingByUser(ctx context.Context, userID string) ([]InboundTracking, error) {
-	rows, err := q.db.QueryContext(ctx, listInboundTrackingByUser, userID)
+type ListInboundTrackingByUserParams struct {
+	UserID string `json:"user_id"`
+	Limit  int64  `json:"limit"`
+	Offset int64  `json:"offset"`
+}
+
+// Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination.
+func (q *Queries) ListInboundTrackingByUser(ctx context.Context, arg ListInboundTrackingByUserParams) ([]InboundTracking, error) {
+	rows, err := q.db.QueryContext(ctx, listInboundTrackingByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}

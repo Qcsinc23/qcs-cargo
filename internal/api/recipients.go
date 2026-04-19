@@ -76,40 +76,22 @@ func sanitizeRecipientPhone(s string) (string, error) {
 
 func recipientsList(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-
-	// Pass 2.5 MED-02: pagination caps. The sqlc query
-	// ListRecipientsByUser does not currently accept LIMIT/OFFSET;
-	// rather than introduce a schema/sqlc regen in this scope (which
-	// would conflict with concurrent edits to other sql.go files), we
-	// enforce the cap in Go after fetch. This still bounds the response
-	// payload size for any single request. A future PR should add a
-	// proper :many query with LIMIT/OFFSET parameters.
-	limit := c.QueryInt("limit", defaultRecipientLimit)
-	if limit <= 0 {
-		limit = defaultRecipientLimit
-	}
-	if limit > maxRecipientLimit {
-		limit = maxRecipientLimit
-	}
-	page := c.QueryInt("page", 1)
-	if page < 1 {
-		page = 1
-	}
-	offset := (page - 1) * limit
-
-	list, err := db.Queries().ListRecipientsByUser(c.Context(), userID)
+	// Pass 3 HIGH-07: paginate at the SQL layer using the per-endpoint
+	// caps from MED-02 (default 50, max 200) so a malicious caller
+	// cannot widen the page beyond what tests assert.
+	limit, offset := paginationWithCaps(c, defaultRecipientLimit, maxRecipientLimit)
+	page := pageFromOffset(offset, limit)
+	total, err := db.Queries().CountRecipientsByUser(c.Context(), userID)
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list recipients"))
 	}
-	total := len(list)
-	if offset >= total {
-		list = list[:0]
-	} else {
-		end := offset + limit
-		if end > total {
-			end = total
-		}
-		list = list[offset:end]
+	list, err := db.Queries().ListRecipientsByUser(c.Context(), gen.ListRecipientsByUserParams{
+		UserID: userID,
+		Limit:  limit,
+		Offset: offset,
+	})
+	if err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list recipients"))
 	}
 	return c.JSON(fiber.Map{
 		"data":  list,

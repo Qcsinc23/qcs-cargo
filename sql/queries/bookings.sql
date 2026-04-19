@@ -1,4 +1,7 @@
 -- name: ListBookingsByUser :many
+-- Pass 3 HIGH-07: real SQL LIMIT/OFFSET pagination so the handler can
+-- bound the result set in the database instead of fetching the full
+-- user history and slicing the result in Go.
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
        scheduled_date, time_slot, special_instructions,
        weight_lbs, length_in, width_in, height_in, value_usd, add_insurance,
@@ -6,7 +9,11 @@ SELECT id, user_id, confirmation_code, status, service_type, destination_id, rec
        payment_status, stripe_payment_intent_id, created_at, updated_at
 FROM bookings
 WHERE user_id = ?
-ORDER BY scheduled_date DESC, created_at DESC;
+ORDER BY scheduled_date DESC, created_at DESC
+LIMIT ? OFFSET ?;
+
+-- name: CountBookingsByUser :one
+SELECT COUNT(*) FROM bookings WHERE user_id = ?;
 
 -- name: GetBookingByID :one
 SELECT id, user_id, confirmation_code, status, service_type, destination_id, recipient_id,
