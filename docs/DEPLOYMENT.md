@@ -252,3 +252,16 @@ The deploy script will rsync each pre-deploy snapshot (and its `.sha256`) to tha
 
 - Run `make restore-check BACKUP=...` against the most recent backup at least weekly on a non-production host. A backup that has never been restored is a hypothesis, not a backup.
 - Confirm `BACKUP_REMOTE_DEST` continues to receive new snapshots after every deploy by checking the remote directory listing.
+
+### How to provision the operator-side values
+
+Two environment variables on the production host (`/opt/qcs-cargo/.env`) unlock off-host DR and error tracking. Both default to unset; the server tolerates both missing values, but running without them is accepted risk, not zero risk.
+
+- `BACKUP_REMOTE_DEST` — rsync target that receives every pre-deploy snapshot. Any rsync-reachable destination works: another VM, an object-storage gateway, `rsync.net`, or your colocation backup box. Recommended shape: a different host in a different failure domain from the production VM. Once set, `scripts/deploy-production.sh` automatically ships new snapshots on every deploy. Leaving it unset means all snapshots live on the same disk as the database — a single-disk failure is total data loss.
+- `SENTRY_DSN` — Sentry project DSN. Provision a free-tier Sentry project at [sentry.io](https://sentry.io) (no code change required; the `sentry-go` hook is already wired in `cmd/server/main.go`). Copy the DSN from Settings → Projects → Client Keys (DSN) and paste it here. Leaving it unset means Go runtime panics and handler errors are only written to the container log, which requires pulling logs manually to diagnose any production issue.
+
+After editing `.env`, restart the app stack:
+
+```bash
+docker compose -p qcs-cargo --env-file /opt/qcs-cargo/.env -f /opt/qcs-cargo/docker-compose.prod.yml up -d
+```
