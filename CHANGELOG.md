@@ -8,6 +8,9 @@ The format is based on Keep a Changelog, using date-based entries.
 
 ## [2026-04-19]
 
+### Fixed (Hotfix: dashboard stuck on Loading)
+- `QCSPWA.mountLoading` had a Pass 2.5 CRF-006 optimization that deferred the spinner render by 150ms to avoid flashing on fast networks. The deferred timer was never invalidated when the caller subsequently rendered real content, so on fast networks the timer would fire AFTER the dashboard was painted and overwrite it with the spinner; subsequent `setText` calls then no-op'd against the vanished elements. The dashboard appeared permanently stuck on "Loading dashboard...". Fix renders immediately on the loading mount path and bumps the service-worker cache to v7 so existing visitors pick up the corrected shell. Squash of PR #35.
+
 ### Changed (Dashboard UX pass 2)
 - Migrated every remaining signed-in dashboard tab to the shared `QCSPWA` shell introduced in pass 1: `settings`, `settings/notifications`, `settings/security`, `settings/sessions`, `settings/delete-account`, `profile`, `mailbox`, `inbox`, `inbox-detail`, `inbound`, `inbound-detail`, `ship`, `ship-requests`, `ship-request-detail`, `customs`, `shipments`, `shipment-detail`, `bookings`, `booking-detail`, `booking-wizard`, `invoices`, `invoice-detail`, `recipients`, `templates`. Customer now sees one consistent UI after sign-in.
 - `QCSPWA.renderSidebar(activeKey)` is the single source of truth for the customer sidebar; adding or relabeling a tab is now a one-line change in `pwa-shell.js`.
