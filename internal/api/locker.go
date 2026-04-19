@@ -216,6 +216,11 @@ func lockerServiceRequest(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
+	// Pass 2.5 MED-05: cap free-text notes so a caller cannot persist
+	// an unbounded blob into the service_requests table.
+	if len(body.Notes) > 1000 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "notes must be 1000 characters or fewer"))
+	}
 	// PRD 8.4 value-added service types
 	validTypes := map[string]bool{
 		"photo_detail": true, "content_inspection": true, "repackage": true,

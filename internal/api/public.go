@@ -222,7 +222,15 @@ func contactForm(c *fiber.Ctx) error {
 			return c.Status(503).JSON(ErrorResponse{}.withCode("SERVICE_UNAVAILABLE", "Unable to send message. Please try again later."))
 		}
 	} else {
-		log.Printf("[Contact] %s <%s> %s: %s", body.Name, body.Email, body.Subject, body.Message)
+		// Pass 2.5 MED-21: previously the no-Resend fallback dumped the
+		// full submission (name, email, subject, message body) into
+		// stdout, leaking PII into hosting-provider log aggregators.
+		// Production never has access to AllowDebugAuthArtifacts, so the
+		// PII fields are only logged in explicit local/dev/test envs.
+		log.Print("[contact form] submission received (RESEND_API_KEY not set; not delivered)")
+		if services.AllowDebugAuthArtifacts() {
+			log.Printf("[contact form][DEV] name=%q email=%q subject=%q message=%q", body.Name, body.Email, body.Subject, body.Message)
+		}
 	}
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": "Thank you. We will get back to you soon."}})
 }

@@ -31,35 +31,41 @@ func RegisterPlatformOps(g fiber.Router) {
 	admin.Patch("/moderation/:id", adminModerationUpdate)
 }
 
+// platformReadiness is the ops liveness/readiness probe. Pass 2.5 LOW-05
+// trim: the response is intentionally narrow — only the fields a load
+// balancer or external monitor needs to decide "route traffic here / do
+// not". Configuration hints (CDN base URL, app URL) are not ops signals
+// and were leaking deployment topology to anyone who could reach the
+// public probe; they have been removed. To inspect runtime config use
+// the admin-protected /admin/system-health surface.
 func platformReadiness(c *fiber.Ctx) error {
 	dbOK := db.Ping() == nil
 	cacheOK := platformCache.Ping(c.Context()) == nil
 	status := "ready"
-	if !dbOK {
-		status = "degraded"
-	}
 	if !dbOK || !cacheOK {
 		status = "degraded"
 	}
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
-			"status":        status,
-			"db_ok":         dbOK,
-			"cache_ok":      cacheOK,
-			"cache_backend": platformCache.Backend(),
-			"cdn_base_url":  strings.TrimSpace(os.Getenv("CDN_BASE_URL")),
-			"app_url":       strings.TrimSpace(os.Getenv("APP_URL")),
-			"ready_at":      time.Now().UTC().Format(time.RFC3339),
+			"status":   status,
+			"db_ok":    dbOK,
+			"cache_ok": cacheOK,
+			"ready_at": time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 }
 
+// platformRuntime reports the runtime mode of the API process. Pass 2.5
+// LOW-05 trim: the response sticks to runtime *capabilities* (cache
+// backend identity, scaling mode, shared-cache flag) that a sibling
+// service or operator needs to know about. Concrete URLs (CDN, app)
+// are deployment configuration, not runtime mode, and are no longer
+// included.
 func platformRuntime(c *fiber.Ctx) error {
 	sharedCacheEnabled := strings.TrimSpace(os.Getenv("REDIS_URL")) != ""
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"cache_backend":        platformCache.Backend(),
-			"cdn_base_url":         strings.TrimSpace(os.Getenv("CDN_BASE_URL")),
 			"horizontal_scaling":   false,
 			"stateless_api":        false,
 			"shared_cache_enabled": sharedCacheEnabled,

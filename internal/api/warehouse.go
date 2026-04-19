@@ -4,6 +4,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -15,6 +16,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// Pass 2.5 MED-14 fix: warehouseReceiveFromBooking previously trusted
+// body.package_count and pre-allocated + inserted that many locker_package
+// rows in a single transaction. A misconfigured or hostile staff client
+// could request millions of rows, blowing up memory and locking the DB.
+// Cap the per-request fan-out at a sane operational ceiling. 100 is well
+// above any real booking (dozens of cartons at most) but bounds worst-case
+// allocation and tx duration.
+const maxReceiveFromBookingPackages = 100
 
 // Pass 2.5 MED-13 fix: warehouseServiceQueueUpdate previously accepted
 // any string as the new status. The allowlist below mirrors the PRD
@@ -141,7 +151,10 @@ func warehouseLockerReceive(c *fiber.Ctx) error {
 			sender = *body.SenderName
 		}
 		if err := services.SendPackageArrived(user.Email, sender, pkg.WeightLbs.Float64); err != nil {
-			log.Printf("[warehouse] package arrival email failed for user %s locker_package %s: %v", user.ID, pkg.ID, err)
+			// Pass 2.5 LOW-03: de-PII. user.ID + pkg.ID are not strictly
+			// PII but are useful pivots if logs leak. The template name
+			// + outcome is enough for ops without identifying the row.
+			log.Printf("[warehouse] package_arrived email send failed: %v", err)
 		}
 	}
 
@@ -260,6 +273,12 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 	if body.BookingID == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "booking_id required"))
 	}
+	if body.PackageCount < 1 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "package_count must be at least 1"))
+	}
+	if body.PackageCount > maxReceiveFromBookingPackages {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", fmt.Sprintf("package_count must be %d or fewer", maxReceiveFromBookingPackages)))
+	}
 	booking, err := db.Queries().GetBookingByIDOnly(c.Context(), body.BookingID)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -344,7 +363,10 @@ func warehouseReceiveFromBooking(c *fiber.Ctx) error {
 			weight = *body.WeightLbs
 		}
 		if err := services.SendPackageArrived(user.Email, sender, weight); err != nil {
-			log.Printf("[warehouse] booking-receive email failed for booking %s user %s: %v", body.BookingID, user.ID, err)
+			// Pass 2.5 LOW-03: de-PII. Drop booking + user IDs from the
+			// log line so a leaked log doesn't link a notification
+			// failure to a specific customer / booking row.
+			log.Printf("[warehouse] booking_receive email send failed: %v", err)
 		}
 	}
 
@@ -705,6 +727,10 @@ func warehouseExceptionResolve(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load exception"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	// Pass 2.5 LOW-04: previously the switch silently coerced any
+	// unknown action to "matched", which masked client bugs and let a
+	// fuzzed payload quietly resolve an exception. Reject unknown
+	// actions explicitly.
 	status := "matched"
 	if body.Action != nil && *body.Action != "" {
 		switch *body.Action {
@@ -715,7 +741,7 @@ func warehouseExceptionResolve(c *fiber.Ctx) error {
 		case "dispose":
 			status = "disposed"
 		default:
-			status = "matched"
+			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid action; must be 'match', 'return', or 'dispose'"))
 		}
 	}
 	matchedUserID := sql.NullString{}

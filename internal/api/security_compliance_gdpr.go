@@ -166,6 +166,16 @@ func complianceGDPRCreateRequest(c *fiber.Ctx, changeType string) error {
 		return c.Status(401).JSON(ErrorResponse{}.withCode("UNAUTHENTICATED", "Authorization required"))
 	}
 
+	// Pass 2.5 MED-18: rate-limit per-user GDPR submissions. Each user
+	// gets 3 GDPR requests per rolling 24h window. The bucket is keyed
+	// on userID (not (userID, changeType)) so a delete-request
+	// immediately followed by another delete-request still spends both
+	// budget slots — the work behind a delete is destructive enough
+	// that rapid repeats are almost certainly accidental or abusive.
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "gdpr_request:"+userID, 3, 24*time.Hour); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "too many GDPR requests; try again later"))
+	}
+
 	requestID := uuid.NewString()
 	now := time.Now().UTC().Format(time.RFC3339)
 	payload := fiber.Map{

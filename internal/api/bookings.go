@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -17,11 +18,17 @@ import (
 )
 
 // RegisterBookings mounts booking routes. All require auth.
+//
+// Pass 2.5 MED-06: POST /bookings is wrapped in IdempotencyMiddleware so
+// a retried request that supplies the same Idempotency-Key header within
+// the cache TTL replays the previously cached response (status + body)
+// instead of creating a duplicate booking row. Other routes are
+// unaffected.
 func RegisterBookings(g fiber.Router) {
 	g.Get("/bookings/time-slots", middleware.RequireAuth, bookingsTimeSlots)
 	g.Get("/bookings", middleware.RequireAuth, bookingList)
 	g.Get("/bookings/:id", middleware.RequireAuth, bookingGetByID)
-	g.Post("/bookings", middleware.RequireAuth, bookingCreate)
+	g.Post("/bookings", middleware.RequireAuth, middleware.IdempotencyMiddleware, bookingCreate)
 	g.Patch("/bookings/:id", middleware.RequireAuth, bookingUpdate)
 	g.Delete("/bookings/:id", middleware.RequireAuth, bookingDelete)
 }
@@ -32,7 +39,18 @@ func bookingList(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list bookings"))
 	}
-	return c.JSON(fiber.Map{"data": list})
+	// Pass 2.5 MED-08: bound the response payload size. The sqlc query
+	// ListBookingsByUser does not currently accept LIMIT/OFFSET, so we
+	// fetch the user's full set (already user-scoped) and slice in Go.
+	// A future PR can push pagination into the query.
+	page, limit, total, sliced := paginateInGo(c, len(list))
+	list = list[sliced.start:sliced.end]
+	return c.JSON(fiber.Map{
+		"data":  list,
+		"page":  page,
+		"limit": limit,
+		"total": total,
+	})
 }
 
 func bookingGetByID(c *fiber.Ctx) error {
@@ -105,7 +123,12 @@ func bookingCreate(c *fiber.Ctx) error {
 		if err == sql.ErrNoRows {
 			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient not found or not yours"))
 		}
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+		// Pass 2.5 MED-07: do not leak the raw validator error string back
+		// to the customer (it can include internal SQL/driver detail and
+		// unrelated wrapped errors). Log the underlying cause and return a
+		// fixed customer-facing message instead.
+		log.Printf("[booking create] recipient validation user=%s: %v", userID, err)
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "recipient validation failed"))
 	}
 	specialInstructions := sql.NullString{}
 	if body.SpecialInstructions != nil && *body.SpecialInstructions != "" {
@@ -346,6 +369,42 @@ func boolToInt(v bool) int {
 		return 1
 	}
 	return 0
+}
+
+// listSliceRange is the half-open [start, end) slice computed from a
+// caller-supplied page/limit pair. Pass 2.5 MED-08.
+type listSliceRange struct {
+	start int
+	end   int
+}
+
+// paginateInGo computes a page/limit/total triple plus a safe
+// half-open slice window for an in-Go-sliced list endpoint. It is used
+// by handlers whose underlying sqlc query does not yet accept LIMIT
+// /OFFSET — bookings, invoices, shipments, inbound_tracking — to cap
+// the response payload (Pass 2.5 MED-08). Defaults: limit=defaultLimit
+// (20), capped at maxLimit (100); page=1.
+func paginateInGo(c *fiber.Ctx, total int) (page, limit, totalOut int, slice listSliceRange) {
+	limit = c.QueryInt("limit", defaultLimit)
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	page = c.QueryInt("page", 1)
+	if page < 1 {
+		page = 1
+	}
+	offset := (page - 1) * limit
+	if offset >= total {
+		return page, limit, total, listSliceRange{start: 0, end: 0}
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return page, limit, total, listSliceRange{start: offset, end: end}
 }
 
 func validateBookingRecipient(ctx context.Context, userID, destinationID string, recipientID *string) (sql.NullString, error) {

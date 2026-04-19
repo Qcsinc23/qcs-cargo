@@ -16,6 +16,15 @@ import (
 // have been issued recently for the same account or IP. Pass 2 audit fix M-4.
 var ErrAuthRequestThrottled = errors.New("too many requests; try again later")
 
+// authThrottleBucketVolumeCap is the maximum number of historical rows
+// retained per bucket. The 24h age-based prune already bounds the table
+// over time, but a single misbehaving bucket (e.g. a script hammering one
+// email address) could still write tens of thousands of rows inside a
+// single 24h window. Pass 2.5 MED-11: when a bucket exceeds this volume
+// inside the transaction we keep only the most recent rows so the
+// table remains compact even under burst-attack conditions.
+const authThrottleBucketVolumeCap = 1000
+
 // CheckAndRecordAuthRequest enforces a per-bucket sliding window. Returns
 // ErrAuthRequestThrottled if the bucket has exceeded `maxAttempts` within
 // `window`; otherwise records the attempt and returns nil.
@@ -78,6 +87,38 @@ func CheckAndRecordAuthRequest(ctx context.Context, bucket string, maxAttempts i
 	}
 	if count >= maxAttempts {
 		return ErrAuthRequestThrottled
+	}
+
+	// Pass 2.5 MED-11: per-bucket volume cap. A single bucket that has
+	// accumulated more than authThrottleBucketVolumeCap rows (across the
+	// 24h retention window or any caller-supplied window longer than
+	// the per-call rate window) gets pruned down to the most recent
+	// rows. Run the bucket-wide COUNT only when the windowed count is
+	// already non-trivial so we do not pay for the extra scan on every
+	// happy-path request.
+	if count > 0 {
+		var bucketTotal int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM auth_request_log WHERE bucket = ?`,
+			bucket,
+		).Scan(&bucketTotal); err != nil {
+			return ErrAuthRequestThrottled
+		}
+		if bucketTotal > authThrottleBucketVolumeCap {
+			if _, err := tx.ExecContext(ctx,
+				`DELETE FROM auth_request_log
+				 WHERE bucket = ?
+				   AND id NOT IN (
+				       SELECT id FROM auth_request_log
+				       WHERE bucket = ?
+				       ORDER BY created_at DESC
+				       LIMIT ?
+				   )`,
+				bucket, bucket, authThrottleBucketVolumeCap,
+			); err != nil {
+				return ErrAuthRequestThrottled
+			}
+		}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)

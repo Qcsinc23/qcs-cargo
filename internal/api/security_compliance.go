@@ -32,7 +32,15 @@ func RegisterSecurityCompliance(g fiber.Router) {
 	security.Post("/api-keys/:id/revoke", middleware.RequireAuth, securityAPIKeyRevoke)
 	security.Post("/api-keys/:id/rotate", middleware.RequireAuth, securityAPIKeyRotate)
 
-	security.Get("/feature-flags", middleware.RequireAuth, securityFeatureFlagsList)
+	// Pass 2.5 MED-17: feature flags expose enable/rollout state for
+	// every server-side flag (including ones gated to staff/admin
+	// surfaces). The list endpoint must be admin-only so a customer
+	// cannot enumerate which features exist or read rollout percentages
+	// that hint at unreleased behaviour. The :key GET remains broadly
+	// readable so feature checks from authenticated clients still work
+	// (rollout_percent is the public surface those clients already act
+	// on); the PUT remains admin-only.
+	security.Get("/feature-flags", middleware.RequireAuth, middleware.RequireAdmin, securityFeatureFlagsList)
 	security.Get("/feature-flags/:key", middleware.RequireAuth, securityFeatureFlagGet)
 	security.Put("/feature-flags/:key", middleware.RequireAuth, middleware.RequireAdmin, securityFeatureFlagSet)
 
@@ -277,6 +285,14 @@ WHERE user_id = ?
 // unused OTP code (within the same 10-minute challenge window the user just
 // completed) so a brief session compromise cannot silently strip MFA from
 // the victim account. If MFA was never enabled the call is a no-op.
+//
+// Pass 2.5 MED-20: accept an alternative password step-up. If the caller
+// supplies a non-empty `password` field and the user has a stored
+// password hash, a successful bcrypt comparison authorises the disable
+// just like a current OTP would. This unblocks users who lost access to
+// their MFA method (e.g. inbox compromised, OTP delivery broken) and
+// can still prove account ownership with their password. Falls back to
+// the OTP path when password is absent or the user has no password set.
 func securityMFADisable(c *fiber.Ctx) error {
 	userID := currentUserID(c)
 	if userID == "" {
@@ -284,15 +300,18 @@ func securityMFADisable(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		Code string `json:"code"`
+		Code     string `json:"code"`
+		Password string `json:"password"`
 	}
 	if err := c.BodyParser(&body); err != nil && len(c.Body()) > 0 {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
 	code := strings.TrimSpace(body.Code)
+	password := body.Password // intentionally NOT trimmed; passwords may have leading/trailing spaces
 
 	// Look up MFA state. If the user has no row or MFA is disabled there is
-	// nothing to do (idempotent). If MFA is enabled we require a current OTP.
+	// nothing to do (idempotent). If MFA is enabled we require a current OTP
+	// or a valid password (MED-20).
 	var (
 		mfaEnabled              int
 		otpHash, otpExpiresAtNS sql.NullString
@@ -310,19 +329,35 @@ WHERE user_id = ?
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to disable MFA"))
 	}
 
-	if code == "" {
-		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "current MFA code required to disable MFA"))
-	}
-	if !otpHash.Valid || strings.TrimSpace(otpHash.String) == "" {
-		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "no active MFA challenge; request a new code"))
-	}
-	if otpExpiresAtNS.Valid && strings.TrimSpace(otpExpiresAtNS.String) != "" {
-		if exp, parseErr := time.Parse(time.RFC3339, otpExpiresAtNS.String); parseErr == nil && time.Now().UTC().After(exp) {
-			return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "MFA code expired; request a new code"))
+	// Pass 2.5 MED-20: try password step-up first when supplied. We
+	// compare against the user's stored bcrypt hash. A successful match
+	// is sufficient to authorise the disable; we then skip the OTP
+	// branch entirely. A supplied-but-wrong password falls through to
+	// the OTP path so we don't reveal whether the password was correct.
+	passwordVerified := false
+	if password != "" {
+		ok, vErr := services.VerifyUserPassword(c.Context(), userID, password)
+		if vErr != nil {
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to disable MFA"))
 		}
+		passwordVerified = ok
 	}
-	if hashString(code) != strings.TrimSpace(otpHash.String) {
-		return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_INVALID", "invalid MFA code"))
+
+	if !passwordVerified {
+		if code == "" {
+			return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "current MFA code or password required to disable MFA"))
+		}
+		if !otpHash.Valid || strings.TrimSpace(otpHash.String) == "" {
+			return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "no active MFA challenge; request a new code"))
+		}
+		if otpExpiresAtNS.Valid && strings.TrimSpace(otpExpiresAtNS.String) != "" {
+			if exp, parseErr := time.Parse(time.RFC3339, otpExpiresAtNS.String); parseErr == nil && time.Now().UTC().After(exp) {
+				return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_REQUIRED", "MFA code expired; request a new code"))
+			}
+		}
+		if hashString(code) != strings.TrimSpace(otpHash.String) {
+			return c.Status(401).JSON(ErrorResponse{}.withCode("MFA_INVALID", "invalid MFA code"))
+		}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
