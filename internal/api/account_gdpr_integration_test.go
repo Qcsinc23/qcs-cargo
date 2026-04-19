@@ -3,6 +3,7 @@
 package api_test
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -94,6 +95,25 @@ func TestAccountDelete_AnonymizesAllUserScopedTables(t *testing.T) {
 	if err == nil {
 		assert.Equal(t, "[deleted]", anySender)
 	}
+
+	// Pass 3 HIGH-01: the audit row must be written in the SAME tx
+	// as the scrub. After commit it must be visible in admin_activity
+	// with the canonical "auth.account.delete" event type.
+	var auditCount int
+	require.NoError(t, db.DB().QueryRow(
+		`SELECT COUNT(*) FROM admin_activity WHERE actor_id = ? AND action = ?`,
+		testdata.CustomerAliceID, "auth.account.delete",
+	).Scan(&auditCount))
+	assert.Equal(t, 1, auditCount, "exactly one auth.account.delete audit row must be written in the same tx as the anonymization")
+
+	// Pass 3 CRIT-01: extended scrub coverage. Spot-check a handful of
+	// the newly-covered tables that we know the seed populates so the
+	// regression cannot recur.
+	var siNotes sql.NullString
+	require.NoError(t, db.DB().QueryRow(
+		`SELECT notes FROM service_requests WHERE user_id = ? LIMIT 1`, testdata.CustomerAliceID,
+	).Scan(&siNotes))
+	assert.False(t, siNotes.Valid, "service_requests.notes must be NULL for deleted user")
 }
 
 // TestComplianceGDPRDeleteRequest_ProcessedSynchronously is the CRIT-04
@@ -127,6 +147,15 @@ func TestComplianceGDPRDeleteRequest_ProcessedSynchronously(t *testing.T) {
 	).Scan(&name, &email))
 	assert.Equal(t, "Deleted User", name)
 	assert.Contains(t, email, "deleted+")
+
+	// Pass 3 HIGH-01: a "gdpr.delete_request.processed" audit row
+	// must be written in the SAME tx as the scrub.
+	var auditCount int
+	require.NoError(t, db.DB().QueryRow(
+		`SELECT COUNT(*) FROM admin_activity WHERE actor_id = ? AND action = ?`,
+		testdata.CustomerBobID, "gdpr.delete_request.processed",
+	).Scan(&auditCount))
+	assert.Equal(t, 1, auditCount, "exactly one gdpr.delete_request.processed audit row must be present")
 }
 
 // TestAppendResourceVersion_RedactsGDPRPayload is the audit-redaction
