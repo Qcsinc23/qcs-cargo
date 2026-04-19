@@ -302,3 +302,71 @@ func hashForTest(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
+
+// TestMFAChallenge_EnqueuesEmail is the HIGH-02 regression test. The
+// challenge handler must enqueue an outbound_emails row with template
+// 'mfa_challenge_code', not silently produce a code the user never sees.
+func TestMFAChallenge_EnqueuesEmail(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	app := setupTestApp(t)
+	aliceToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
+
+	setupBody := []byte(`{"method":"email_otp"}`)
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader(setupBody))
+	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	setupReq.Header.Set("Content-Type", "application/json")
+	setupResp, err := app.Test(setupReq)
+	require.NoError(t, err)
+	defer setupResp.Body.Close()
+	require.Equal(t, http.StatusOK, setupResp.StatusCode, "MFA setup should succeed")
+
+	challengeReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", bytes.NewReader([]byte(`{}`)))
+	challengeReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	challengeReq.Header.Set("Content-Type", "application/json")
+	challengeResp, err := app.Test(challengeReq)
+	require.NoError(t, err)
+	defer challengeResp.Body.Close()
+	require.Equal(t, http.StatusOK, challengeResp.StatusCode)
+
+	var count int
+	err = db.DB().QueryRow(
+		`SELECT COUNT(*) FROM outbound_emails WHERE template = ? AND recipient = ?`,
+		"mfa_challenge_code", "alice@test.com",
+	).Scan(&count)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, count, 1, "MFA challenge must enqueue an outbound_emails row")
+}
+
+// TestMFAVerify_RejectsTOTPMethod asserts that until RFC 6238 verification
+// is implemented, a user enrolled via the "totp" method cannot verify and
+// gets a clear IMPLEMENTATION_PENDING response (not a generic 400/401 that
+// would look like an attacker-suppressed lockout).
+func TestMFAVerify_RejectsTOTPMethod(t *testing.T) {
+	t.Setenv("APP_ENV", "test")
+	app := setupTestApp(t)
+	aliceToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
+
+	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader([]byte(`{"method":"totp"}`)))
+	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	setupReq.Header.Set("Content-Type", "application/json")
+	setupResp, err := app.Test(setupReq)
+	require.NoError(t, err)
+	defer setupResp.Body.Close()
+	require.Equal(t, http.StatusOK, setupResp.StatusCode)
+
+	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/verify", bytes.NewReader([]byte(`{"code":"123456"}`)))
+	verifyReq.Header.Set("Authorization", "Bearer "+aliceToken)
+	verifyReq.Header.Set("Content-Type", "application/json")
+	verifyResp, err := app.Test(verifyReq)
+	require.NoError(t, err)
+	defer verifyResp.Body.Close()
+	require.Equal(t, http.StatusNotImplemented, verifyResp.StatusCode)
+
+	var body struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.NewDecoder(verifyResp.Body).Decode(&body))
+	assert.Equal(t, "IMPLEMENTATION_PENDING", body.Error.Code)
+}

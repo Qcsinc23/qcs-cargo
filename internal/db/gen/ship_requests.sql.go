@@ -97,19 +97,35 @@ func (q *Queries) AdminListShipRequests(ctx context.Context, arg AdminListShipRe
 	return items, nil
 }
 
-const adminUpdateShipRequestStatus = `-- name: AdminUpdateShipRequestStatus :exec
-UPDATE ship_requests SET status = ?, updated_at = ? WHERE id = ?
+const adminUpdateShipRequestStatus = `-- name: AdminUpdateShipRequestStatus :execrows
+UPDATE ship_requests
+SET status = ?, updated_at = ?
+WHERE id = ? AND status = ?
 `
 
 type AdminUpdateShipRequestStatusParams struct {
 	Status    string `json:"status"`
 	UpdatedAt string `json:"updated_at"`
 	ID        string `json:"id"`
+	Status_2  string `json:"status_2"`
 }
 
-func (q *Queries) AdminUpdateShipRequestStatus(ctx context.Context, arg AdminUpdateShipRequestStatusParams) error {
-	_, err := q.db.ExecContext(ctx, adminUpdateShipRequestStatus, arg.Status, arg.UpdatedAt, arg.ID)
-	return err
+// Pass 2.5 HIGH-04 fix: optimistic concurrency check. The caller passes
+// the status the row is expected to be in; the UPDATE only commits if
+// the row is still in that status. RowsAffected==0 indicates another
+// staff member already advanced the workflow (or the admin override
+// callers should pre-read and pass the current status as expected).
+func (q *Queries) AdminUpdateShipRequestStatus(ctx context.Context, arg AdminUpdateShipRequestStatusParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, adminUpdateShipRequestStatus,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.Status_2,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const createShipRequest = `-- name: CreateShipRequest :one

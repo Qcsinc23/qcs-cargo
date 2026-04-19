@@ -105,8 +105,15 @@ SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, ser
 FROM ship_requests
 WHERE id = ?;
 
--- name: AdminUpdateShipRequestStatus :exec
-UPDATE ship_requests SET status = ?, updated_at = ? WHERE id = ?;
+-- name: AdminUpdateShipRequestStatus :execrows
+-- Pass 2.5 HIGH-04 fix: optimistic concurrency check. The caller passes
+-- the status the row is expected to be in; the UPDATE only commits if
+-- the row is still in that status. RowsAffected==0 indicates another
+-- staff member already advanced the workflow (or the admin override
+-- callers should pre-read and pass the current status as expected).
+UPDATE ship_requests
+SET status = ?, updated_at = ?
+WHERE id = ? AND status = ?;
 
 -- name: UpdateShipRequestConsolidatedWeight :exec
 UPDATE ship_requests SET consolidated_weight_lbs = ?, updated_at = ? WHERE id = ?;

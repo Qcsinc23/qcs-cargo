@@ -1,6 +1,7 @@
 package api
 
 import (
+	"log"
 	"strings"
 	"time"
 
@@ -51,29 +52,19 @@ func accountDeactivate(c *fiber.Ctx) error {
 }
 
 // accountDelete anonymizes user PII and marks account deleted (GDPR-style soft deletion).
+//
+// Pass 2.5 CRIT-03 fix: the previous implementation only called
+// AnonymizeUserForDeletion, which touched only the users row — every
+// other PII-bearing table (recipients, locker_packages, ship_requests,
+// bookings, customs docs, signatures, photos, etc.) was left intact,
+// making the customer-facing "personal data anonymized" message
+// materially false. We now delegate to services.AnonymizeUserData,
+// which scrubs/deletes all user-scoped PII in a single transaction.
 func accountDelete(c *fiber.Ctx) error {
 	userID := c.Locals(middleware.CtxUserID).(string)
-	now := time.Now().UTC().Format(time.RFC3339)
 
-	tx, err := db.DB().BeginTx(c.Context(), nil)
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	qtx := db.Queries().WithTx(tx)
-	if err := qtx.AnonymizeUserForDeletion(c.Context(), gen.AnonymizeUserForDeletionParams{
-		Name:      deletedUserName,
-		Email:     deletedEmailForUser(userID),
-		UpdatedAt: now,
-		ID:        userID,
-	}); err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
-	}
-	if err := qtx.DeleteSessionsByUser(c.Context(), userID); err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
-	}
-	if err := tx.Commit(); err != nil {
+	if err := services.AnonymizeUserData(c.Context(), userID, deletedUserName, deletedEmailForUser(userID)); err != nil {
+		log.Printf("[account delete] AnonymizeUserData user=%s: %v", userID, err)
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to delete account"))
 	}
 

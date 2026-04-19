@@ -99,8 +99,15 @@ WHERE (? = '' OR user_id = ?)
 ORDER BY arrived_at DESC
 LIMIT ? OFFSET ?;
 
--- name: UpdateLockerPackageStorageBay :exec
-UPDATE locker_packages SET storage_bay = ?, updated_at = ? WHERE id = ?;
+-- name: UpdateLockerPackageStorageBay :execrows
+-- Pass 2.5 HIGH-04 fix: optimistic concurrency check. The handler
+-- supplies the bay value the caller expected to find on the row; the
+-- UPDATE only succeeds if the row is still in that bay. RowsAffected==0
+-- means another staff member moved the package first, and the handler
+-- must surface a 409 Conflict so the client can refresh and retry.
+UPDATE locker_packages
+SET storage_bay = ?, updated_at = ?
+WHERE id = ? AND storage_bay = ?;
 
 -- name: UpdateLockerPackageStatus :exec
 UPDATE locker_packages SET status = ?, updated_at = ? WHERE id = ?;

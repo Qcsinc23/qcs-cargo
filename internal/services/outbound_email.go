@@ -39,6 +39,11 @@ const (
 	TemplateStorageFinalNotice EmailTemplate = "storage_final_notice"
 	TemplateStorageFeeCharged  EmailTemplate = "storage_fee_charged"
 	TemplateShipRequestPaid    EmailTemplate = "ship_request_paid"
+	// Pass 2.5 HIGH-02: MFA challenge codes were never delivered in
+	// production because the handler only returned the OTP to the client
+	// in dev/test (AllowDebugAuthArtifacts). Enqueue via this template so
+	// the outbound worker dispatches the code over Resend.
+	TemplateMFAChallengeCode EmailTemplate = "mfa_challenge_code"
 )
 
 // templateSender renders + sends a queued email from its JSON payload.

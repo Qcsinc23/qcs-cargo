@@ -5,6 +5,7 @@ package api
 import (
 	"database/sql"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
@@ -14,6 +15,21 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
+
+// Pass 2.5 MED-13 fix: warehouseServiceQueueUpdate previously accepted
+// any string as the new status. The allowlist below mirrors the PRD
+// service_requests lifecycle (pending|in_progress|completed|cancelled)
+// since the schema lacks a CHECK constraint to enforce it at the DB
+// layer. Keep this in sync with sql/schema/006_service_requests.sql if
+// the PRD ever extends the lifecycle.
+func isAllowedServiceRequestStatus(s string) bool {
+	switch s {
+	case "pending", "in_progress", "completed", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
 
 // RegisterWarehouse mounts warehouse routes under /warehouse. All require auth + staff or admin. PRD §6.10.
 //
@@ -159,6 +175,12 @@ func warehouseServiceQueueUpdate(c *fiber.Ctx) error {
 	}
 	if body.Status == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status required"))
+	}
+	// Pass 2.5 MED-13: reject statuses outside the lifecycle allowlist
+	// so a misbehaving or hostile client cannot wedge a service request
+	// into an arbitrary string the rest of the system doesn't recognise.
+	if !isAllowedServiceRequestStatus(body.Status) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status must be one of: pending, in_progress, completed, cancelled"))
 	}
 	sr, err := db.Queries().GetServiceRequestByID(c.Context(), id)
 	if err != nil {
@@ -334,6 +356,16 @@ func warehouseShipQueueProcess(c *fiber.Ctx) error {
 	if id == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
 	}
+	// Pass 2.5 HIGH-04: client supplies expected_status so two staff
+	// scanning the same package don't both succeed silently. If absent
+	// or stale, return 409 and force a refresh.
+	var body struct {
+		ExpectedStatus string `json:"expected_status"`
+	}
+	_ = c.BodyParser(&body)
+	if strings.TrimSpace(body.ExpectedStatus) == "" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "expected_status required"))
+	}
 	_, err := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -342,13 +374,17 @@ func warehouseShipQueueProcess(c *fiber.Ctx) error {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	err = db.Queries().AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+	rows, err := db.Queries().AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
 		Status:    "processing",
 		UpdatedAt: now,
 		ID:        id,
+		Status_2:  body.ExpectedStatus,
 	})
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update status"))
+	}
+	if rows == 0 {
+		return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Ship request is no longer in status "+body.ExpectedStatus+"; refresh and retry"))
 	}
 	updated, _ := db.Queries().GetShipRequestByIDOnly(c.Context(), id)
 	return c.JSON(fiber.Map{"data": updated})
@@ -431,44 +467,68 @@ func warehouseBays(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": list})
 }
 
+// warehouseBaysMove relocates one or more locker packages to a different
+// staging bay. Pass 2.5 changes:
+//
+//   - HIGH-04: the request now MUST include `previous_bay`, the source
+//     bay the caller saw when it built the move. The UPDATE is gated on
+//     that value so two staff scanning the same package cannot both
+//     succeed silently — the second writer gets a 409 Conflict.
+//   - MED-12: the per-package UPDATEs run inside a single BeginTx so a
+//     mid-batch failure (DB error or a single 409) rolls the entire
+//     batch back rather than leaving packages split across bays.
+//
+// Wire-format change for the frontend: the request body fields are now
+// {package_ids, to_bay, previous_bay}. The legacy {bay_id} key is no
+// longer accepted. The matching JS update lives in
+// internal/static/warehouse/scripts/staging.js.
 func warehouseBaysMove(c *fiber.Ctx) error {
 	var body struct {
-		PackageIDs []string `json:"package_ids"`
-		BayID      string   `json:"bay_id"`
+		PackageIDs  []string `json:"package_ids"`
+		ToBay       string   `json:"to_bay"`
+		PreviousBay string   `json:"previous_bay"`
 	}
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
-	if len(body.PackageIDs) == 0 || body.BayID == "" {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "package_ids and bay_id required"))
+	toBay := strings.TrimSpace(body.ToBay)
+	prevBay := strings.TrimSpace(body.PreviousBay)
+	if toBay == "" || prevBay == "" || len(body.PackageIDs) == 0 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "package_ids, to_bay, previous_bay required"))
 	}
-	_, err := db.Queries().GetWarehouseBayByID(c.Context(), body.BayID)
+
+	tx, err := db.DB().BeginTx(c.Context(), nil)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Bay not found"))
-		}
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load bay"))
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to start transaction"))
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	bayIDNull := sql.NullString{String: body.BayID, Valid: true}
-	for _, pkgID := range body.PackageIDs {
-		_, err := db.Queries().GetLockerPackageByIDOnly(c.Context(), pkgID)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Package not found: "+pkgID))
-			}
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load package"))
+	defer func() {
+		if rbErr := tx.Rollback(); rbErr != nil && rbErr != sql.ErrTxDone {
+			log.Printf("warehouseBaysMove rollback: %v", rbErr)
 		}
-		err = db.Queries().UpdateLockerPackageStorageBay(c.Context(), gen.UpdateLockerPackageStorageBayParams{
-			StorageBay: bayIDNull,
-			UpdatedAt:  now,
-			ID:         pkgID,
+	}()
+	qtx := db.Queries().WithTx(tx)
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	toBayNull := sql.NullString{String: toBay, Valid: true}
+	prevBayNull := sql.NullString{String: prevBay, Valid: true}
+	for _, pkgID := range body.PackageIDs {
+		rows, err := qtx.UpdateLockerPackageStorageBay(c.Context(), gen.UpdateLockerPackageStorageBayParams{
+			StorageBay:   toBayNull,
+			UpdatedAt:    now,
+			ID:           pkgID,
+			StorageBay_2: prevBayNull,
 		})
 		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to move package"))
 		}
+		if rows == 0 {
+			return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Package "+pkgID+" is no longer in bay "+prevBay+"; refresh and retry"))
+		}
 	}
-	return c.JSON(fiber.Map{"data": fiber.Map{"moved": len(body.PackageIDs), "bay_id": body.BayID}})
+	if err := tx.Commit(); err != nil {
+		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to commit bay move"))
+	}
+	return c.JSON(fiber.Map{"data": fiber.Map{"moved": len(body.PackageIDs), "to_bay": toBay}})
 }
 
 func warehouseManifestsList(c *fiber.Ctx) error {
@@ -532,13 +592,32 @@ func warehouseManifestsCreate(c *fiber.Ctx) error {
 			}
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to add ship request to manifest"))
 		}
-		// Mark ship request as shipped
-		if err := qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
+		// Pass 2.5 HIGH-04: AdminUpdateShipRequestStatus now requires
+		// the expected current status. Manifest creation is the
+		// "shipped" transition, which can legitimately come from
+		// several prior statuses (paid, processing, staged), so we
+		// read the current status inside the same transaction and
+		// pass it as the expected value. RowsAffected==0 here would
+		// only happen if the row is concurrently mutated between the
+		// read and the update, which we surface as a 409.
+		current, err := qtx.GetShipRequestByIDOnly(c.Context(), srID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found: "+srID))
+			}
+			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load ship request"))
+		}
+		rows, err := qtx.AdminUpdateShipRequestStatus(c.Context(), gen.AdminUpdateShipRequestStatusParams{
 			Status:    "shipped",
 			UpdatedAt: now,
 			ID:        srID,
-		}); err != nil {
+			Status_2:  current.Status,
+		})
+		if err != nil {
 			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update ship request status"))
+		}
+		if rows == 0 {
+			return c.Status(409).JSON(ErrorResponse{}.withCode("CONFLICT", "Ship request "+srID+" was modified concurrently; refresh and retry"))
 		}
 		if err := qtx.UpdateShipRequestManifestID(c.Context(), gen.UpdateShipRequestManifestIDParams{
 			ManifestID: manifestIDNull,
