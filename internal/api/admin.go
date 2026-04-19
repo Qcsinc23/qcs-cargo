@@ -254,6 +254,12 @@ func adminSystemHealth(c *fiber.Ctx) error {
 	storageFeeLast := middleware.LastSuccessfulJobRun("storage_fee")
 	expiryNotifierLast := middleware.LastSuccessfulJobRun("expiry_notifier")
 
+	// Pass 2.5 OPS-03: surface the failed outbound-email backlog so ops
+	// can monitor it from the admin UI without scraping Prometheus. A
+	// query failure is non-fatal (the rest of system-health is still
+	// useful); we report 0 in that case.
+	failedEmails, _ := db.Queries().CountOutboundEmailsByStatus(c.Context(), "failed")
+
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"status":             status,
@@ -267,6 +273,7 @@ func adminSystemHealth(c *fiber.Ctx) error {
 			"service_queue":      counts.PendingServiceRequestsCount,
 			"unmatched_packages": counts.PendingUnmatchedPackagesCount,
 			"pending_ship_count": counts.PendingShipRequestsCount,
+			"failed_email_count": failedEmails,
 			"jobs": fiber.Map{
 				"storage_fee_last_success_unix":     storageFeeLast,
 				"expiry_notifier_last_success_unix": expiryNotifierLast,

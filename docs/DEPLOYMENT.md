@@ -73,6 +73,71 @@ EnvironmentFile=/opt/qcs-cargo/.env
 WantedBy=multi-user.target
 ```
 
+### Scheduled backups
+
+The `make backup` target captures a hot snapshot of the SQLite database
+and ships it off-host (when `BACKUP_REMOTE_DEST` is set). To run it on a
+schedule via systemd, drop the following service + timer pair next to
+the `qcs-server.service` unit above:
+
+`/etc/systemd/system/qcs-backup.service`:
+
+```ini
+[Unit]
+Description=QCS Cargo SQLite backup
+After=network.target qcs-server.service
+
+[Service]
+Type=oneshot
+User=qcs
+WorkingDirectory=/opt/qcs-cargo
+EnvironmentFile=/opt/qcs-cargo/.env
+ExecStart=/usr/bin/make backup
+```
+
+`/etc/systemd/system/qcs-backup.timer`:
+
+```ini
+[Unit]
+Description=Run QCS Cargo SQLite backup nightly
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=qcs-backup.service
+
+[Install]
+WantedBy=timers.target
+```
+
+Enable with:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now qcs-backup.timer
+sudo systemctl list-timers qcs-backup.timer
+```
+
+Verify:
+
+```bash
+systemctl status qcs-backup.timer
+journalctl -u qcs-backup.service --since '1 hour ago'
+ls -l /opt/qcs-cargo/.deploy/backups/   # or BACKUP_REMOTE_DEST
+```
+
+Notes:
+
+- `User=qcs` should match the user that owns `/opt/qcs-cargo` and the
+  database file. Adjust to match your `qcs-server.service` `User=`.
+- `Persistent=true` makes systemd run a missed backup once on the next
+  boot if the host was off at 02:30. `RandomizedDelaySec=300` spreads
+  the load when many hosts share one off-host backup target.
+- The timer only triggers `make backup`; off-host shipping still relies
+  on `BACKUP_REMOTE_DEST` being set in `/opt/qcs-cargo/.env`. See
+  *Off-host shipping* below.
+
 ### Optional: Docker one-liner
 
 ```bash
