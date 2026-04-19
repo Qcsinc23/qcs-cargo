@@ -28,6 +28,14 @@ services:
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
       - UPLOAD_DIR=/data/uploads
+      # Pass 2 audit fixes:
+      # - H-3: SECRET_ENCRYPTION_KEY is required in production for at-rest
+      #   encryption of MFA secrets. Without it, the MFA setup/challenge
+      #   handlers refuse to encrypt and return 500.
+      # - H-5: UPLOAD_HOST_ALLOWLIST restricts the hosts a customs document
+      #   file_url may live on. If unset, only the APP_URL host is allowed.
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY:-}
+      - UPLOAD_HOST_ALLOWLIST=${UPLOAD_HOST_ALLOWLIST:-}
     volumes:
       - qcs_cargo_data:/data
     networks:
