@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,22 +16,6 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 )
 
-// Phase 3.2 (INC-001 part B): durable outbound email queue.
-//
-// Callers enqueue an email by template name + recipient + structured
-// payload. The worker (internal/jobs/outbound_email.go) drains pending
-// rows, re-renders via the template registry below, and dispatches to
-// the actual provider sender. Permanent failures (after the configured
-// attempt budget) are marked status='failed' for ops review.
-//
-// Templates are registered at package init by services that already own
-// the rendering logic (see RegisterEmailTemplate in services.email or
-// added in this file). This keeps the queue layer template-agnostic and
-// avoids an import cycle.
-
-// EmailTemplate is the well-known string identifier used in
-// outbound_emails.template. Keep this list in lockstep with the
-// dispatch table populated via RegisterEmailTemplate.
 type EmailTemplate string
 
 const (
@@ -39,31 +24,24 @@ const (
 	TemplateStorageFinalNotice EmailTemplate = "storage_final_notice"
 	TemplateStorageFeeCharged  EmailTemplate = "storage_fee_charged"
 	TemplateShipRequestPaid    EmailTemplate = "ship_request_paid"
-	// Pass 2.5 HIGH-02: MFA challenge codes were never delivered in
-	// production because the handler only returned the OTP to the client
-	// in dev/test (AllowDebugAuthArtifacts). Enqueue via this template so
-	// the outbound worker dispatches the code over Resend.
-	TemplateMFAChallengeCode EmailTemplate = "mfa_challenge_code"
+	TemplateMFAChallengeCode   EmailTemplate = "mfa_challenge_code"
 )
 
-// templateSender renders + sends a queued email from its JSON payload.
-// Implementations live in services/email.go.
-type templateSender func(ctx context.Context, recipient string, payload json.RawMessage) error
+// Pass 3 CRIT-04: senders receive idempotencyKey (the outbound_emails.id)
+// and forward it to Resend as the Idempotency-Key HTTP header.
+type templateSender func(ctx context.Context, recipient string, payload json.RawMessage, idempotencyKey string) error
 
 var (
 	templateRegistryMu sync.RWMutex
 	templateRegistry   = map[EmailTemplate]templateSender{}
 )
 
-// RegisterEmailTemplate wires a template name to its renderer/sender.
-// Call from package init in the package that owns the template.
 func RegisterEmailTemplate(name EmailTemplate, fn templateSender) {
 	templateRegistryMu.Lock()
 	templateRegistry[name] = fn
 	templateRegistryMu.Unlock()
 }
 
-// LookupEmailTemplate returns the registered sender, if any.
 func LookupEmailTemplate(name EmailTemplate) (templateSender, bool) {
 	templateRegistryMu.RLock()
 	fn, ok := templateRegistry[name]
@@ -71,8 +49,6 @@ func LookupEmailTemplate(name EmailTemplate) (templateSender, bool) {
 	return fn, ok
 }
 
-// RegisteredEmailTemplates returns the list of currently registered
-// template names; used by tests and the worker to validate input.
 func RegisteredEmailTemplates() []EmailTemplate {
 	templateRegistryMu.RLock()
 	defer templateRegistryMu.RUnlock()
@@ -83,14 +59,20 @@ func RegisteredEmailTemplates() []EmailTemplate {
 	return names
 }
 
-// EnqueueEmail inserts a pending outbound_emails row. The send happens
-// asynchronously via the worker; this call returns once the row is
-// durably persisted.
-//
-// recipient must be a non-empty email address. payload may be nil for
-// templates that have no parameters; otherwise it is marshaled to JSON
-// and stored verbatim.
 func EnqueueEmail(ctx context.Context, template EmailTemplate, recipient string, payload any) error {
+	return enqueueEmailQ(ctx, db.Queries(), template, recipient, payload)
+}
+
+// Pass 3 CRIT-02 fix: tx-scoped enqueue so the outbound_emails INSERT shares
+// the atomic boundary of the surrounding state mutation.
+func EnqueueEmailTx(ctx context.Context, tx *sql.Tx, template EmailTemplate, recipient string, payload any) error {
+	if tx == nil {
+		return errors.New("EnqueueEmailTx: tx is nil")
+	}
+	return enqueueEmailQ(ctx, db.Queries().WithTx(tx), template, recipient, payload)
+}
+
+func enqueueEmailQ(ctx context.Context, q *gen.Queries, template EmailTemplate, recipient string, payload any) error {
 	recipient = strings.TrimSpace(recipient)
 	if recipient == "" {
 		return errors.New("EnqueueEmail: recipient is empty")
@@ -109,7 +91,7 @@ func EnqueueEmail(ctx context.Context, template EmailTemplate, recipient string,
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	return db.Queries().EnqueueOutboundEmail(ctx, gen.EnqueueOutboundEmailParams{
+	return q.EnqueueOutboundEmail(ctx, gen.EnqueueOutboundEmailParams{
 		ID:          "oe_" + uuid.New().String(),
 		Template:    string(template),
 		Recipient:   recipient,

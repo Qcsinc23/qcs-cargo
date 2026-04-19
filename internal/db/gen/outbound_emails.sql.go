@@ -31,10 +31,6 @@ type ClaimPendingOutboundEmailsRow struct {
 	AttemptCount int    `json:"attempt_count"`
 }
 
-// Atomically mark up to N pending rows as 'in_progress' so the worker
-// can drain them without contending with a parallel run. Returns the
-// claimed rows. Single-replica deployment makes the simple two-step
-// (UPDATE + SELECT) pattern safe inside one transaction.
 func (q *Queries) ClaimPendingOutboundEmails(ctx context.Context, arg ClaimPendingOutboundEmailsParams) ([]ClaimPendingOutboundEmailsRow, error) {
 	rows, err := q.db.QueryContext(ctx, claimPendingOutboundEmails, arg.ScheduledAt, arg.Limit)
 	if err != nil {
@@ -132,15 +128,20 @@ func (q *Queries) MarkOutboundEmailFailed(ctx context.Context, arg MarkOutboundE
 	return err
 }
 
-const markOutboundEmailInProgress = `-- name: MarkOutboundEmailInProgress :exec
+const markOutboundEmailInProgress = `-- name: MarkOutboundEmailInProgress :execrows
 UPDATE outbound_emails
 SET status = 'in_progress'
 WHERE id = ? AND status = 'pending'
 `
 
-func (q *Queries) MarkOutboundEmailInProgress(ctx context.Context, id string) error {
-	_, err := q.db.ExecContext(ctx, markOutboundEmailInProgress, id)
-	return err
+// Pass 3 CRIT-03 fix: returns rows-affected so the worker can detect a
+// lost optimistic-claim race.
+func (q *Queries) MarkOutboundEmailInProgress(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markOutboundEmailInProgress, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const markOutboundEmailSent = `-- name: MarkOutboundEmailSent :exec
@@ -173,11 +174,6 @@ type ReapStuckOutboundEmailsParams struct {
 	ScheduledAt_2 string `json:"scheduled_at_2"`
 }
 
-// Pass 2.5 HIGH-10 fix: rows that the worker marked 'in_progress' but
-// never finished (panic, host crash, kill mid-send) are stuck forever
-// since ClaimPendingOutboundEmails only sees 'pending'. Reset stale
-// in_progress rows back to pending and increment attempt_count so the
-// existing maxOutboundAttempts budget still bounds total retries.
 func (q *Queries) ReapStuckOutboundEmails(ctx context.Context, arg ReapStuckOutboundEmailsParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, reapStuckOutboundEmails, arg.ScheduledAt, arg.ScheduledAt_2)
 	if err != nil {

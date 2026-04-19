@@ -10,17 +10,15 @@ INSERT INTO outbound_emails (
 );
 
 -- name: ClaimPendingOutboundEmails :many
--- Atomically mark up to N pending rows as 'in_progress' so the worker
--- can drain them without contending with a parallel run. Returns the
--- claimed rows. Single-replica deployment makes the simple two-step
--- (UPDATE + SELECT) pattern safe inside one transaction.
 SELECT id, template, recipient, payload_json, attempt_count
 FROM outbound_emails
 WHERE status = 'pending' AND scheduled_at <= ?
 ORDER BY scheduled_at
 LIMIT ?;
 
--- name: MarkOutboundEmailInProgress :exec
+-- name: MarkOutboundEmailInProgress :execrows
+-- Pass 3 CRIT-03 fix: returns rows-affected so the worker can detect a
+-- lost optimistic-claim race.
 UPDATE outbound_emails
 SET status = 'in_progress'
 WHERE id = ? AND status = 'pending';
@@ -40,11 +38,6 @@ WHERE id = ?;
 SELECT COUNT(*) FROM outbound_emails WHERE status = ?;
 
 -- name: ReapStuckOutboundEmails :execrows
--- Pass 2.5 HIGH-10 fix: rows that the worker marked 'in_progress' but
--- never finished (panic, host crash, kill mid-send) are stuck forever
--- since ClaimPendingOutboundEmails only sees 'pending'. Reset stale
--- in_progress rows back to pending and increment attempt_count so the
--- existing maxOutboundAttempts budget still bounds total retries.
 UPDATE outbound_emails
 SET status = 'pending',
     attempt_count = attempt_count + 1,
