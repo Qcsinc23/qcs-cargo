@@ -13,7 +13,11 @@ import (
 	"github.com/google/uuid"
 )
 
-// DefaultDailyStorageFeeAmount is the per-day storage fee in USD after free period (PRD).
+// DefaultDailyStorageFeeAmount is the per-day storage fee in USD after free
+// period (PRD). INC-005 (backlog) note: tiered storage plans (basic, plus)
+// can override this via storage_fee_tiers; no such table exists today, so
+// the constant is the canonical rate. When tiered pricing arrives, look up
+// the user's plan and substitute that rate inside the loop below.
 const DefaultDailyStorageFeeAmount = 1.50
 
 // RunStorageFeeJob finds locker_packages where free_storage_expires_at < today and status = 'stored',
@@ -72,14 +76,26 @@ func RunStorageFeeJob(ctx context.Context) error {
 			continue
 		}
 
-		// Notify customer if Resend is configured
+		// Notify customer if Resend is configured. DEF-008 (storage_fee)
+		// fix: short-circuit when the user has been anonymized (no email
+		// on file). Phase 3.2 (INC-001b): notification is enqueued onto
+		// the outbound_emails queue and dispatched by the worker, so
+		// transient Resend outages no longer silently drop the email.
 		if os.Getenv("RESEND_API_KEY") != "" {
+			to := userEmailForID(ctx, userID)
+			if to == "" {
+				log.Printf("[storage fee job] skipping notification for package %s: user has no email (anonymized?)", id)
+				continue
+			}
 			sender := "your package"
 			if senderName.Valid && senderName.String != "" {
 				sender = senderName.String
 			}
-			if err := services.SendStorageFeeCharged(userEmailForID(ctx, userID), sender, amount); err != nil {
-				log.Printf("[storage fee job] send email for package %s: %v", id, err)
+			if err := services.EnqueueEmail(ctx, services.TemplateStorageFeeCharged, to, map[string]any{
+				"sender_name": sender,
+				"amount":      amount,
+			}); err != nil {
+				log.Printf("[storage fee job] enqueue email for package %s: %v", id, err)
 			}
 		}
 	}

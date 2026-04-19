@@ -71,14 +71,12 @@ func IdempotencyMiddleware(c *fiber.Ctx) error {
 		if len(body) <= 256*1024 {
 			idempotencyMu.Lock()
 			if len(idempotencyCache) >= idempotencyMaxKeys {
-				// Best-effort eviction: drop the oldest half. Cheap and
-				// avoids unbounded growth without bringing in a real LRU.
-				now := time.Now()
-				for k, v := range idempotencyCache {
-					if now.Sub(v.createdAt) > idempotencyTTL/2 {
-						delete(idempotencyCache, k)
-					}
-				}
+				// DEF-011 (backlog) fix: drop the single oldest entry on
+				// each insert past the cap. O(n) per eviction but only
+				// triggered when full, instead of the previous "scan the
+				// entire map every insert past the cap" pattern that
+				// produced consistent O(n) work under sustained load.
+				evictOldestLocked()
 			}
 			idempotencyCache[scoped] = idempotencyEntry{
 				createdAt: time.Now(),
@@ -89,4 +87,20 @@ func IdempotencyMiddleware(c *fiber.Ctx) error {
 		}
 	}
 	return nil
+}
+
+// evictOldestLocked removes the single oldest entry from idempotencyCache.
+// Caller must hold idempotencyMu.
+func evictOldestLocked() {
+	var oldestKey string
+	var oldestAt time.Time
+	for k, v := range idempotencyCache {
+		if oldestKey == "" || v.createdAt.Before(oldestAt) {
+			oldestKey = k
+			oldestAt = v.createdAt
+		}
+	}
+	if oldestKey != "" {
+		delete(idempotencyCache, oldestKey)
+	}
 }

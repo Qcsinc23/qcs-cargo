@@ -1,5 +1,9 @@
-const SHELL_CACHE = 'qcs-cargo-shell-v5';
-const RUNTIME_CACHE = 'qcs-cargo-runtime-v5';
+// Phase 2.1 (DEF-002): bumping cache version on every cache-policy or asset
+// pipeline change forces installed clients to drop the previous shell
+// cache. Without this bump, customers hard-cached on the old long-lived
+// asset URLs would never see the revised cache headers.
+const SHELL_CACHE = 'qcs-cargo-shell-v6';
+const RUNTIME_CACHE = 'qcs-cargo-runtime-v6';
 const QUEUE_DB = 'qcs-cargo-offline';
 const QUEUE_STORE = 'warehouse_actions';
 const SYNC_TAG = 'qcs-warehouse-replay';
@@ -24,6 +28,7 @@ const SHELL_ASSETS = [
   '/dashboard/shipments.html',
   '/dashboard/settings/notifications',
   '/dashboard/settings/notifications.html',
+  '/css/tailwind.css',
   '/dashboard/mobile-nav.css',
   '/dashboard/mobile-nav.js',
   '/dashboard/pwa-shell.css',

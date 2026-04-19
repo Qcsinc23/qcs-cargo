@@ -9,7 +9,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
+	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/testdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -178,4 +180,54 @@ func issueAccessTokenForUser(t *testing.T, userID string) string {
 	t.Helper()
 	accessToken, _ := issueAuthTokens(t, userID)
 	return accessToken
+}
+
+// TestAdminShipRequestReconcile_OperatesOnDifferentUserRequest is the
+// regression test for DEF-001. Before the fix, shipRequestReconcile filtered
+// by the calling admin's user_id, so it could not be used to reconcile
+// stuck customer payments (its only legitimate use). This test asserts that
+// an admin can reconcile a ship request owned by a different user and that
+// the row's payment_status flips to "paid".
+func TestAdminShipRequestReconcile_OperatesOnDifferentUserRequest(t *testing.T) {
+	app := setupTestApp(t)
+
+	// Seeded fixture sreq_alice_draft1 belongs to Alice and is in "draft"
+	// state; we stage it as pending_payment + an unpaid payment_status so
+	// the reconcile transition is meaningful.
+	_, err := db.DB().Exec(
+		`UPDATE ship_requests SET status = ?, payment_status = ?, updated_at = ? WHERE id = ?`,
+		"pending_payment", "pending", time.Now().UTC().Format(time.RFC3339), testdata.ShipReqAliceDraft,
+	)
+	require.NoError(t, err)
+
+	adminToken := issueAccessTokenForUser(t, testdata.AdminID)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ship-requests/"+testdata.ShipReqAliceDraft+"/reconcile", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var status, paymentStatus string
+	err = db.DB().QueryRow(
+		`SELECT status, payment_status FROM ship_requests WHERE id = ?`,
+		testdata.ShipReqAliceDraft,
+	).Scan(&status, &paymentStatus)
+	require.NoError(t, err)
+	assert.Equal(t, "paid", status)
+	assert.Equal(t, "paid", paymentStatus)
+}
+
+// TestAdminShipRequestReconcile_NonAdminRejected guards the route gate.
+func TestAdminShipRequestReconcile_NonAdminRejected(t *testing.T) {
+	app := setupTestApp(t)
+
+	customerToken := issueAccessTokenForUser(t, testdata.CustomerBobID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/ship-requests/"+testdata.ShipReqAlicePaid+"/reconcile", nil)
+	req.Header.Set("Authorization", "Bearer "+customerToken)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode)
 }

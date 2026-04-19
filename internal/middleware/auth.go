@@ -75,8 +75,15 @@ func RequireAuth(c *fiber.Ctx) error {
 		})
 	}
 
+	// INC-004 fix: prefer the live DB role over the role embedded in the
+	// JWT claim. A user demoted from admin would otherwise keep admin
+	// access until their access token expired (≤15 min), which is too
+	// long a window for routes that touch every customer's data.
 	email := claims.Email
-	role := claims.Role
+	role := strings.TrimSpace(user.Role)
+	if role == "" {
+		role = claims.Role
+	}
 	log.Printf("[auth] %s %s RequireAuth: ok user_id=%s", c.Method(), c.Path(), userID)
 	c.Locals(CtxUserID, userID)
 	c.Locals(CtxUserEmail, email)

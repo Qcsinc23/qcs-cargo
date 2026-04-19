@@ -39,6 +39,12 @@ Thumbs.db
 node_modules/
 npm-debug.log*
 
+# Tailwind toolchain (Phase 2.1). The compiled output
+# internal/static/css/tailwind.css IS checked in so the Go server has the
+# asset available without a Node build step.
+tools/tailwind/node_modules/
+tools/tailwind/package-lock.json
+
 # Testing
 e2e/node_modules/
 e2e/test-results/

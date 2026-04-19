@@ -4,65 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Warehouse Operations | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/css/tailwind.css" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <style>body{font-family:'Inter',sans-serif}h1,h2{font-family:'Plus Jakarta Sans',sans-serif}</style>
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
-  <script>
-    (function() {
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
-      fetch('/api/v1/me', auth).then(r => {
-        if (!r.ok) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse'); return null; }
-        return r.json();
-      }).then(me => {
-        if (!me) return;
-        const role = (me.data && me.data.role) || '';
-        if (role !== 'staff' && role !== 'admin') { window.location.href = '/dashboard'; return; }
-        fetch('/api/v1/warehouse/stats', auth).then(r => r.ok ? r.json() : null).then(st => {
-          const k = (st && st.data) || {};
-          const sidebar = '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
-            '<a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>' +
-            '<p class="text-amber-400 text-sm font-medium mb-2">Warehouse</p>' +
-            '<nav class="space-y-1" aria-label="Main navigation">' +
-            '<a href="/warehouse" class="block py-2 px-3 rounded-lg bg-[#1E293B]" aria-current="page">Dashboard</a>' +
-            '<a href="/warehouse/locker-receive" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Locker Receive</a>' +
-            '<a href="/warehouse/service-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Service Queue</a>' +
-            '<a href="/warehouse/ship-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Queue</a>' +
-            '<a href="/warehouse/packages" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Packages</a>' +
-            '<a href="/warehouse/receiving" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Receiving</a>' +
-            '<a href="/warehouse/staging" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Staging</a>' +
-            '<a href="/warehouse/manifests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Manifests</a>' +
-            '<a href="/warehouse/exceptions" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Exceptions</a>' +
-            '</nav>' +
-            '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a>' +
-            '<a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a>' +
-            '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
-          const main = '<main class="flex-1 p-8">' +
-            '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/warehouse" class="text-[#0F172A] hover:underline">Warehouse</a></li><li aria-current="page" class="font-medium">Dashboard</li></ol></nav>' +
-            '<h1 class="text-3xl font-bold text-[#0F172A] mb-8">Warehouse Operations</h1>' +
-            '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">' +
-            '<a href="/warehouse/packages" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">' +
-            '<p class="text-slate-500 text-sm">Locker Packages</p><p class="text-2xl font-bold text-[#0F172A]">' + (k.locker_packages_count ?? '—') + '</p></a>' +
-            '<a href="/admin/ship-requests" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">' +
-            '<p class="text-slate-500 text-sm">Ship Requests</p><p class="text-2xl font-bold text-[#0F172A]">' + (k.ship_requests_count ?? '—') + '</p></a>' +
-            '<a href="/admin/bookings" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">' +
-            '<p class="text-slate-500 text-sm">Bookings</p><p class="text-2xl font-bold text-[#0F172A]">' + (k.bookings_count ?? '—') + '</p></a>' +
-            '<a href="/warehouse/service-queue" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">' +
-            '<p class="text-slate-500 text-sm">Service Queue</p><p class="text-2xl font-bold text-[#0F172A]">' + (k.service_queue_count ?? '—') + '</p></a>' +
-            '<a href="/admin/unmatched" class="bg-white rounded-xl border border-slate-200 p-6 shadow-sm hover:shadow-md">' +
-            '<p class="text-slate-500 text-sm">Unmatched</p><p class="text-2xl font-bold text-[#0F172A]">' + (k.unmatched_count ?? '—') + '</p></a>' +
-            '</div></main></div>';
-          document.getElementById('app').innerHTML = sidebar + main;
-          document.getElementById('logout-btn').onclick = () => {
-            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-          };
-        });
-      });
-    })();
-  </script>
+  <script src="/warehouse/scripts/index.js"></script>
 </body>
 </html>

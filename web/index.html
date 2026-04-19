@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>QCS Cargo — Your Personal US Shipping Address</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+  <link rel="stylesheet" href="/css/tailwind.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
@@ -23,16 +23,6 @@
     </div>
   </div>
   <script src="/wasm_exec.js"></script>
-  <script>
-    if (!WebAssembly) document.getElementById('app').innerHTML = '<p class="text-red-600">WebAssembly is not supported.</p>';
-    else {
-      const go = new Go();
-      WebAssembly.instantiateStreaming(fetch('/app.wasm'), go.importObject).then(r => {
-        go.run(r.instance);
-      }).catch(e => {
-        document.getElementById('app').innerHTML = '<p class="text-slate-600">App not built yet. Run: GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend</p>';
-      });
-    }
-  </script>
+  <script src="/web/app-bootstrap.js"></script>
 </body>
 </html>

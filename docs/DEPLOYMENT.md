@@ -125,3 +125,65 @@ The deploy workflow now:
 - records the last successful Git SHA and attempts a best-effort rollback to that SHA if a deployment fails
 
 Rollback is intentionally code-only. The script does not run down migrations. If a release includes backward-incompatible schema changes, restore the database from backup before rolling the application back.
+
+## Database backup and restore
+
+Audit Phase 1.4 (OPS): the SQLite database is the system of record for accounts, packages, payments, and shipments, and the deploy script does not roll back migrations. A reliable backup procedure is therefore mandatory before every deploy and operationally before every business day.
+
+### Online hot backup
+
+The production server uses SQLite in WAL mode. Use `sqlite3 .backup` (not `cp`) to capture a consistent snapshot while the server is up:
+
+```bash
+# On the production host
+make backup                                  # writes ./backups/qcs-<UTC>.db + .sha256
+DATABASE_PATH=/opt/qcs-cargo/qcs.db \
+BACKUP_DIR=/var/backups/qcs make backup      # explicit paths
+```
+
+`make backup` runs `PRAGMA integrity_check` against the snapshot and refuses to keep it on a bad result. A `.sha256` companion file is written next to each snapshot so off-host integrity can be re-verified.
+
+### Off-host shipping (recommended)
+
+A backup that lives only on the production host is not a real backup. The deploy script ships the pre-deploy snapshot to a remote destination when `BACKUP_REMOTE_DEST` is set:
+
+```bash
+# In /opt/qcs-cargo/.env on the production host
+BACKUP_REMOTE_DEST=backups@backup.example.com:/var/backups/qcs/
+```
+
+The deploy script will rsync each pre-deploy snapshot (and its `.sha256`) to that destination, fail the deploy if the rsync fails, and prune local snapshots older than `BACKUP_RETENTION_DAYS` (default 30) on success.
+
+### Pre-deploy snapshot
+
+`scripts/deploy-production.sh` snapshots the database with `sqlite3 .backup` before running `qcs-migrate`. The deploy aborts if the snapshot or its integrity check fails, so a broken backup environment cannot silently produce an unrecoverable migration. Set `SKIP_BACKUP=1` only for the very first deploy where no `qcs.db` exists yet.
+
+### Restore procedure
+
+1. Stop the app stack on the production host:
+   ```bash
+   docker compose -p qcs-cargo --env-file /opt/qcs-cargo/.env -f /opt/qcs-cargo/docker-compose.prod.yml stop
+   ```
+2. Verify the candidate backup is intact:
+   ```bash
+   BACKUP=/var/backups/qcs/qcs-20260418T120000Z-pre-abc123def456.db make restore-check
+   ```
+3. Move the live DB out of the way and restore the snapshot:
+   ```bash
+   sudo mv /opt/qcs-cargo/qcs.db   /opt/qcs-cargo/qcs.db.bad
+   sudo mv /opt/qcs-cargo/qcs.db-shm /opt/qcs-cargo/qcs.db-shm.bad 2>/dev/null || true
+   sudo mv /opt/qcs-cargo/qcs.db-wal /opt/qcs-cargo/qcs.db-wal.bad 2>/dev/null || true
+   sudo cp /var/backups/qcs/qcs-...db /opt/qcs-cargo/qcs.db
+   sudo chown <PROD_USER>:<PROD_USER> /opt/qcs-cargo/qcs.db
+   ```
+4. Restart the app stack and verify health:
+   ```bash
+   docker compose -p qcs-cargo --env-file /opt/qcs-cargo/.env -f /opt/qcs-cargo/docker-compose.prod.yml up -d
+   curl -fsS https://qcs-cargo.com/api/v1/health
+   ```
+5. If the restored snapshot predates a migration that the deployed binary requires, either redeploy the binary that matches the snapshot SHA (recorded in the backup filename) or run the necessary forward migrations manually.
+
+### Verification cadence
+
+- Run `make restore-check BACKUP=...` against the most recent backup at least weekly on a non-production host. A backup that has never been restored is a hypothesis, not a backup.
+- Confirm `BACKUP_REMOTE_DEST` continues to receive new snapshots after every deploy by checking the remote directory listing.

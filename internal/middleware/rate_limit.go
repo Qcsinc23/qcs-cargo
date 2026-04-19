@@ -95,10 +95,18 @@ func (rl *rateLimiter) remaining(key string) int {
 	return remaining
 }
 
-// Global rate limiters for auth endpoints
+// Global rate limiters for auth endpoints.
+//
+// SEC-002 fix: the per-email limiter that previously lived here was an
+// account-takeover-prevention attack vector — an attacker could burn the
+// victim's per-email quota with crafted unauthenticated POSTs and lock the
+// legitimate user out of password recovery and magic-link flows. The
+// canonical per-account throttle now lives in
+// services.CheckAndRecordAuthRequest, which is invoked from each handler
+// only after the request has been validated. The middleware keeps the
+// per-IP coarse limiter to absorb obvious bots.
 var (
 	ipLimiter      = newRateLimiter(10, time.Hour)
-	emailLimiter   = newRateLimiter(5, time.Hour)
 	authAttemptLog = newAuthLockoutTracker(5, 15*time.Minute, 30*time.Minute)
 )
 
@@ -107,10 +115,6 @@ func ResetAuthRateLimitersForTest() {
 	ipLimiter.mu.Lock()
 	ipLimiter.attempts = make(map[string][]time.Time)
 	ipLimiter.mu.Unlock()
-
-	emailLimiter.mu.Lock()
-	emailLimiter.attempts = make(map[string][]time.Time)
-	emailLimiter.mu.Unlock()
 
 	authAttemptLog.mu.Lock()
 	authAttemptLog.entries = make(map[string]lockoutEntry)
@@ -122,17 +126,20 @@ func containsAuthRoute(path string) bool {
 	return path == "/api/v1/auth" || strings.HasPrefix(path, "/api/v1/auth/")
 }
 
-// AuthRateLimit creates rate limiter for auth endpoints: 5 per email per hour, 10 per IP per hour
+// AuthRateLimit applies the per-IP coarse limiter to /auth/* routes.
+//
+// SEC-002 fix: the per-email body-inspecting limiter that used to live here
+// was removed. Per-account rate limiting is now done inside the handlers
+// via services.CheckAndRecordAuthRequest, which only consumes quota for
+// well-formed requests against real accounts and is therefore not a
+// targeted lockout vector.
 func AuthRateLimit(c *fiber.Ctx) error {
-	// Skip for non-auth routes
 	path := c.Path()
 	if !containsAuthRoute(path) {
 		return c.Next()
 	}
 
 	ip := c.IP()
-
-	// Check IP-based rate limit
 	if !ipLimiter.allow(ip) {
 		remaining := ipLimiter.remaining(ip)
 		c.Set("X-RateLimit-Limit", "10")
@@ -142,26 +149,6 @@ func AuthRateLimit(c *fiber.Ctx) error {
 			"error": fiber.Map{"code": "RATE_LIMITED", "message": "Too many requests from this IP. Please try again later."},
 		})
 	}
-
-	// For POST requests with email in body
-	if c.Method() == "POST" {
-		var body struct {
-			Email string `json:"email"`
-		}
-		if err := c.BodyParser(&body); err == nil && body.Email != "" {
-			emailKey := strings.ToLower(strings.TrimSpace(body.Email))
-			if !emailLimiter.allow(emailKey) {
-				remaining := emailLimiter.remaining(emailKey)
-				c.Set("X-RateLimit-Limit", "5")
-				c.Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
-				c.Set("X-RateLimit-Reset", time.Now().Add(time.Hour).Format(time.RFC3339))
-				return c.Status(429).JSON(fiber.Map{
-					"error": fiber.Map{"code": "RATE_LIMITED", "message": "Too many attempts for this email. Please try again later."},
-				})
-			}
-		}
-	}
-
 	return c.Next()
 }
 

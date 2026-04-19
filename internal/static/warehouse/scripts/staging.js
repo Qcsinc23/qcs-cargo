@@ -1,0 +1,56 @@
+// Auto-extracted from staging.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/staging'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
+      fetch('/api/v1/me', auth).then(r => {
+        if (!r.ok) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/staging'); return null; }
+        return r.json();
+      }).then(me => {
+        if (!me) return;
+        const role = (me.data && me.data.role) || '';
+        if (role !== 'staff' && role !== 'admin') { window.location.href = '/dashboard'; return; }
+        const sidebar = '<aside class="w-64 bg-[#0F172A] text-white py-6 px-4"><a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a><p class="text-amber-400 text-sm font-medium mb-2">Warehouse</p><nav class="space-y-1">' +
+          '<a href="/warehouse" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/warehouse/locker-receive" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Locker Receive</a>' +
+          '<a href="/warehouse/service-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Service Queue</a>' +
+          '<a href="/warehouse/ship-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Queue</a>' +
+          '<a href="/warehouse/packages" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Packages</a>' +
+          '<a href="/warehouse/receiving" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Receiving</a>' +
+          '<a href="/warehouse/staging" class="block py-2 px-3 rounded-lg bg-[#1E293B]">Staging</a>' +
+          '<a href="/warehouse/manifests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Manifests</a>' +
+          '<a href="/warehouse/exceptions" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Exceptions</a></nav>' +
+          '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a><a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a><button type="button" class="sidebar-logout mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+        function load() {
+          Promise.all([fetch('/api/v1/warehouse/bays', auth).then(r => r.json()), fetch('/api/v1/warehouse/packages', auth).then(r => r.json())]).then(([baysRes, pkgRes]) => {
+            const bays = (baysRes.data || []);
+            const packages = (pkgRes.data || []);
+            // Pass 2 audit fix C-1: HTML-escape bay names, suite codes, etc.
+            const esc = window.QCSAdmin.escapeHTML;
+            const bayRows = bays.map(b => '<tr class="border-b border-slate-200"><td class="py-2 px-4">' + esc(b.name || b.id) + '</td><td class="py-2 px-4">' + esc(b.zone || '—') + '</td><td class="py-2 px-4">' + esc(b.current_count ?? 0) + ' / ' + esc(b.capacity ?? 0) + '</td></tr>').join('');
+            const pkgRows = packages.map(p => '<tr class="border-b border-slate-200"><td class="py-2 px-4"><input type="checkbox" class="pkg-cb" value="' + esc(p.id) + '"></td><td class="py-2 px-4">' + esc(p.suite_code || '') + '</td><td class="py-2 px-4">' + esc(p.storage_bay || '—') + '</td><td class="py-2 px-4">' + esc(p.id.substring(0, 8) + '…') + '</td></tr>').join('');
+            const baySelect = '<option value="">Select bay</option>' + bays.map(b => '<option value="' + esc(b.id) + '">' + esc(b.name || b.id) + '</option>').join('');
+            const main = '<main class="flex-1 p-8"><nav class="mb-4 text-sm text-slate-600"><a href="/warehouse" class="hover:underline">Warehouse</a> / Staging</nav>' +
+              '<h1 class="text-3xl font-bold mb-6">Staging Bays</h1>' +
+              '<div class="grid grid-cols-1 lg:grid-cols-2 gap-8">' +
+              '<div><h2 class="text-lg font-semibold mb-2">Bays</h2><div class="bg-white rounded-xl border overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-2 px-4">Name</th><th class="text-left py-2 px-4">Zone</th><th class="text-left py-2 px-4">Count</th></tr></thead><tbody>' + bayRows + '</tbody></table></div></div>' +
+              '<div><h2 class="text-lg font-semibold mb-2">Move packages to bay</h2><div class="bg-white rounded-xl border p-4"><p class="text-sm text-slate-600 mb-2">Select packages below, then choose a bay and click Move.</p><select id="move-bay" class="border rounded px-3 py-2 w-full mb-2">' + baySelect + '</select><button type="button" id="move-btn" class="bg-[#0F172A] text-white px-4 py-2 rounded-lg">Move to bay</button></div>' +
+              '<h2 class="text-lg font-semibold mb-2 mt-4">Packages</h2><div class="bg-white rounded-xl border overflow-hidden max-h-80 overflow-y-auto"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-2 px-4"></th><th class="text-left py-2 px-4">Suite</th><th class="text-left py-2 px-4">Bay</th><th class="text-left py-2 px-4">ID</th></tr></thead><tbody>' + pkgRows + '</tbody></table></div></div></div></main>';
+            document.getElementById('app').innerHTML = '<div class="flex min-h-screen">' + sidebar + main + '</div>';
+            document.getElementById('move-btn').onclick = function() {
+              const bayId = document.getElementById('move-bay').value;
+              const ids = Array.from(document.querySelectorAll('.pkg-cb:checked')).map(c => c.value);
+              if (!bayId || ids.length === 0) { alert('Select a bay and at least one package'); return; }
+              fetch('/api/v1/warehouse/bays/move', { method: 'POST', headers: auth.headers, body: JSON.stringify({ package_ids: ids, bay_id: bayId }) })
+                .then(r => r.json()).then(j => { if (j.data) { load(); } else alert((j.error && j.error.message) || 'Failed'); });
+            };
+            bindLogout();
+          }).catch(() => { document.getElementById('app').innerHTML = '<div class="p-8">Failed to load.</div>'; });
+        }
+        load();
+      });
+    })();
+  

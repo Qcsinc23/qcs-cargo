@@ -4,7 +4,11 @@ import (
 	"context"
 	"io/fs"
 	"log"
+	"mime"
 	"os"
+	"path/filepath"
+	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -51,8 +55,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Background jobs: storage fee + expiry notifier once per day (and once on startup for testing)
+	// Background jobs: storage fee + expiry notifier once per day (and once on startup for testing).
+	// Phase 3.2: also drain the outbound_emails queue every minute.
 	go runDailyJobs()
+	go runOutboundEmailWorker()
 
 	webRoot := static.Web
 
@@ -146,9 +152,21 @@ func main() {
 		}
 		data, err := readStaticAsset(webRoot, path)
 		if err != nil {
-			data, _ = fs.ReadFile(webRoot, "index.html")
+			// DEF-010 (backlog) fix: only serve the SPA fallback HTML
+			// when the unknown URL is plausibly a customer-facing client
+			// route. Anything else (typos, scanner probes, asset misses)
+			// gets a real 404 status so observability tools and search
+			// engines see the failure instead of a 200 with the marketing
+			// page.
+			if isClientSPAFallback(path) {
+				data, _ = fs.ReadFile(webRoot, "index.html")
+				c.Set("Content-Type", "text/html; charset=utf-8")
+				return c.Send(data)
+			}
 			c.Set("Content-Type", "text/html; charset=utf-8")
-			return c.Send(data)
+			c.Status(404)
+			notFound, _ := fs.ReadFile(webRoot, "index.html")
+			return c.Send(notFound)
 		}
 		if strings.HasPrefix(path, "dashboard/") || path == "dashboard" || strings.HasPrefix(path, "verify") {
 			c.Set("Cache-Control", "no-store, no-cache, must-revalidate")
@@ -169,35 +187,56 @@ func main() {
 	}
 }
 
-func contentType(path string) string {
-	switch {
-	case len(path) > 4 && path[len(path)-4:] == ".css":
-		return "text/css"
-	case len(path) > 3 && path[len(path)-3:] == ".js":
-		return "application/javascript"
-	case len(path) > 4 && path[len(path)-4:] == ".wasm":
-		return "application/wasm"
-	case len(path) > 4 && path[len(path)-4:] == ".ico":
-		return "image/x-icon"
-	case len(path) > 4 && path[len(path)-4:] == ".png":
-		return "image/png"
-	case len(path) > 4 && path[len(path)-4:] == ".svg":
-		return "image/svg+xml"
-	default:
-		return "text/html; charset=utf-8"
-	}
+// QAL-003 (backlog) fix: rely on Go's mime package for extension lookup
+// instead of hand-rolled slice arithmetic, plus an override map for the
+// few content types we need to ensure are stable across platforms (some
+// hosts have unexpected entries in /etc/mime.types).
+var contentTypeOverrides = map[string]string{
+	".js":    "application/javascript",
+	".mjs":   "application/javascript",
+	".wasm":  "application/wasm",
+	".css":   "text/css",
+	".svg":   "image/svg+xml",
+	".woff":  "font/woff",
+	".woff2": "font/woff2",
 }
 
+func contentType(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	if ct, ok := contentTypeOverrides[ext]; ok {
+		return ct
+	}
+	if ct := mime.TypeByExtension(ext); ct != "" {
+		return ct
+	}
+	return "text/html; charset=utf-8"
+}
+
+// setAssetCacheHeaders applies cache headers per the DEF-002 fix: until
+// assets carry a content-hash in their filename, they MUST NOT be marked
+// immutable. The previous policy combined no-store HTML with year-long
+// immutable JS/CSS, so every redeploy with new HTML pointing at unchanged
+// JS/CSS URLs left clients running stale code for up to a year.
+//
+// Only assets matching the hashed filename pattern (e.g. tailwind.<sha>.css)
+// are served as immutable. All other static assets get a short revalidating
+// max-age; browsers will conditional-GET them via ETag/Last-Modified, which
+// Fiber sets automatically for the embedded FS.
 func setAssetCacheHeaders(c *fiber.Ctx, path string) {
 	cdnBase := strings.TrimSpace(os.Getenv("CDN_BASE_URL"))
 	if cdnBase != "" {
 		c.Set("X-CDN-Base-URL", cdnBase)
 	}
+	if isHashedAsset(path) {
+		c.Set("Cache-Control", "public, max-age=31536000, immutable")
+		return
+	}
 	switch {
 	case strings.HasSuffix(path, ".js"), strings.HasSuffix(path, ".css"), strings.HasSuffix(path, ".svg"),
 		strings.HasSuffix(path, ".png"), strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"),
-		strings.HasSuffix(path, ".webp"), strings.HasSuffix(path, ".wasm"), strings.HasSuffix(path, ".ico"):
-		c.Set("Cache-Control", "public, max-age=31536000, immutable")
+		strings.HasSuffix(path, ".webp"), strings.HasSuffix(path, ".wasm"), strings.HasSuffix(path, ".ico"),
+		strings.HasSuffix(path, ".woff"), strings.HasSuffix(path, ".woff2"):
+		c.Set("Cache-Control", "public, max-age=300, must-revalidate")
 	default:
 		if c.Get("Cache-Control") == "" {
 			c.Set("Cache-Control", "public, max-age=300")
@@ -205,20 +244,88 @@ func setAssetCacheHeaders(c *fiber.Ctx, path string) {
 	}
 }
 
+// hashedAssetRe matches filenames that embed a content hash, e.g.
+// "tailwind.a1b2c3d4.css" or "app.0123abcd.wasm". Only these may be served
+// as immutable; other static assets must revalidate.
+var hashedAssetRe = regexp.MustCompile(`\.[0-9a-f]{8,}\.[a-z0-9]+$`)
+
+func isHashedAsset(path string) bool {
+	return hashedAssetRe.MatchString(strings.ToLower(path))
+}
+
+// isClientSPAFallback reports whether an unknown path should be served
+// the marketing landing page (200 OK), instead of a real 404. We scope
+// this aggressively: only paths that have no extension and live under
+// the customer-facing prefixes that the JS routers might own.
+func isClientSPAFallback(path string) bool {
+	if strings.Contains(path, ".") {
+		return false
+	}
+	switch {
+	case path == "" || path == "/":
+		return true
+	case strings.HasPrefix(path, "dashboard"):
+		return true
+	case strings.HasPrefix(path, "warehouse"):
+		return true
+	case strings.HasPrefix(path, "admin"):
+		return true
+	case strings.HasPrefix(path, "verify"):
+		return true
+	}
+	return false
+}
+
+// runDailyJobs is the supervisor for background jobs that the single-replica
+// deployment relies on. DEF-005 fix: each job is now wrapped in a recover()
+// so a panic in one job cannot kill the entire daily loop, and each
+// invocation publishes a Prometheus gauge so missed runs are observable.
 func runDailyJobs() {
+	middleware.EnsureMetricsRegistered()
+	runOnce := func() {
+		runJob("storage_fee", func(ctx context.Context) error {
+			return jobs.RunStorageFeeJob(ctx)
+		})
+		runJob("expiry_notifier", func(ctx context.Context) error {
+			return jobs.RunExpiryNotifierJob(ctx)
+		})
+	}
+	runOnce() // run once on startup
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
-	run := func() {
-		ctx := context.Background()
-		if err := jobs.RunStorageFeeJob(ctx); err != nil {
-			log.Printf("[jobs] RunStorageFeeJob: %v", err)
-		}
-		if err := jobs.RunExpiryNotifierJob(ctx); err != nil {
-			log.Printf("[jobs] RunExpiryNotifierJob: %v", err)
-		}
-	}
-	run() // run once on startup
 	for range ticker.C {
-		run()
+		runOnce()
 	}
+}
+
+// runOutboundEmailWorker drains the outbound_emails queue (Phase 3.2 /
+// INC-001 part B). Frequent invocation (every minute) keeps email
+// latency low without overwhelming the provider; the worker itself
+// claims a small batch per pass and applies bounded retry per row.
+func runOutboundEmailWorker() {
+	middleware.EnsureMetricsRegistered()
+	tick := func() { runJob("outbound_email", jobs.RunOutboundEmailJob) }
+	tick()
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
+		tick()
+	}
+}
+
+func runJob(name string, fn func(ctx context.Context) error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[jobs] %s: panic recovered: %v\n%s", name, r, debug.Stack())
+			middleware.RecordDailyJobPanic(name)
+			middleware.RecordDailyJobRun(name, "error")
+		}
+	}()
+	ctx := context.Background()
+	if err := fn(ctx); err != nil {
+		log.Printf("[jobs] %s: %v", name, err)
+		middleware.RecordDailyJobRun(name, "error")
+		return
+	}
+	middleware.RecordDailyJobRun(name, "success")
 }
