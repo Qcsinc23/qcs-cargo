@@ -6,7 +6,6 @@ package api
 
 import (
 	"database/sql"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -14,7 +13,6 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
 	"github.com/Qcsinc23/qcs-cargo/internal/db/gen"
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
-	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -95,83 +93,9 @@ func adminDashboard(c *fiber.Ctx) error {
 	})
 }
 
-// adminStorageReport returns storage report for admin reports UI.
-func adminStorageReport(c *fiber.Ctx) error {
-	row, err := db.Queries().AdminStorageReport(c.Context())
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load storage report"))
-	}
-	totalWeight, _ := toFloat64(row.TotalWeight)
-	feesToday, _ := toFloat64(row.StorageFeesCollectedToday)
-	return c.JSON(fiber.Map{
-		"data": fiber.Map{
-			"total_packages_stored":        row.TotalPackagesStored,
-			"total_weight":                 totalWeight,
-			"utilization_pct":              0,
-			"packages_expiring_soon":       row.PackagesExpiringSoon,
-			"storage_fees_collected_today": feesToday,
-		},
-	})
-}
-
-// toFloat64 is used by admin report helpers.
-func toFloat64(v interface{}) (float64, bool) {
-	if v == nil {
-		return 0, true
-	}
-	switch x := v.(type) {
-	case float64:
-		return x, true
-	case int64:
-		return float64(x), true
-	case int:
-		return float64(x), true
-	default:
-		return 0, false
-	}
-}
-
-// adminReportsRevenue returns revenue report for admin reports UI.
-func adminReportsRevenue(c *fiber.Ctx) error {
-	from := c.Query("from", "")
-	to := c.Query("to", "")
-	rev, err := db.Queries().AdminRevenueReport(c.Context(), gen.AdminRevenueReportParams{
-		CreatedAt:   from,
-		Column2:     from,
-		CreatedAt_2: to,
-		Column4:     to,
-	})
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load revenue report"))
-	}
-	revenue, _ := toFloat64(rev)
-	return c.JSON(fiber.Map{"data": fiber.Map{"revenue": revenue, "from": from, "to": to}})
-}
-
-// adminReportsShipments returns shipments count report for admin reports UI.
-func adminReportsShipments(c *fiber.Ctx) error {
-	from := c.Query("from", "")
-	to := c.Query("to", "")
-	count, err := db.Queries().AdminShipmentsCountReport(c.Context(), gen.AdminShipmentsCountReportParams{
-		CreatedAt:   from,
-		Column2:     from,
-		CreatedAt_2: to,
-		Column4:     to,
-	})
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load shipments report"))
-	}
-	return c.JSON(fiber.Map{"data": fiber.Map{"count": count, "from": from, "to": to}})
-}
-
-// adminReportsCustomers returns customers count for admin reports UI.
-func adminReportsCustomers(c *fiber.Ctx) error {
-	count, err := db.Queries().AdminCustomersCount(c.Context())
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load customers count"))
-	}
-	return c.JSON(fiber.Map{"data": fiber.Map{"count": count}})
-}
+// adminStorageReport, toFloat64, adminReportsRevenue,
+// adminReportsShipments, adminReportsCustomers moved to
+// admin_reports.go in Phase 3.3 (QAL-001).
 
 func adminDestinationsList(c *fiber.Ctx) error {
 	list, err := db.Queries().ListDestinationsAdmin(c.Context())
@@ -320,6 +244,11 @@ func adminSystemHealth(c *fiber.Ctx) error {
 		status = "degraded"
 	}
 
+	// DEF-005: surface daily-job liveness so operators can see it in the
+	// admin UI without having to scrape Prometheus.
+	storageFeeLast := middleware.LastSuccessfulJobRun("storage_fee")
+	expiryNotifierLast := middleware.LastSuccessfulJobRun("expiry_notifier")
+
 	return c.JSON(fiber.Map{
 		"data": fiber.Map{
 			"status":             status,
@@ -333,7 +262,11 @@ func adminSystemHealth(c *fiber.Ctx) error {
 			"service_queue":      counts.PendingServiceRequestsCount,
 			"unmatched_packages": counts.PendingUnmatchedPackagesCount,
 			"pending_ship_count": counts.PendingShipRequestsCount,
-			"generated_at":       time.Now().UTC().Format(time.RFC3339),
+			"jobs": fiber.Map{
+				"storage_fee_last_success_unix":     storageFeeLast,
+				"expiry_notifier_last_success_unix": expiryNotifierLast,
+			},
+			"generated_at": time.Now().UTC().Format(time.RFC3339),
 		},
 	})
 }
@@ -914,131 +847,5 @@ func adminBookings(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"data": list})
 }
 
-func adminUsersList(c *fiber.Ctx) error {
-	limit, offset := pagination(c)
-	list, err := db.Queries().ListUsers(c.Context(), gen.ListUsersParams{
-		Limit:  limit,
-		Offset: offset,
-	})
-	if err != nil {
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to list users"))
-	}
-	out := make([]fiber.Map, 0, len(list))
-	for _, u := range list {
-		out = append(out, userToMap(u))
-	}
-	return c.JSON(fiber.Map{"data": out})
-}
-
-func adminUserGet(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
-	}
-	u, err := db.Queries().GetUserByID(c.Context(), id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "User not found"))
-		}
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load user"))
-	}
-	return c.JSON(fiber.Map{"data": userToMap(u)})
-}
-
-// adminUserUpdate updates an existing user's role and/or status.
-//
-// Pass 2 audit fixes:
-//   - H-8: validate role/status against a closed enum (no typos that silently
-//     deactivate accounts), prevent demoting the last remaining admin, and
-//     prevent an admin from accidentally locking themselves out.
-//   - L-3: write a structured audit-log entry capturing both the old and new
-//     values so changes are always reconstructable.
-func adminUserUpdate(c *fiber.Ctx) error {
-	id := c.Params("id")
-	if id == "" {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "id required"))
-	}
-	var body struct {
-		Role   *string `json:"role"`
-		Status *string `json:"status"`
-	}
-	if err := c.BodyParser(&body); err != nil {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
-	}
-	u, err := db.Queries().GetUserByID(c.Context(), id)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "User not found"))
-		}
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to load user"))
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	role := strings.ToLower(strings.TrimSpace(u.Role))
-	status := strings.ToLower(strings.TrimSpace(u.Status))
-	originalRole := role
-	originalStatus := status
-
-	if body.Role != nil {
-		role = strings.ToLower(strings.TrimSpace(*body.Role))
-		if !isAllowedUserRole(role) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "role must be one of: customer, staff, admin"))
-		}
-	}
-	if body.Status != nil {
-		status = strings.ToLower(strings.TrimSpace(*body.Status))
-		if !isAllowedUserStatus(status) {
-			return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "status must be one of: active, inactive, banned"))
-		}
-	}
-	adminID := c.Locals(middleware.CtxUserID).(string)
-	if originalRole == "admin" && role != "admin" {
-		// Last-admin guard — count remaining admins after the would-be demotion.
-		var remaining int
-		if err := db.DB().QueryRowContext(c.Context(), `SELECT COUNT(*) FROM users WHERE role = 'admin' AND id <> ? AND status = 'active'`, id).Scan(&remaining); err != nil {
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to validate admin count"))
-		}
-		if remaining < 1 {
-			return c.Status(409).JSON(ErrorResponse{}.withCode("LAST_ADMIN", "cannot demote the last active admin"))
-		}
-	}
-	if id == adminID && (role != "admin" || (status != "" && status != "active")) {
-		return c.Status(409).JSON(ErrorResponse{}.withCode("SELF_LOCKOUT", "you cannot demote or deactivate your own admin account"))
-	}
-
-	if body.Role != nil || body.Status != nil {
-		err = db.Queries().UpdateUserRoleAndStatus(c.Context(), gen.UpdateUserRoleAndStatusParams{
-			Role:      role,
-			Status:    status,
-			UpdatedAt: now,
-			ID:        id,
-		})
-		if err != nil {
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to update user"))
-		}
-		// If the user was deactivated, also revoke their active sessions so
-		// they cannot continue using the app on previously-issued cookies.
-		if status != "active" {
-			_ = services.InvalidateAllUserSessions(c.Context(), id)
-		}
-		u, _ = db.Queries().GetUserByID(c.Context(), id)
-	}
-	detail := fmt.Sprintf("role:%s->%s,status:%s->%s", originalRole, role, originalStatus, status)
-	recordActivity(c.Context(), adminID, "admin.user.update", "user", id, detail)
-	return c.JSON(fiber.Map{"data": userToMap(u)})
-}
-
-func isAllowedUserRole(r string) bool {
-	switch r {
-	case "customer", "staff", "admin":
-		return true
-	}
-	return false
-}
-
-func isAllowedUserStatus(s string) bool {
-	switch s {
-	case "active", "inactive", "banned":
-		return true
-	}
-	return false
-}
+// adminUsersList, adminUserGet, adminUserUpdate, isAllowedUserRole, and
+// isAllowedUserStatus moved to admin_users.go in Phase 3.3 (QAL-001).

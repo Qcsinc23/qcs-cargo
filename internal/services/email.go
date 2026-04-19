@@ -1,6 +1,8 @@
 package services
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +13,58 @@ import (
 )
 
 const supportEmail = "support@qcs-cargo.com"
+
+// Phase 3.2 (INC-001 part B): wire each transactional template into the
+// outbound-email queue dispatch table at startup. The queue worker uses
+// these registrations to look up a renderer/sender by template name.
+//
+// The payload shape per template lives next to its sender so adding a
+// new template is a single-file change in this package.
+func init() {
+	type storagePackagePayload struct {
+		SenderName string  `json:"sender_name"`
+		Amount     float64 `json:"amount"`
+	}
+	type confirmationCodePayload struct {
+		ConfirmationCode string `json:"confirmation_code"`
+	}
+
+	RegisterEmailTemplate(TemplateStorageWarning5d, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p storagePackagePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("storage_warning_5d payload: %w", err)
+		}
+		return SendStorageWarning5Days(to, p.SenderName)
+	})
+	RegisterEmailTemplate(TemplateStorageWarning1d, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p storagePackagePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("storage_warning_1d payload: %w", err)
+		}
+		return SendStorageWarning1Day(to, p.SenderName)
+	})
+	RegisterEmailTemplate(TemplateStorageFinalNotice, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p storagePackagePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("storage_final_notice payload: %w", err)
+		}
+		return SendStorageFinalNotice(to, p.SenderName)
+	})
+	RegisterEmailTemplate(TemplateStorageFeeCharged, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p storagePackagePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("storage_fee_charged payload: %w", err)
+		}
+		return SendStorageFeeCharged(to, p.SenderName, p.Amount)
+	})
+	RegisterEmailTemplate(TemplateShipRequestPaid, func(ctx context.Context, to string, raw json.RawMessage) error {
+		var p confirmationCodePayload
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return fmt.Errorf("ship_request_paid payload: %w", err)
+		}
+		return SendShipRequestPaid(to, p.ConfirmationCode)
+	})
+}
 
 var missingResendKeyLogOnce sync.Once
 

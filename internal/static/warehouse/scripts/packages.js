@@ -1,0 +1,40 @@
+// Auto-extracted from packages.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/packages'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      fetch('/api/v1/me', auth).then(r => {
+        if (!r.ok) { window.location.href = '/login?redirect=' + encodeURIComponent('/warehouse/packages'); return null; }
+        return r.json();
+      }).then(me => {
+        if (!me) return;
+        const role = (me.data && me.data.role) || '';
+        if (role !== 'staff' && role !== 'admin') { window.location.href = '/dashboard'; return; }
+        const sidebar = '<aside class="w-64 bg-[#0F172A] text-white py-6 px-4"><a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a><p class="text-amber-400 text-sm font-medium mb-2">Warehouse</p><nav class="space-y-1">' +
+          '<a href="/warehouse" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/warehouse/locker-receive" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Locker Receive</a>' +
+          '<a href="/warehouse/service-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Service Queue</a>' +
+          '<a href="/warehouse/ship-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Queue</a>' +
+          '<a href="/warehouse/packages" class="block py-2 px-3 rounded-lg bg-[#1E293B]">Packages</a>' +
+          '<a href="/warehouse/receiving" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Receiving</a>' +
+          '<a href="/warehouse/staging" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Staging</a>' +
+          '<a href="/warehouse/manifests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Manifests</a>' +
+          '<a href="/warehouse/exceptions" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Exceptions</a></nav>' +
+          '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a><a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a><button type="button" class="sidebar-logout mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+        fetch('/api/v1/warehouse/packages', auth).then(r => r.json()).then(j => {
+          const data = (j && j.data) || [];
+          // Pass 2 audit fix C-1: HTML-escape every server-supplied field.
+          // sender_name in particular is set by inbound carrier or warehouse
+          // staff input and must not be rendered raw.
+          const esc = window.QCSAdmin.escapeHTML;
+          const rows = data.map(p => '<tr class="border-b border-slate-200"><td class="py-3 px-4 font-mono text-sm">' + esc((p.id || '—').slice(0, 8)) + '…</td><td class="py-3 px-4">' + esc(p.suite_code || '—') + '</td><td class="py-3 px-4">' + esc(p.sender_name || '—') + '</td><td class="py-3 px-4">' + esc(p.weight_lbs != null ? p.weight_lbs : '—') + '</td><td class="py-3 px-4">' + esc(p.status || '—') + '</td><td class="py-3 px-4">' + esc(p.storage_bay || '—') + '</td><td class="py-3 px-4">' + esc(p.arrived_at ? new Date(p.arrived_at).toLocaleDateString() : '—') + '</td></tr>').join('');
+          document.getElementById('app').innerHTML = '<div class="flex min-h-screen">' + sidebar +
+            '<main class="flex-1 p-8"><nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/warehouse" class="hover:underline">Warehouse</a></li><li aria-current="page" class="font-medium">Packages</li></ol></nav><h1 class="text-3xl font-bold mb-6">All Packages</h1><div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-3 px-4">ID</th><th class="text-left py-3 px-4">Suite</th><th class="text-left py-3 px-4">Sender</th><th class="text-left py-3 px-4">Weight</th><th class="text-left py-3 px-4">Status</th><th class="text-left py-3 px-4">Bay</th><th class="text-left py-3 px-4">Arrived</th></tr></thead><tbody>' + rows + '</tbody></table></div></main></div>';
+          var lb = document.querySelector('.sidebar-logout'); if (lb) lb.onclick = function() { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(function() { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
+        }).catch(() => { document.getElementById('app').innerHTML = '<div class="p-8">Failed to load packages.</div>'; });
+      });
+    })();
+  

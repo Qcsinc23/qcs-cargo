@@ -128,10 +128,18 @@ WHERE id = ? AND user_id = ? AND COALESCE(payment_status, '') <> 'paid'
 		return nil
 	}
 
+	// Phase 3.2 (INC-001b): paid-email send is now enqueued onto the
+	// outbound_emails queue. The atomic SQL transition above already
+	// guarantees exactly-once enqueue per ship request (paid_email_sent_at
+	// is set in the same UPDATE). The queue worker dispatches the actual
+	// provider call with bounded retry so a transient Resend outage no
+	// longer silently drops the customer's payment-confirmation email.
 	u, err := db.Queries().GetUserByID(c.Context(), sr.UserID)
 	if err == nil {
-		if err := services.SendShipRequestPaid(u.Email, sr.ConfirmationCode); err != nil {
-			log.Printf("[stripe webhook] send payment success email failed for ship_request %s user %s: %v", sr.ID, sr.UserID, err)
+		if err := services.EnqueueEmail(c.Context(), services.TemplateShipRequestPaid, u.Email, map[string]any{
+			"confirmation_code": sr.ConfirmationCode,
+		}); err != nil {
+			log.Printf("[stripe webhook] enqueue payment success email failed for ship_request %s user %s: %v", sr.ID, sr.UserID, err)
 		}
 	}
 	return nil

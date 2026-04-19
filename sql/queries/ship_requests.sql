@@ -73,6 +73,21 @@ UPDATE ship_requests
 SET payment_status = ?, status = ?, updated_at = ?
 WHERE id = ? AND user_id = ?;
 
+-- name: GetShipRequestByIDForAdmin :one
+-- DEF-001 fix: admin reconcile must look up any user's ship request,
+-- not only those owned by the calling admin.
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, created_at, updated_at
+FROM ship_requests
+WHERE id = ?;
+
+-- name: UpdateShipRequestPaymentReconcileForAdmin :exec
+-- DEF-001 fix: admin reconcile must update by id only (no user_id scope).
+UPDATE ship_requests
+SET payment_status = ?, status = ?, updated_at = ?
+WHERE id = ?;
+
 -- name: AdminListShipRequests :many
 SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
        consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,

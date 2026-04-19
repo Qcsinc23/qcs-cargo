@@ -11,7 +11,7 @@
         href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
         rel="stylesheet" />
     <link rel="stylesheet" href="/public.css" />
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/js/marked.min.js"></script>
     <style>
         .post-content h1,
         .post-content h2,
@@ -124,42 +124,7 @@
         </div>
     </footer>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // The slug is everything after /blog/
-            const pathParts = window.location.pathname.split('/');
-            const slug = pathParts[pathParts.length - 1] || pathParts[pathParts.length - 2];
-
-            fetch('/api/v1/blog/' + slug)
-                .then(r => r.ok ? r.json() : Promise.reject('Failed load'))
-                .then(res => {
-                    const post = res.data;
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('post-article').style.display = 'block';
-
-                    document.title = post.title + ' | QCS Cargo';
-                    document.getElementById('bc-title').textContent = post.title;
-                    document.getElementById('post-title').textContent = post.title;
-                    document.getElementById('post-category').textContent = post.category || 'NEWS';
-
-                    if (post.published_at) {
-                        const dt = new Date(post.published_at);
-                        document.getElementById('post-date').textContent = dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-                    } else {
-                        document.getElementById('post-date').textContent = 'Draft';
-                    }
-
-                    // Render Markdown
-                    if (post.content_md) {
-                        document.getElementById('post-content').innerHTML = marked.parse(post.content_md);
-                    }
-                })
-                .catch(err => {
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('error').style.display = 'block';
-                });
-        });
-    </script>
+    <script src="/scripts/blog-post.js"></script>
 </body>
 
 </html>

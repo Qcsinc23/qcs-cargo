@@ -25,8 +25,18 @@ var csrfExemptAuthRoutes = map[string]struct{}{
 	"/api/v1/auth/password/reset":       {},
 }
 
-// CSRFProtection enforces same-origin checks for state-changing requests that carry
-// the refresh-token cookie. Bearer-token and machine-to-machine calls (no cookie) pass through.
+// CSRFProtection enforces same-origin checks for state-changing requests
+// that carry the refresh-token cookie. Bearer-token and
+// machine-to-machine calls without a refresh cookie are not CSRF-relevant
+// and pass through.
+//
+// DEF-013 (backlog) note: a Bearer-authenticated caller that ALSO has a
+// stale qcs_refresh cookie from a prior browser session will still be
+// CSRF-checked here. That is intentional — the cookie is sent
+// automatically by the browser so a cross-origin POST could reuse it
+// even if the API client thinks it is "Bearer only". We do not strip the
+// cookie on Bearer detection because doing so would log the user out of
+// any same-origin tab that uses cookie auth.
 func CSRFProtection(c *fiber.Ctx) error {
 	switch c.Method() {
 	case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions:

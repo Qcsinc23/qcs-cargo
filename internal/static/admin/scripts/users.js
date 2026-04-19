@@ -1,0 +1,64 @@
+// Auto-extracted from users.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function() {
+      const token = localStorage.getItem('qcs_access_token');
+      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/admin/users'); return; }
+      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      function adminSidebar(active) {
+        var notif = '<div class="relative mb-4"><button type="button" id="admin-notification-btn" class="p-2 rounded-lg hover:bg-[#1E293B] text-white" aria-label="Notifications">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg></button>' +
+          '<div id="admin-notification-dropdown" class="hidden absolute left-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-slate-200 py-2 z-10">' +
+          '<p class="px-4 py-2 text-sm font-medium text-slate-700 border-b border-slate-100">Notifications</p><p class="px-4 py-4 text-slate-500 text-sm">No new notifications</p></div></div>';
+        return '<div class="flex min-h-screen"><aside class="w-64 bg-[#0F172A] text-white py-6 px-4">' +
+          '<a href="/" class="font-bold text-lg block mb-2">QCS Cargo</a>' + notif + '<p class="text-amber-400 text-sm font-medium mb-2">Admin</p>' +
+          '<nav class="space-y-1">' +
+          '<a href="/admin" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Dashboard</a>' +
+          '<a href="/admin/ship-requests" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Ship Requests</a>' +
+          '<a href="/admin/locker-packages" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Locker Packages</a>' +
+          '<a href="/admin/service-queue" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Service Queue</a>' +
+          '<a href="/admin/unmatched" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Unmatched</a>' +
+          '<a href="/admin/bookings" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Bookings</a>' +
+          '<a href="/admin/users" class="block py-2 px-3 rounded-lg ' + (active === 'users' ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]') + '">Users</a>' +
+          '<a href="/admin/activity" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Activity</a>' +
+          '</nav><a href="/dashboard" class="block mt-6 text-sm text-slate-400 hover:text-white">Customer Dashboard</a>' +
+          '<button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
+      }
+      function bindNotificationDropdown() {
+        var notifBtn = document.getElementById('admin-notification-btn');
+        var notifDrop = document.getElementById('admin-notification-dropdown');
+        if (notifBtn && notifDrop) {
+          notifBtn.onclick = function() { notifDrop.classList.toggle('hidden'); };
+          document.addEventListener('click', function(e) { if (!notifDrop.contains(e.target) && !notifBtn.contains(e.target)) notifDrop.classList.add('hidden'); });
+        }
+      }
+      fetch('/api/v1/me', auth).then(r => { if (!r.ok) { window.location.href = '/login'; return null; } return r.json(); }).then(me => {
+        if (!me || me.data.role !== 'admin') { window.location.href = '/dashboard'; return; }
+        fetch('/api/v1/admin/users?limit=50', auth).then(r => r.ok ? r.json() : null).then(res => {
+          const list = (res && res.data) || [];
+          let main = '<main class="flex-1 p-8"><nav class="mb-4 text-sm text-slate-600"><a href="/admin" class="text-[#2563EB] hover:underline">Admin</a> / Users</nav>' +
+            '<h1 class="text-3xl font-bold mb-6">Users</h1><p class="text-slate-600 mb-4">' + list.length + ' user(s)</p>' +
+            '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b"><tr>' +
+            '<th class="text-left py-3 px-4 font-medium text-slate-600">Email</th><th class="text-left py-3 px-4 font-medium text-slate-600">Name</th><th class="text-left py-3 px-4 font-medium text-slate-600">Role</th><th class="text-left py-3 px-4 font-medium text-slate-600">Status</th><th class="text-left py-3 px-4 font-medium text-slate-600">Suite</th></tr></thead><tbody>';
+          // Pass 2 audit fix C-1: HTML-escape every server-supplied field
+          // before splicing into innerHTML. u.name is a customer-controlled
+          // value and was the original stored-XSS sink for this page.
+          const esc = window.QCSAdmin.escapeHTML;
+          list.forEach(u => {
+            const safeRole = (u.role === 'admin') ? 'admin' : (u.role || '—');
+            main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
+              '<td class="py-3 px-4">' + esc(u.email || '—') + '</td>' +
+              '<td class="py-3 px-4">' + esc(u.name || '—') + '</td>' +
+              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm ' + (u.role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100') + '">' + esc(safeRole) + '</span></td>' +
+              '<td class="py-3 px-4">' + esc(u.status || '—') + '</td>' +
+              '<td class="py-3 px-4 font-mono text-sm">' + esc(u.suite_code || '—') + '</td></tr>';
+          });
+          main += '</tbody></table></div></main></div>';
+          document.getElementById('app').innerHTML = adminSidebar('users') + main;
+          document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
+          bindNotificationDropdown();
+        });
+      });
+    })();
+  

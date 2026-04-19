@@ -57,27 +57,37 @@
 
         <form id="register-form" class="card"
           style="padding: 32px; border: 1px solid var(--line); box-shadow: var(--shadow-2); max-width: 500px;">
-          <!-- Step 1: Account Info -->
+          <!-- Step 1: Account Info. Phase 3.4 (CRF-001): autocomplete +
+               inputmode + spellcheck attributes for browser autofill and
+               correct mobile keyboards. -->
           <div class="reg-step" data-step="1">
             <div class="form-field">
               <label for="name">Full Name</label>
-              <input id="name" type="text" name="name" required placeholder="John Doe" />
+              <input id="name" type="text" name="name" required
+                     autocomplete="name" autocapitalize="words"
+                     placeholder="John Doe" />
             </div>
             <div class="form-field" style="margin-top: 16px;">
               <label for="email">Email Address</label>
-              <input id="email" type="email" name="email" required placeholder="john.doe@example.com" />
+              <input id="email" type="email" name="email" required
+                     autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false"
+                     placeholder="john.doe@example.com" />
             </div>
             <div class="form-field" style="margin-top: 16px;">
               <label for="phone">WhatsApp Number</label>
               <div style="display: flex; gap: 8px;">
                 <span
                   style="display: flex; align-items: center; padding: 0 12px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 0.9rem;">+592</span>
-                <input id="phone" type="tel" name="phone" required placeholder="600 0000" style="flex: 1;" />
+                <input id="phone" type="tel" name="phone" required
+                       autocomplete="tel-national" inputmode="tel"
+                       placeholder="600 0000" style="flex: 1;" />
               </div>
             </div>
             <div class="form-field" style="margin-top: 16px;">
               <label for="password">Password</label>
-              <input id="password" type="password" name="password" required placeholder="Min. 8 characters" />
+              <input id="password" type="password" name="password" required minlength="8"
+                     autocomplete="new-password"
+                     placeholder="Min. 8 characters" />
             </div>
             <button type="button" class="btn btn-accent next-step" style="width: 100%; margin-top: 24px;">Confirm &
               Continue</button>
@@ -211,119 +221,7 @@
     }
   </style>
 
-  <script>
-    const form = document.getElementById('register-form');
-    const steps = document.querySelectorAll('.reg-step');
-    const dots = document.querySelectorAll('.step-dot');
-    const lines = document.querySelectorAll('.step-line');
-    const headerTitle = document.querySelector('#registration-header h1');
-    const headerText = document.querySelector('#registration-header p');
-    const status = document.getElementById('form-status');
-    const submitBtn = document.getElementById('register-submit');
-
-    const stepInfo = [
-      { title: 'Step 1: Account Details', text: 'Create your credentials to get started.' },
-      { title: 'Step 2: Shipping Route', text: 'Choose your primary destination for best rates.' },
-      { title: 'Step 3: Verification', text: 'Review international shipping requirements.' },
-      { title: 'Verify Your Email', text: 'Use the link in your inbox to activate your account.' }
-    ];
-
-    function showStep(stepNum) {
-      steps.forEach(s => s.style.display = 'none');
-      document.querySelector(`.reg-step[data-step="${stepNum}"]`).style.display = 'block';
-
-      dots.forEach((dot, i) => {
-        const dStep = i + 1;
-        dot.classList.remove('active', 'completed');
-        if (dStep < stepNum) dot.classList.add('completed');
-        if (dStep === stepNum) dot.classList.add('active');
-
-        if (i < lines.length) {
-          lines[i].classList.remove('active');
-          if (dStep < stepNum) lines[i].classList.add('active');
-        }
-      });
-
-      headerTitle.textContent = stepInfo[stepNum - 1].title;
-      headerText.textContent = stepInfo[stepNum - 1].text;
-
-      if (stepNum === 4) {
-        document.getElementById('step-indicator').style.display = 'none';
-        document.getElementById('login-link').style.display = 'none';
-      }
-    }
-
-    document.querySelectorAll('.next-step').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const currentStep = btn.closest('.reg-step');
-        const stepNum = parseInt(currentStep.getAttribute('data-step'));
-
-        // Validation for step 1
-        if (stepNum === 1) {
-          const inputs = currentStep.querySelectorAll('input[required]');
-          let valid = true;
-          inputs.forEach(input => {
-            if (!input.checkValidity()) {
-              input.reportValidity();
-              valid = false;
-            }
-          });
-          if (!valid) return;
-        }
-
-        showStep(stepNum + 1);
-      });
-    });
-
-    document.querySelectorAll('.prev-step').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const currentStep = btn.closest('.reg-step');
-        const stepNum = parseInt(currentStep.getAttribute('data-step'));
-        showStep(stepNum - 1);
-      });
-    });
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(form);
-      const data = Object.fromEntries(formData.entries());
-      // Handle prefix
-      data.phone = '+592' + data.phone.replace(/[^0-9]/g, '');
-
-      status.style.display = 'block';
-      status.style.color = 'var(--muted)';
-      status.textContent = 'Creating your account...';
-      submitBtn.disabled = true;
-      submitBtn.textContent = 'Creating...';
-
-      try {
-        const r = await fetch('/api/v1/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        });
-        const j = await r.json();
-        if (r.ok) {
-          const user = j.data?.user || {};
-          const email = user.email || data.email;
-          const suiteCode = user.suite_code || 'Suite code assigned';
-          document.getElementById('suite-code-display').textContent = suiteCode;
-          document.getElementById('verification-message').textContent = (j.data?.message || 'Check your inbox for the verification link.') + ' Sent to ' + email + '.';
-          status.style.display = 'none';
-          showStep(4);
-        } else {
-          status.style.color = '#b91c1c';
-          status.textContent = j.error?.message || 'Registration failed. Please check your details.';
-        }
-      } catch (err) {
-        status.style.color = '#b91c1c';
-        status.textContent = 'Connection error. Please try again.';
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Agree & Finalize';
-      }
-    });
-  </script>
+  <script src="/scripts/register.js"></script>
 </body>
 
 </html>

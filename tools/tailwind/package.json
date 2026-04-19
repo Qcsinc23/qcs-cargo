@@ -1,0 +1,12 @@
+{
+  "name": "qcs-tailwind-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local Tailwind compile for QCS Cargo static HTML. Phase 2.1 (DEF-002+DEF-004).",
+  "scripts": {
+    "build": "tailwindcss -i input.css -o ../../internal/static/css/tailwind.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.16"
+  }
+}

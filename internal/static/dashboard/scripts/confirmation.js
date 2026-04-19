@@ -1,0 +1,114 @@
+// Auto-extracted from confirmation.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function () {
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+
+      var pathParts = window.location.pathname.split('/').filter(Boolean);
+      var idx = pathParts.indexOf('ship-requests');
+      var id = idx >= 0 && pathParts[idx + 1] && pathParts[idx + 1] !== 'confirmation' ? pathParts[idx + 1] : null;
+      if (!id) { window.location.href = '/dashboard/ship-requests'; return; }
+
+      var app = document.getElementById('app');
+      QCS.mountLoading(app, 'Confirming payment…');
+
+      var sidebar = QCS.renderSidebar('ship-requests');
+      var bc = '<nav aria-label="Breadcrumb" class="mb-4">'
+        + '<ol class="flex items-center gap-2 text-sm text-slate-600">'
+        + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+        + '<li aria-hidden="true">/</li>'
+        + '<li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li>'
+        + '<li aria-hidden="true">/</li>'
+        + '<li class="text-[#0F172A] font-medium" aria-current="page">Confirmation</li>'
+        + '</ol></nav>';
+
+      // Atomic webhook reconciliation (audit fix C-3) flips payment_status='paid'
+      // server-side as soon as Stripe fires the .succeeded event. From the
+      // client we just poll the ship request a few times to surface the
+      // updated state. No client-side reconcile call is needed (and the
+      // legacy /reconcile endpoint requires admin role anyway).
+      var attempts = 0;
+      var maxAttempts = 8;
+      var intervalMs = 1000;
+
+      function poll() {
+        QCS.fetchJson('/api/v1/ship-requests/' + encodeURIComponent(id))
+          .then(function (res) {
+            var sr = (res && res.data && (res.data.ship_request || res.data)) || null;
+            if (!sr) {
+              QCS.mountError(app, {
+                title: 'Ship request not found',
+                description: 'We could not find a ship request with that identifier.',
+                actionLabel: 'Back to ship requests',
+                onRetry: function () { window.location.href = '/dashboard/ship-requests'; }
+              });
+              return;
+            }
+            var paymentStatus = String(sr.payment_status || sr.status || '').toLowerCase();
+            attempts += 1;
+            if (paymentStatus === 'paid' || attempts >= maxAttempts) {
+              renderResult(sr, paymentStatus);
+              return;
+            }
+            setTimeout(poll, intervalMs);
+          })
+          .catch(function (err) {
+            QCS.mountError(app, {
+              title: 'Could not load confirmation',
+              description: (err && err.message) || 'Network error.',
+              onRetry: function () { window.location.reload(); }
+            });
+          });
+      }
+
+      function renderResult(sr, paymentStatus) {
+        var code = sr.confirmation_code || sr.id || id;
+        var total = QCS.formatMoney(sr.total || 0, 'USD');
+        var isPaid = paymentStatus === 'paid';
+        var isReview = paymentStatus === 'review_required';
+
+        var card;
+        if (isPaid) {
+          card = '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-success mb-3" aria-hidden="true">Payment received</div>'
+            + '<h1 class="text-2xl font-bold text-emerald-900 mb-2">Thank you — your payment is confirmed</h1>'
+            + '<p class="text-emerald-800 mb-1">Confirmation: <strong>' + window.qcsEscapeHTML(code) + '</strong></p>'
+            + '<p class="text-emerald-800 mb-5">Amount: <strong>' + window.qcsEscapeHTML(total) + '</strong></p>'
+            + '<div class="flex flex-wrap gap-3">'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">View details</a>'
+            + '<a href="/dashboard/ship-requests" class="border border-slate-300 px-5 py-2 rounded-lg">All ship requests</a>'
+            + '</div></div>';
+        } else if (isReview) {
+          card = '<div class="bg-amber-50 border border-amber-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-warning mb-3" aria-hidden="true">Under review</div>'
+            + '<h1 class="text-2xl font-bold text-amber-900 mb-2">Your payment is being reviewed</h1>'
+            + '<p class="text-amber-800 mb-5">Stripe completed your charge but the recorded amount needs a quick verification by our team. We will email you within one business day.</p>'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">View details</a>'
+            + '</div>';
+        } else {
+          // Webhook hasn't reached us yet (still processing). Show waiting state with manual refresh.
+          card = '<div class="bg-blue-50 border border-blue-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-info mb-3" aria-hidden="true">Processing</div>'
+            + '<h1 class="text-2xl font-bold text-blue-900 mb-2">We are confirming your payment</h1>'
+            + '<p class="text-blue-800 mb-5">Stripe sent us your payment but we have not received the final webhook yet. This usually takes a few seconds.</p>'
+            + '<div class="flex flex-wrap gap-3">'
+            + '<button type="button" id="refresh-btn" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">Refresh status</button>'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="border border-slate-300 px-5 py-2 rounded-lg">View ship request</a>'
+            + '</div></div>';
+        }
+
+        app.innerHTML = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + bc + card
+          + '</main></div>';
+        QCS.bindLogout();
+        var rb = document.getElementById('refresh-btn');
+        if (rb) rb.addEventListener('click', function () { window.location.reload(); });
+      }
+
+      poll();
+    })();
+  

@@ -39,6 +39,12 @@ Thumbs.db
 node_modules/
 npm-debug.log*
 
+# Tailwind toolchain (Phase 2.1). The compiled output
+# internal/static/css/tailwind.css IS checked in so the Go server has the
+# asset available without a Node build step.
+tools/tailwind/node_modules/
+tools/tailwind/package-lock.json
+
 # Testing
 e2e/node_modules/
 e2e/test-results/
@@ -47,6 +53,11 @@ e2e/redesign-shots/
 .gocache/
 .gotmp/
 .gomodcache/
+
+# Scratch output from local tooling (PDF rendering, preview images, etc).
+# Do not commit build/audit artifacts from the agent workspace.
+output/
+tmp/
 
 # IDE & Local Workspace
 .cursor/

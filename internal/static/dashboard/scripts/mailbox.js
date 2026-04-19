@@ -1,0 +1,84 @@
+// Auto-extracted from mailbox.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function () {
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/mailbox');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
+
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
+
+      QCS.fetchJson('/api/v1/me')
+        .then(function (j) {
+          if (!j || !j.data) { window.location.href = loginRedirect; return; }
+          renderShell(j.data);
+          QCS.bindLogout();
+        })
+        .catch(function (err) {
+          QCS.mountError(app, {
+            title: 'Unable to load mailbox',
+            description: (err && err.message) || 'Network error.',
+            actionLabel: 'Sign in again',
+            onRetry: function () { window.location.href = loginRedirect; }
+          });
+        });
+
+      function renderShell(user) {
+        var sidebar = QCS.renderSidebar('mailbox');
+        var suiteCode = user.suite_code || '—';
+        var name = user.name || 'Your Name';
+        var line1 = '35 Obrien St, E12, Suite ' + suiteCode;
+        var line2 = 'Kearny, NJ 07032';
+        var fullAddress = name + '\n' + line1 + '\n' + line2;
+
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">My Mailbox</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">My Mailbox</h1>'
+          + '<p class="text-slate-600 mb-6">Use this address at US checkouts. Include your suite code so we can match packages to you.</p>'
+          + '<div class="grid lg:grid-cols-3 gap-6">'
+          + '<section class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<div class="flex items-center justify-between mb-3">'
+          + '<h2 class="text-lg font-semibold">Your US shipping address</h2>'
+          + '<span class="qcs-badge qcs-badge-info">Suite ' + window.qcsEscapeHTML(suiteCode) + '</span>'
+          + '</div>'
+          + '<pre id="address-text" class="font-mono text-base whitespace-pre-line bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4"></pre>'
+          + '<div class="flex flex-wrap gap-2">'
+          + '<button type="button" id="copy-btn" class="bg-[#2563EB] text-white px-4 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Copy address</button>'
+          + '<button type="button" id="copy-line1" class="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Copy street + suite</button>'
+          + '</div>'
+          + '</section>'
+          + '<aside class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3">'
+          + '<h2 class="text-lg font-semibold">Tips</h2>'
+          + '<ul class="text-sm text-slate-600 space-y-2 list-disc pl-4">'
+          + '<li>Always include <span class="font-mono font-semibold">Suite ' + window.qcsEscapeHTML(suiteCode) + '</span> on every order.</li>'
+          + '<li>If a sender omits your suite, <a href="/dashboard/inbound" class="text-[#2563EB]">add inbound tracking</a> so we can match it.</li>'
+          + '<li>Free storage is 30 days from arrival.</li>'
+          + '</ul>'
+          + '<a href="/dashboard/inbound" class="block text-center bg-[#F97316] text-white px-4 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Pre-alert a package</a>'
+          + '</aside>'
+          + '</div>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+
+        var addrEl = document.getElementById('address-text');
+        if (addrEl) addrEl.textContent = fullAddress;
+
+        var copyBtn = document.getElementById('copy-btn');
+        if (copyBtn) copyBtn.addEventListener('click', function () { QCS.copyToClipboard(fullAddress); });
+        var copyLine = document.getElementById('copy-line1');
+        if (copyLine) copyLine.addEventListener('click', function () { QCS.copyToClipboard(line1); });
+      }
+    })();
+  

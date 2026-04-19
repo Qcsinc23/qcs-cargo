@@ -359,3 +359,45 @@ func TestAdminInsights_RequiresAdminAuth(t *testing.T) {
 	defer resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
+
+// TestRequireAuth_UsesLiveDBRoleNotJWTClaim is the INC-004 regression
+// test. RequireAuth now reads the user's role from the live DB row, not
+// the role embedded in the access-token JWT claim. A user demoted in the
+// DB is therefore denied admin routes on their next request, instead of
+// retaining admin access until the token expires (≤15 min).
+//
+// We mint an access token with role="admin" (the standard helper), then
+// flip the user's role in the DB to "customer" before the call. With the
+// fix in place, /admin/dashboard must return 403 even though the JWT
+// still claims admin.
+func TestRequireAuth_UsesLiveDBRoleNotJWTClaim(t *testing.T) {
+	app := setupTestApp(t)
+	token := mustAdminAccessToken(t)
+
+	// Sanity: the admin token works against /admin/dashboard before
+	// demotion.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode, "admin should be allowed before demotion")
+
+	// Demote the admin in the DB without changing the JWT.
+	_, err = db.DB().Exec(
+		`UPDATE users SET role = 'customer', updated_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(time.RFC3339), testdata.AdminID,
+	)
+	require.NoError(t, err)
+
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusForbidden, resp.StatusCode,
+		"demoted admin must be blocked from admin routes immediately, not after token expiry",
+	)
+	// Drop unused vars to satisfy strict linters.
+	_ = strings.TrimSpace
+}

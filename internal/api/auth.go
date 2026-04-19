@@ -278,6 +278,12 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 			logSensitiveAuthArtifact("[DEV] Verification link for %s: %s", normalizedEmail, link)
 		}
 		recordActivity(c.Context(), user.ID, "auth.magic_link.request", "user", user.ID, "rerouted=verify_email")
+		// DEF-006 (backlog): the user mistakenly believes a sign-in link is
+		// inbound when in fact a verification link was sent instead. Cannot
+		// differentiate the API response body (would create an account
+		// enumeration channel via `hint`/status differences). Mitigation
+		// lives in the verification email subject line and the post-login
+		// UI. No action here.
 		return c.JSON(fiber.Map{"data": fiber.Map{"message": enumSafeMsg}})
 	}
 	rawToken, err := services.RequestMagicLink(c.Context(), user.ID, body.RedirectTo)
@@ -407,9 +413,18 @@ func authMagicLinkVerify(c *fiber.Ctx) error {
 			return c.Status(403).JSON(ErrorResponse{}.withCode("ACCOUNT_INACTIVE", "Account is inactive"))
 		}
 		log.Printf("[auth] magic-link verify failed: %v", err)
-		return c.Status(401).JSON(ErrorResponse{}.withCode("INVALID_LINK", err.Error()))
+		// CRF-003 (backlog) fix: return a fixed customer-facing string so
+		// the UI does not surface raw Go error wording. The underlying
+		// error is still logged for ops.
+		return c.Status(401).JSON(ErrorResponse{}.withCode(
+			"INVALID_LINK",
+			"Your sign-in link has expired or has already been used. Request a new link to continue.",
+		))
 	}
-	log.Printf("[auth] magic-link verify success user_id=%s", user.ID)
+	// DEF-014 (backlog) fix: gate per-login PII trail behind the dev/test
+	// debug-artifact flag so production stdout does not accumulate per-user
+	// magic-link login traces alongside Fiber's request log.
+	logSensitiveAuthArtifact("[auth] magic-link verify success user_id=%s", user.ID)
 	middleware.ClearAuthAttemptFailures(lockKey)
 	recordActivity(c.Context(), user.ID, "auth.magic_link.verify", "user", user.ID, "")
 	setRefreshCookie(c, refreshToken)

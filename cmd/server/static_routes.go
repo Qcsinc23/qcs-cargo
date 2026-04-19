@@ -16,13 +16,21 @@ func resolveStaticPath(path string) string {
 	} else if path == "admin" || path == "admin/" {
 		path = "admin/index.html"
 	} else if strings.HasPrefix(path, "admin/") {
-		// /admin/ship-requests -> admin/ship-requests.html; /admin/users/123 -> admin/users.html; /admin/common.js -> admin/common.js
+		// /admin/ship-requests -> admin/ship-requests.html; /admin/users/123 -> admin/users.html;
+		// /admin/common.js -> admin/common.js (file ext preserved);
+		// Phase 2.4 / 3.1: /admin/scripts/<page>.js -> admin/scripts/<page>.js (extracted inline blocks).
 		rest := path[len("admin/"):]
 		if rest != "" {
-			if strings.Contains(rest, "/") {
+			lastSegment := rest
+			if i := strings.LastIndex(rest, "/"); i >= 0 {
+				lastSegment = rest[i+1:]
+			}
+			if strings.Contains(lastSegment, ".") {
+				// File reference (e.g. admin/scripts/users.js); leave as-is.
+			} else if strings.Contains(rest, "/") {
 				segment := rest[:strings.Index(rest, "/")]
 				path = "admin/" + segment + ".html"
-			} else if !strings.Contains(rest, ".") {
+			} else {
 				path = "admin/" + rest + ".html"
 			}
 		}
@@ -30,11 +38,18 @@ func resolveStaticPath(path string) string {
 		path = "warehouse/index.html"
 	} else if strings.HasPrefix(path, "warehouse/") {
 		rest := path[len("warehouse/"):]
-		if rest != "" && !strings.Contains(rest, "/") && !strings.Contains(rest, ".") {
-			segment := strings.TrimSuffix(rest, "/")
-			switch segment {
-			case "index", "locker-receive", "receiving", "service-queue", "ship-queue", "packages", "staging", "manifests", "exceptions":
-				path = "warehouse/" + segment + ".html"
+		if rest != "" {
+			lastSegment := rest
+			if i := strings.LastIndex(rest, "/"); i >= 0 {
+				lastSegment = rest[i+1:]
+			}
+			// File reference (e.g. warehouse/scripts/staging.js); leave as-is.
+			if !strings.Contains(lastSegment, ".") && !strings.Contains(rest, "/") {
+				segment := strings.TrimSuffix(rest, "/")
+				switch segment {
+				case "index", "locker-receive", "receiving", "service-queue", "ship-queue", "packages", "staging", "manifests", "exceptions":
+					path = "warehouse/" + segment + ".html"
+				}
 			}
 		}
 	} else if strings.HasPrefix(path, "dashboard/inbox/") && len(path) > len("dashboard/inbox/") {

@@ -65,18 +65,22 @@
       copy_done: 'Copied to clipboard'
     },
     es: {
-      loading: 'Cargando...',
-      loading_dashboard: 'Cargando panel...',
-      loading_packages: 'Cargando paquetes...',
-      loading_shipments: 'Cargando envios...',
-      loading_notifications: 'Cargando configuracion de notificaciones...',
-      empty_title: 'Aun no hay datos',
-      empty_desc: 'Todavia no hay informacion para mostrar.',
+      // Phase 3.4 (CRF-002): Spanish accents restored. Pass 1 review noted
+      // Caribbean destinations (Guyana / Trinidad / Jamaica / Suriname /
+      // Barbados) have substantial Spanish-speaking customer bases and
+      // accent-stripped copy reads as broken to native speakers.
+      loading: 'Cargando…',
+      loading_dashboard: 'Cargando panel…',
+      loading_packages: 'Cargando paquetes…',
+      loading_shipments: 'Cargando envíos…',
+      loading_notifications: 'Cargando configuración de notificaciones…',
+      empty_title: 'Aún no hay datos',
+      empty_desc: 'Todavía no hay información para mostrar.',
       empty_action: 'Ir al panel',
-      realtime_connecting: 'Conectando actualizaciones en tiempo real...',
+      realtime_connecting: 'Conectando actualizaciones en tiempo real…',
       realtime_connected: 'Actualizaciones en tiempo real conectadas',
-      realtime_retry: 'Reconectando actualizaciones en tiempo real...',
-      realtime_offline: 'Actualizaciones en tiempo real en pausa (sin conexion)',
+      realtime_retry: 'Reconectando actualizaciones en tiempo real…',
+      realtime_offline: 'Actualizaciones en tiempo real en pausa (sin conexión)',
       theme_light: 'Claro',
       theme_dark: 'Oscuro',
       shortcut_help: 'Atajos del teclado',
@@ -84,13 +88,13 @@
       push_denied: 'El permiso de push fue denegado.',
       push_ready: 'Notificaciones push habilitadas en este dispositivo.',
       push_local_only: 'Push suscrito localmente; endpoint del servidor no disponible.',
-      error_title: 'Algo salio mal',
-      error_desc: 'No pudimos cargar esta pagina. Intentalo de nuevo.',
+      error_title: 'Algo salió mal',
+      error_desc: 'No pudimos cargar esta página. Inténtalo de nuevo.',
       error_action: 'Reintentar',
-      session_expired: 'Tu sesion expiro. Vuelve a iniciar sesion.',
-      sign_out: 'Cerrar sesion',
+      session_expired: 'Tu sesión expiró. Vuelve a iniciar sesión.',
+      sign_out: 'Cerrar sesión',
       app_brand: 'QCS Cargo',
-      net_error: 'Error de red. Verifica tu conexion.',
+      net_error: 'Error de red. Verifica tu conexión.',
       copy_done: 'Copiado al portapapeles'
     }
   };
@@ -192,7 +196,18 @@
 
   function mountLoading(target, message) {
     if (!target) return;
-    target.innerHTML = renderLoadingHTML(message);
+    // CRF-006 (backlog) fix: defer the spinner by ~150ms. On fast
+    // networks the request often resolves first, and showing the
+    // spinner only to immediately replace it produces a perceived
+    // flicker. If the caller mounts new content within that window,
+    // the deferred render is skipped.
+    var token = (target.__qcsLoadingToken || 0) + 1;
+    target.__qcsLoadingToken = token;
+    setTimeout(function () {
+      if (target.__qcsLoadingToken === token) {
+        target.innerHTML = renderLoadingHTML(message);
+      }
+    }, 150);
   }
 
   function renderEmptyState(options) {

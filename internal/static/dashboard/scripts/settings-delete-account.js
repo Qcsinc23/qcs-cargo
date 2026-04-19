@@ -1,0 +1,124 @@
+// Auto-extracted from delete-account.html
+// Phase 2.4 / SEC-001a: inline <script> moved to external file so
+// the CSP can drop 'unsafe-inline' (Phase 3.1).
+
+    (function () {
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/settings/delete-account');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
+
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
+
+      QCS.fetchJson('/api/v1/me')
+        .then(function (j) {
+          if (!j || !j.data) { window.location.href = loginRedirect; return; }
+          renderShell();
+          QCS.bindLogout();
+          bindActions();
+        })
+        .catch(function (err) {
+          QCS.mountError(app, {
+            title: 'Unable to load account settings',
+            description: (err && err.message) || 'Network error.',
+            actionLabel: 'Sign in again',
+            onRetry: function () { window.location.href = loginRedirect; }
+          });
+        });
+
+      function renderShell() {
+        var sidebar = QCS.renderSidebar('settings');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Account lifecycle</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Account lifecycle</h1>'
+          + '<p class="text-slate-600 mb-6">Deactivate to pause account access, or delete to anonymize personal data and close the account.</p>'
+          + '<div class="grid gap-6 max-w-2xl">'
+          + '<section class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<h2 class="text-xl font-semibold text-[#0F172A] mb-2">Deactivate account</h2>'
+          + '<p class="text-slate-600 mb-4">Your account is set to inactive and all active sessions are revoked. Contact support to reactivate.</p>'
+          + '<button type="button" id="deactivate-btn" class="bg-amber-600 text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:bg-amber-700">Deactivate account</button>'
+          + '</section>'
+          + '<section class="bg-white rounded-xl border border-red-200 shadow-sm p-6">'
+          + '<h2 class="text-xl font-semibold text-red-700 mb-2">Delete account</h2>'
+          + '<p class="text-slate-600 mb-4">This action is permanent. Personal profile fields are anonymized and all sessions are revoked.</p>'
+          + '<label for="delete-confirm" class="block text-sm font-medium text-slate-700 mb-1">Type DELETE to confirm</label>'
+          + '<input id="delete-confirm" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 mb-3 focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="DELETE" />'
+          + '<button type="button" id="delete-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:bg-red-700">Delete my account</button>'
+          + '</section>'
+          + '</div>'
+          + '<p id="account-msg" class="mt-4 text-sm hidden" aria-live="polite"></p>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
+      function setMessage(text, isError) {
+        var el = document.getElementById('account-msg');
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.textContent = text;
+        el.className = 'mt-4 text-sm ' + (isError ? 'text-red-600' : 'text-emerald-600');
+      }
+
+      function clearLocalAuth() {
+        try {
+          localStorage.removeItem('qcs_access_token');
+          localStorage.removeItem('qcs_session_id');
+        } catch (e) {}
+      }
+
+      function closeAndRedirect(successText) {
+        clearLocalAuth();
+        setMessage(successText + ' Redirecting…', false);
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).finally(function () {
+          setTimeout(function () { window.location.href = '/'; }, 1200);
+        });
+      }
+
+      function bindActions() {
+        var deactivateBtn = document.getElementById('deactivate-btn');
+        if (deactivateBtn) {
+          deactivateBtn.addEventListener('click', function () {
+            if (!confirm('Deactivate account and sign out all sessions?')) return;
+            deactivateBtn.disabled = true;
+            QCS.fetchJson('/api/v1/account/deactivate', { method: 'POST' })
+              .then(function () { closeAndRedirect('Account deactivated.'); })
+              .catch(function (err) {
+                deactivateBtn.disabled = false;
+                setMessage((err && err.message) || 'Failed to deactivate account.', true);
+              });
+          });
+        }
+
+        var deleteBtn = document.getElementById('delete-btn');
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', function () {
+            var confirmText = (document.getElementById('delete-confirm').value || '').trim().toUpperCase();
+            if (confirmText !== 'DELETE') {
+              setMessage('Type DELETE in the confirmation box to continue.', true);
+              return;
+            }
+            if (!confirm('Delete account permanently and anonymize personal data?')) return;
+            deleteBtn.disabled = true;
+            QCS.fetchJson('/api/v1/account/delete', { method: 'POST' })
+              .then(function () { closeAndRedirect('Account deleted and personal data anonymized.'); })
+              .catch(function (err) {
+                deleteBtn.disabled = false;
+                setMessage((err && err.message) || 'Failed to delete account.', true);
+              });
+          });
+        }
+      }
+    })();
+  

@@ -32,6 +32,22 @@ func TestResolveStaticPath(t *testing.T) {
 		{in: "verify-email", want: "verify-email.html"},
 		{in: "login", want: "login.html"},
 		{in: "web/images/logo.png", want: "web/images/logo.png"},
+		// Phase 2.1: locally-served Tailwind CSS replaces cdn.tailwindcss.com.
+		{in: "css/tailwind.css", want: "css/tailwind.css"},
+		{in: "js/marked.min.js", want: "js/marked.min.js"},
+		// Phase 2.4 / 3.1: extracted inline scripts must round-trip
+		// through the resolver as-is, not get rewritten to <segment>.html.
+		{in: "dashboard/scripts/index.js", want: "dashboard/scripts/index.js"},
+		{in: "admin/scripts/index.js", want: "admin/scripts/index.js"},
+		{in: "warehouse/scripts/index.js", want: "warehouse/scripts/index.js"},
+		{in: "scripts/login.js", want: "scripts/login.js"},
+	}
+
+	if !isHashedAsset("tailwind.a1b2c3d4.css") {
+		t.Fatalf("isHashedAsset failed to identify hashed asset")
+	}
+	if isHashedAsset("tailwind.css") {
+		t.Fatalf("isHashedAsset matched non-hashed asset")
 	}
 
 	for _, tc := range tests {

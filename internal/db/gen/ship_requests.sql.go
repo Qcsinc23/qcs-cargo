@@ -332,6 +332,65 @@ func (q *Queries) GetShipRequestByID(ctx context.Context, arg GetShipRequestByID
 	return i, err
 }
 
+const getShipRequestByIDForAdmin = `-- name: GetShipRequestByIDForAdmin :one
+SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
+       consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
+       payment_status, stripe_payment_intent_id, customs_status, created_at, updated_at
+FROM ship_requests
+WHERE id = ?
+`
+
+type GetShipRequestByIDForAdminRow struct {
+	ID                    string         `json:"id"`
+	UserID                string         `json:"user_id"`
+	ConfirmationCode      string         `json:"confirmation_code"`
+	Status                string         `json:"status"`
+	DestinationID         string         `json:"destination_id"`
+	RecipientID           sql.NullString `json:"recipient_id"`
+	ServiceType           string         `json:"service_type"`
+	Consolidate           int            `json:"consolidate"`
+	SpecialInstructions   sql.NullString `json:"special_instructions"`
+	Subtotal              float64        `json:"subtotal"`
+	ServiceFees           float64        `json:"service_fees"`
+	Insurance             float64        `json:"insurance"`
+	Discount              float64        `json:"discount"`
+	Total                 float64        `json:"total"`
+	PaymentStatus         sql.NullString `json:"payment_status"`
+	StripePaymentIntentID sql.NullString `json:"stripe_payment_intent_id"`
+	CustomsStatus         sql.NullString `json:"customs_status"`
+	CreatedAt             string         `json:"created_at"`
+	UpdatedAt             string         `json:"updated_at"`
+}
+
+// DEF-001 fix: admin reconcile must look up any user's ship request,
+// not only those owned by the calling admin.
+func (q *Queries) GetShipRequestByIDForAdmin(ctx context.Context, id string) (GetShipRequestByIDForAdminRow, error) {
+	row := q.db.QueryRowContext(ctx, getShipRequestByIDForAdmin, id)
+	var i GetShipRequestByIDForAdminRow
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.ConfirmationCode,
+		&i.Status,
+		&i.DestinationID,
+		&i.RecipientID,
+		&i.ServiceType,
+		&i.Consolidate,
+		&i.SpecialInstructions,
+		&i.Subtotal,
+		&i.ServiceFees,
+		&i.Insurance,
+		&i.Discount,
+		&i.Total,
+		&i.PaymentStatus,
+		&i.StripePaymentIntentID,
+		&i.CustomsStatus,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getShipRequestByIDOnly = `-- name: GetShipRequestByIDOnly :one
 SELECT id, user_id, confirmation_code, status, destination_id, recipient_id, service_type,
        consolidate, special_instructions, subtotal, service_fees, insurance, discount, total,
@@ -771,6 +830,30 @@ func (q *Queries) UpdateShipRequestPaymentReconcile(ctx context.Context, arg Upd
 		arg.UpdatedAt,
 		arg.ID,
 		arg.UserID,
+	)
+	return err
+}
+
+const updateShipRequestPaymentReconcileForAdmin = `-- name: UpdateShipRequestPaymentReconcileForAdmin :exec
+UPDATE ship_requests
+SET payment_status = ?, status = ?, updated_at = ?
+WHERE id = ?
+`
+
+type UpdateShipRequestPaymentReconcileForAdminParams struct {
+	PaymentStatus sql.NullString `json:"payment_status"`
+	Status        string         `json:"status"`
+	UpdatedAt     string         `json:"updated_at"`
+	ID            string         `json:"id"`
+}
+
+// DEF-001 fix: admin reconcile must update by id only (no user_id scope).
+func (q *Queries) UpdateShipRequestPaymentReconcileForAdmin(ctx context.Context, arg UpdateShipRequestPaymentReconcileForAdminParams) error {
+	_, err := q.db.ExecContext(ctx, updateShipRequestPaymentReconcileForAdmin,
+		arg.PaymentStatus,
+		arg.Status,
+		arg.UpdatedAt,
+		arg.ID,
 	)
 	return err
 }

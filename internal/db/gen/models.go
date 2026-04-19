@@ -185,6 +185,19 @@ type ObservabilityEvent struct {
 	CreatedAt    string          `json:"created_at"`
 }
 
+type OutboundEmail struct {
+	ID           string         `json:"id"`
+	Template     string         `json:"template"`
+	Recipient    string         `json:"recipient"`
+	PayloadJson  string         `json:"payload_json"`
+	Status       string         `json:"status"`
+	AttemptCount int            `json:"attempt_count"`
+	LastError    sql.NullString `json:"last_error"`
+	ScheduledAt  string         `json:"scheduled_at"`
+	CreatedAt    string         `json:"created_at"`
+	SentAt       sql.NullString `json:"sent_at"`
+}
+
 type PasswordReset struct {
 	ID        string `json:"id"`
 	UserID    string `json:"user_id"`
