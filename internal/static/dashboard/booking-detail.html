@@ -5,108 +5,119 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Booking | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      const path = window.location.pathname;
-      const id = path.split('/').pop();
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent(path); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
+      var loginRedirect = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
+      var id = window.location.pathname.split('/').pop();
+      if (!id || id === 'bookings') { window.location.href = '/dashboard/bookings'; return; }
 
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
-        });
-
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
-      }
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
 
       Promise.all([
-        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/bookings/' + id, auth).then(r => r.ok ? r.json() : null)
-      ]).then(([me, res]) => {
-        if (!me) { window.location.href = '/login'; return; }
-        const b = res && res.data;
-        if (!b) { document.getElementById('app').innerHTML = sidebar(me.data, 'bookings') + '<main class="flex-1 p-8"><p class="text-red-600">Booking not found.</p><a href="/dashboard/bookings">Back to Bookings</a></main>'; return; }
-        const rec = b.recipient_id && (typeof b.recipient_id === 'string' ? b.recipient_id : b.recipient_id.String) ? (b.recipient_id.String || b.recipient_id) : '—';
-        const spec = b.special_instructions && (typeof b.special_instructions === 'string' ? b.special_instructions : b.special_instructions.String) ? (b.special_instructions.String || b.special_instructions) : '—';
-        const pay = b.payment_status && (typeof b.payment_status === 'string' ? b.payment_status : b.payment_status.String) ? (b.payment_status.String || b.payment_status) : '—';
-        const bcCode = (b.confirmation_code || b.id);
-        let main = '<main class="flex-1 p-8">' +
-          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/bookings" class="text-[#2563EB] hover:underline">Bookings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">' + bcCode + '</li></ol></nav>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Booking ' + bcCode + '</h1>' +
-          '<p class="text-slate-600 mb-6"><a href="/dashboard/bookings" class="text-[#2563EB]">← Back to Bookings</a></p>' +
-          '<div class="bg-white rounded-xl border border-slate-200 p-6 max-w-2xl">' +
-          '<table class="w-full"><tbody>' +
-          '<tr><td class="py-2 text-slate-500 w-40">Status</td><td>' + (b.status || '—') + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Scheduled date</td><td>' + (b.scheduled_date || '—') + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Time slot</td><td>' + (b.time_slot || '—') + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Destination</td><td>' + (b.destination_id || '—') + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Recipient</td><td>' + rec + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Special instructions</td><td>' + spec + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Total</td><td>$' + (b.total != null ? Number(b.total).toFixed(2) : '0.00') + '</td></tr>' +
-          '<tr><td class="py-2 text-slate-500">Payment status</td><td>' + pay + '</td></tr>' +
-          '</tbody></table></div></main>';
-        document.getElementById('app').innerHTML = sidebar(me.data, 'bookings') + main;
-        document.getElementById('logout-btn').onclick = () => {
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-        };
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/bookings/' + encodeURIComponent(id))
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        var b = results[1] && results[1].data;
+        if (!b) {
+          QCS.mountError(app, {
+            title: 'Booking not found',
+            actionLabel: 'Back to bookings',
+            onRetry: function () { window.location.href = '/dashboard/bookings'; }
+          });
+          return;
+        }
+        renderShell(b);
+        QCS.bindLogout();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to load booking',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
+        });
       });
+
+      function strField(v) {
+        if (typeof v === 'string') return v;
+        if (v && v.String) return v.String;
+        return '';
+      }
+
+      function renderShell(b) {
+        var sidebar = QCS.renderSidebar('bookings');
+        var rec = strField(b.recipient_id) || '—';
+        var spec = strField(b.special_instructions) || '—';
+        var pay = strField(b.payment_status) || '—';
+        var code = b.confirmation_code || (b.id ? String(b.id).slice(0, 8) : '—');
+        var totalLabel = QCS.formatMoney(b.total != null ? Number(b.total) : 0, 'USD');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li><a href="/dashboard/bookings" class="text-[#2563EB] hover:underline">Bookings</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">' + window.qcsEscapeHTML(code) + '</li></ol></nav>'
+          + '<div class="flex flex-wrap items-end justify-between gap-3 mb-6">'
+          + '<div>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A]">Booking ' + window.qcsEscapeHTML(code) + '</h1>'
+          + '<p class="text-slate-500 mt-1">' + window.qcsEscapeHTML(b.scheduled_date || '—') + ' · ' + window.qcsEscapeHTML(b.time_slot || '—') + '</p>'
+          + '</div>'
+          + '<div class="flex items-center gap-2">' + QCS.statusBadge(b.status || 'pending')
+          + '<span class="text-xl font-bold ml-2">' + window.qcsEscapeHTML(totalLabel) + '</span></div>'
+          + '</div>'
+          + '<div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 max-w-2xl space-y-3">'
+          + '<h2 class="text-lg font-semibold mb-2">Details</h2>'
+          + detailRow('Status', b.status || '—')
+          + detailRow('Scheduled date', b.scheduled_date || '—')
+          + detailRow('Time slot', b.time_slot || '—')
+          + detailRow('Destination', b.destination_id || '—')
+          + detailRow('Recipient', rec)
+          + detailRow('Special instructions', spec)
+          + detailRow('Total', totalLabel)
+          + detailRow('Payment status', pay)
+          + '</div>'
+          + '<div class="mt-4">'
+          + '<a href="/dashboard/bookings" class="text-[#2563EB] hover:underline font-medium">← Back to bookings</a>'
+          + '</div>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
+      function detailRow(label, value) {
+        return '<div class="flex justify-between gap-4 border-b border-slate-100 pb-2 last:border-0">'
+          + '<span class="text-slate-500 text-sm">' + window.qcsEscapeHTML(label) + '</span>'
+          + '<span class="font-medium text-right">' + window.qcsEscapeHTML(String(value)) + '</span>'
+          + '</div>';
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

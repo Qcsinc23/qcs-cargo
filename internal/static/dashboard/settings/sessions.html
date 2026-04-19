@@ -5,49 +5,59 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sessions | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      const currentSessionID = localStorage.getItem('qcs_session_id');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/sessions'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/settings/sessions');
+      var token = QCS.readToken();
+      var currentSessionID = '';
+      try { currentSessionID = localStorage.getItem('qcs_session_id') || ''; } catch (e) {}
+      if (!token) { window.location.href = loginRedirect; return; }
 
-      function localSignOut() {
-        localStorage.removeItem('qcs_access_token');
-        localStorage.removeItem('qcs_session_id');
-      }
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
+
+      Promise.all([
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/sessions').catch(function () { return { data: [] }; })
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        var list = (results[1] && results[1].data) || [];
+        renderShell(list);
+        QCS.bindLogout();
+        bindRevokeActions();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to load sessions',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
+        });
+      });
 
       function sessionLabel(s) {
-        const agent = (s && s.user_agent) ? String(s.user_agent).trim() : '';
-        const ip = (s && s.ip_address) ? String(s.ip_address).trim() : '';
+        var agent = (s && s.user_agent) ? String(s.user_agent).trim() : '';
+        var ip = (s && s.ip_address) ? String(s.ip_address).trim() : '';
         if (agent) return agent;
         if (ip) return ip;
         return (s && s.id) ? String(s.id).slice(0, 8) : 'Unknown device';
@@ -55,167 +65,105 @@
 
       function safeDate(value) {
         if (!value) return '—';
-        const d = new Date(value);
-        if (Number.isNaN(d.getTime())) return qcsEscapeHTML(String(value));
-        return qcsEscapeHTML(d.toLocaleString());
-      }
-
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
-
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
-        });
-
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return window.qcsEscapeHTML(String(value));
+        return window.qcsEscapeHTML(QCS.formatDate(d, { dateStyle: 'medium', timeStyle: 'short' }));
       }
 
       function renderRows(list) {
         if (!Array.isArray(list) || list.length === 0) {
-          return '<tr><td colspan="4" class="py-6 px-4 text-sm text-slate-500">No active sessions found.</td></tr>';
+          return '<tr><td colspan="4" class="py-6 px-4 text-sm text-slate-500 text-center">No active sessions found.</td></tr>';
         }
-        let html = '';
-        list.forEach(s => {
-          const sid = s && s.id ? String(s.id) : '';
-          const isCurrent = currentSessionID && sid === currentSessionID;
-          const currentBadge = isCurrent ? ' <span class="inline-block ml-2 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded">Current</span>' : '';
-          const revokeLabel = isCurrent ? 'Sign out this browser' : 'Revoke';
-          html += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
-            '<td class="py-3 px-4">' + qcsEscapeHTML(sessionLabel(s)) + currentBadge + '</td>' +
-            '<td class="py-3 px-4 text-slate-500 text-sm">' + safeDate(s && s.created_at) + '</td>' +
-            '<td class="py-3 px-4 text-slate-500 text-sm">' + safeDate(s && s.expires_at) + '</td>' +
-            '<td class="py-3 px-4"><button type="button" class="text-red-600 hover:text-red-800 text-sm revoke-one" data-id="' + qcsEscapeHTML(sid) + '">' + revokeLabel + '</button></td></tr>';
+        var html = '';
+        list.forEach(function (s) {
+          var sid = s && s.id ? String(s.id) : '';
+          var isCurrent = currentSessionID && sid === currentSessionID;
+          var currentBadge = isCurrent ? ' <span class="qcs-badge qcs-badge-success ml-2">Current</span>' : '';
+          var revokeLabel = isCurrent ? 'Sign out this browser' : 'Revoke';
+          html += '<tr class="border-b border-slate-100 hover:bg-slate-50">'
+            + '<td class="py-3 px-4">' + window.qcsEscapeHTML(sessionLabel(s)) + currentBadge + '</td>'
+            + '<td class="py-3 px-4 text-slate-500 text-sm">' + safeDate(s && s.created_at) + '</td>'
+            + '<td class="py-3 px-4 text-slate-500 text-sm">' + safeDate(s && s.expires_at) + '</td>'
+            + '<td class="py-3 px-4 text-right"><button type="button" class="text-red-600 hover:text-red-800 text-sm font-medium revoke-one" data-id="' + window.qcsEscapeHTML(sid) + '">' + window.qcsEscapeHTML(revokeLabel) + '</button></td></tr>';
         });
         return html;
       }
 
+      function renderShell(list) {
+        var sidebar = QCS.renderSidebar('settings');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Sessions</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Active sessions</h1>'
+          + '<p class="text-slate-600 mb-4">Revoke a session to sign that device out. Revoke all others to keep this browser signed in.</p>'
+          + '<p id="sessions-msg" class="mb-4 text-sm text-slate-600" aria-live="polite"></p>'
+          + '<button type="button" id="revoke-all-btn" class="mb-6 bg-white border border-slate-300 text-slate-800 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Revoke all other sessions</button>'
+          + '<div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">'
+          + '<table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr>'
+          + '<th class="text-left py-3 px-4 font-medium text-slate-600 text-sm">Device / IP</th>'
+          + '<th class="text-left py-3 px-4 font-medium text-slate-600 text-sm">Created</th>'
+          + '<th class="text-left py-3 px-4 font-medium text-slate-600 text-sm">Expires</th>'
+          + '<th class="text-right py-3 px-4 font-medium text-slate-600 text-sm">Action</th></tr></thead><tbody>'
+          + renderRows(list)
+          + '</tbody></table></div>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
       function setStatus(message, isError) {
-        const el = document.getElementById('sessions-msg');
+        var el = document.getElementById('sessions-msg');
         if (!el) return;
         el.textContent = message || '';
         el.className = 'mb-4 text-sm ' + (isError ? 'text-red-600' : 'text-slate-600');
       }
 
       function bindRevokeActions() {
-        const revokeAllBtn = document.getElementById('revoke-all-btn');
+        var revokeAllBtn = document.getElementById('revoke-all-btn');
         if (revokeAllBtn) {
           if (!currentSessionID) {
             revokeAllBtn.disabled = true;
             revokeAllBtn.className = 'mb-6 bg-slate-100 text-slate-400 px-4 py-2 rounded-lg font-medium cursor-not-allowed';
             setStatus('Current session ID is unavailable. Sign out and sign back in to enable "revoke all other sessions".', false);
           }
-          revokeAllBtn.onclick = function () {
+          revokeAllBtn.addEventListener('click', function () {
             if (!currentSessionID) return;
             if (!confirm('Sign out all other devices?')) return;
-            const payload = currentSessionID ? { keep_session_id: currentSessionID } : {};
-            fetch('/api/v1/sessions', {
-              method: 'DELETE',
-              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            }).then(async (r) => {
-              if (r.status === 204) {
-                location.reload();
-                return;
-              }
-              let msg = 'Failed to revoke sessions.';
-              try {
-                const j = await r.json();
-                if (j && j.error && j.error.message) msg = j.error.message;
-              } catch (_) { }
-              setStatus(msg, true);
-            }).catch(() => setStatus('Network error while revoking sessions.', true));
-          };
+            QCS.fetchJson('/api/v1/sessions', { method: 'DELETE', body: { keep_session_id: currentSessionID } })
+              .then(function () { window.location.reload(); })
+              .catch(function (err) { setStatus((err && err.message) || 'Failed to revoke sessions.', true); });
+          });
         }
 
-        document.querySelectorAll('.revoke-one').forEach(btn => {
-          btn.onclick = function () {
-            const sid = this.getAttribute('data-id');
+        document.querySelectorAll('.revoke-one').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var sid = btn.getAttribute('data-id');
             if (!sid) return;
-            const isCurrent = currentSessionID && sid === currentSessionID;
-            const confirmMsg = isCurrent ? 'Sign out this browser now?' : 'Revoke this session?';
+            var isCurrent = currentSessionID && sid === currentSessionID;
+            var confirmMsg = isCurrent ? 'Sign out this browser now?' : 'Revoke this session?';
             if (!confirm(confirmMsg)) return;
-            fetch('/api/v1/sessions/' + encodeURIComponent(sid), {
-              method: 'DELETE',
-              headers: { 'Authorization': 'Bearer ' + token }
-            }).then(async (r) => {
-              if (r.status === 204) {
+            QCS.fetchJson('/api/v1/sessions/' + encodeURIComponent(sid), { method: 'DELETE' })
+              .then(function () {
                 if (isCurrent) {
-                  localSignOut();
+                  try {
+                    localStorage.removeItem('qcs_access_token');
+                    localStorage.removeItem('qcs_session_id');
+                  } catch (e) {}
                   window.location.href = '/login';
                   return;
                 }
-                location.reload();
-                return;
-              }
-              let msg = 'Failed to revoke session.';
-              try {
-                const j = await r.json();
-                if (j && j.error && j.error.message) msg = j.error.message;
-              } catch (_) { }
-              setStatus(msg, true);
-            }).catch(() => setStatus('Network error while revoking session.', true));
-          };
+                window.location.reload();
+              })
+              .catch(function (err) { setStatus((err && err.message) || 'Failed to revoke session.', true); });
+          });
         });
       }
-
-      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        fetch('/api/v1/sessions', auth).then(r => r.ok ? r.json() : null).then(res => {
-          const list = (res && res.data) || [];
-          let main = '<main class="flex-1 p-8">' +
-            '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/settings" class="text-[#2563EB] hover:underline">Settings</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Sessions</li></ol></nav>' +
-            '<a href="/dashboard/settings" class="text-[#2563EB] mb-6 inline-block">← Settings</a>' +
-            '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Active sessions</h1>' +
-            '<p class="text-slate-600 mb-4">Revoke a session to sign that device out. Revoke all others to keep this browser signed in.</p>' +
-            '<p id="sessions-msg" class="mb-4 text-sm text-slate-600"></p>' +
-            '<button type="button" id="revoke-all-btn" class="mb-6 bg-slate-200 text-slate-800 px-4 py-2 rounded-lg font-medium hover:bg-slate-300">Revoke all other sessions</button>' +
-            '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">' +
-            '<table class="w-full"><thead class="bg-slate-50 border-b border-slate-200"><tr>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Device / IP</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Created</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600">Expires</th>' +
-            '<th class="text-left py-3 px-4 font-medium text-slate-600"></th></tr></thead><tbody>';
-          main += renderRows(list);
-          main += '</tbody></table></div></main></div>';
-          document.getElementById('app').innerHTML = sidebar(user, 'settings') + main;
-          document.getElementById('logout-btn').onclick = () => {
-            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => {
-              localSignOut();
-              window.location.href = '/';
-            });
-          };
-          bindRevokeActions();
-        }).catch(() => {
-          document.getElementById('app').innerHTML = sidebar(user, 'settings') +
-            '<main class="flex-1 p-8"><h1 class="text-3xl font-bold text-[#0F172A] mb-3">Active sessions</h1><p class="text-red-600">Failed to load sessions. Please refresh.</p></main></div>';
-        });
-      });
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

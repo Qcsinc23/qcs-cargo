@@ -5,247 +5,290 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ship My Packages | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/ship'); return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' } };
-      const params = new URLSearchParams(window.location.search);
-      const preSelected = (params.get('packages') || '').split(',').filter(Boolean);
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
+      var loginRedirect = '/login?redirect=' + encodeURIComponent('/dashboard/ship');
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
 
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
+      var params = new URLSearchParams(window.location.search);
+      var preSelected = (params.get('packages') || '').split(',').filter(Boolean);
+
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
+
+      var step = 1;
+      var state = {
+        packages: [], selectedIds: [], destinations: [], destinationId: '',
+        recipients: [], recipientId: '', serviceType: 'standard', specialInstructions: ''
+      };
+
+      Promise.all([
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/locker').catch(function () { return { data: [] }; }),
+        QCS.fetchJson('/api/v1/destinations').catch(function () { return { data: [] }; }),
+        QCS.fetchJson('/api/v1/recipients').catch(function () { return { data: [] }; })
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        state.packages = (results[1] && results[1].data) || [];
+        state.destinations = (results[2] && results[2].data) || [];
+        state.recipients = (results[3] && results[3].data) || [];
+        state.selectedIds = preSelected.length ? preSelected : (state.packages.length === 1 ? [state.packages[0].id] : []);
+        renderShell();
+        QCS.bindLogout();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to start ship request',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
         });
+      });
 
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${suiteCode}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
-      }
-
-      let step = 1;
-      let state = { packages: [], selectedIds: [], destinations: [], destinationId: '', recipients: [], recipientId: '', serviceType: 'standard', specialInstructions: '' };
-
-      function renderStep() {
-        const s = step;
-        let content = '';
-        if (s === 1) {
-          const list = state.packages;
-          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Select packages to ship</h2>' +
-            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-          list.forEach(p => {
-            const sender = typeof p.sender_name === 'string' ? p.sender_name : (p.sender_name && p.sender_name.String) || 'Unknown';
-            const weight = typeof p.weight_lbs === 'number' ? p.weight_lbs : (p.weight_lbs && p.weight_lbs.Float64) || 0;
-            const checked = state.selectedIds.includes(p.id) ? ' checked' : '';
-            content += '<label class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 cursor-pointer hover:border-[#2563EB]">' +
-              '<input type="checkbox" class="pkg-cb mt-1" data-id="' + p.id + '"' + checked + '>' +
-              '<div><p class="font-medium">' + sender + '</p><p class="text-sm text-slate-500">' + weight + ' lbs</p></div></label>';
-          });
-          content += '</div>';
-        } else if (s === 2) {
-          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Choose destination</h2>' +
-            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-          state.destinations.forEach(d => {
-            const id = d.id || d.ID;
-            const name = d.name || d.Name || id;
-            const selected = state.destinationId === id ? ' border-[#2563EB] bg-slate-50' : '';
-            content += '<button type="button" class="dest-btn text-left border rounded-xl p-4 hover:border-[#2563EB]' + selected + '" data-id="' + id + '">' +
-              '<p class="font-medium">' + name + '</p>' +
-              (d.usd_per_lb ? '<p class="text-sm text-slate-500">$' + d.usd_per_lb + '/lb · ' + (d.transit || '') + '</p>' : '') + '</button>';
-          });
-          content += '</div>';
-        } else if (s === 3) {
-          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Choose recipient</h2>' +
-            '<p class="text-slate-600 mb-4"><a href="/dashboard/recipients" class="text-[#2563EB]">Add a recipient</a> if needed.</p>' +
-            '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
-          state.recipients.forEach(r => {
-            const id = r.id || r.ID;
-            const name = (r.name && (typeof r.name === 'string' ? r.name : r.name.String)) || 'Unnamed';
-            const selected = state.recipientId === id ? ' border-[#2563EB] bg-slate-50' : '';
-            content += '<button type="button" class="recip-btn text-left border rounded-xl p-4 hover:border-[#2563EB]' + selected + '" data-id="' + id + '">' +
-              '<p class="font-medium">' + name + '</p>' +
-              (r.city ? '<p class="text-sm text-slate-500">' + (typeof r.city === 'string' ? r.city : r.city.String) + '</p>' : '') + '</button>';
-          });
-          content += '</div>';
-        } else {
-          const dest = state.destinations.find(d => (d.id || d.ID) === state.destinationId);
-          const destName = dest ? (dest.name || dest.Name) : state.destinationId;
-          const recip = state.recipients.find(r => (r.id || r.ID) === state.recipientId);
-          const recipName = recip ? (recip.name && (typeof recip.name === 'string' ? recip.name : recip.name.String)) : (state.recipientId || '—');
-          content = '<h2 class="text-xl font-semibold text-[#0F172A] mb-4">Review & submit</h2>' +
-            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-4">' +
-            '<p><strong>Packages:</strong> ' + state.selectedIds.length + '</p>' +
-            '<p class="mt-2"><strong>Destination:</strong> ' + destName + '</p>' +
-            '<p class="mt-2"><strong>Recipient:</strong> ' + recipName + '</p>' +
-            '<p class="mt-2"><strong>Service:</strong> ' + state.serviceType + '</p>' +
-            (state.specialInstructions ? '<p class="mt-2"><strong>Instructions:</strong> ' + state.specialInstructions + '</p>' : '') +
-            '</div>' +
-            '<div class="mb-4"><label class="block text-sm font-medium text-slate-600 mb-1">Special instructions (optional)</label>' +
-            '<textarea id="review-notes" class="w-full border border-slate-300 rounded-lg px-3 py-2" rows="2" placeholder="e.g. fragile">' + (state.specialInstructions || '') + '</textarea></div>' +
-            '<button type="button" id="submit-btn" class="bg-[#F97316] text-white px-6 py-3 rounded-lg font-medium">Submit ship request</button>' +
-            '<p id="submit-msg" class="mt-2 text-sm hidden"></p>';
-        }
-        return content;
-      }
-
-      function renderMain(user) {
-        const steps = ['Packages', 'Destination', 'Recipient', 'Review'];
-        let html = '<main class="flex-1 p-8">' +
-          '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Ship my packages</li></ol></nav>' +
-          '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Ship my packages</h1>' +
-          '<div class="flex gap-2 mb-6">';
-        steps.forEach((label, i) => {
-          const n = i + 1;
-          html += '<span class="px-3 py-1 rounded-full text-sm ' + (step === n ? 'bg-[#2563EB] text-white' : 'bg-slate-200 text-slate-600') + '">' + n + '. ' + label + '</span>';
-        });
-        html += '</div><div id="step-content">' + renderStep() + '</div>';
-        if (step > 1) html += '<button type="button" id="back-btn" class="mt-6 text-[#2563EB] font-medium">← Back</button>';
-        if (step < 4) html += '<button type="button" id="next-btn" class="mt-6 ml-4 bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Next →</button>';
-        html += '</main></div>';
-        return html;
-      }
-
-      function bindStep() {
-        document.querySelectorAll('.pkg-cb').forEach(cb => {
-          cb.onchange = () => {
-            const id = cb.dataset.id;
-            if (cb.checked) state.selectedIds = [...state.selectedIds, id];
-            else state.selectedIds = state.selectedIds.filter(x => x !== id);
-          };
-        });
-        document.querySelectorAll('.dest-btn').forEach(btn => {
-          btn.onclick = () => { state.destinationId = btn.dataset.id; update(); };
-        });
-        document.querySelectorAll('.recip-btn').forEach(btn => {
-          btn.onclick = () => { state.recipientId = btn.dataset.id; update(); };
-        });
-        const next = document.getElementById('next-btn');
-        if (next) next.onclick = () => { step++; update(); };
-        const back = document.getElementById('back-btn');
-        if (back) back.onclick = () => { step--; update(); };
-        const submit = document.getElementById('submit-btn');
-        if (submit) {
-          submit.onclick = () => {
-            state.specialInstructions = (document.getElementById('review-notes') || {}).value || '';
-            const msgEl = document.getElementById('submit-msg');
-            fetch('/api/v1/ship-requests', {
-              method: 'POST',
-              ...auth,
-              body: JSON.stringify({
-                destination_id: state.destinationId,
-                service_type: state.serviceType,
-                recipient_id: state.recipientId || null,
-                locker_package_ids: state.selectedIds,
-                special_instructions: state.specialInstructions || null
-              })
-            }).then(r => r.json()).then(d => {
-              if (d.status === 'success' && d.data) {
-                msgEl.textContent = 'Created: ' + (d.data.confirmation_code || d.data.id) + '.';
-                msgEl.className = 'mt-2 text-sm text-green-600';
-                msgEl.classList.remove('hidden');
-                setTimeout(() => { window.location.href = '/dashboard/ship-requests'; }, 2000);
-              } else {
-                msgEl.textContent = d.message || d.error?.message || 'Submit failed.';
-                msgEl.className = 'mt-2 text-sm text-red-600';
-                msgEl.classList.remove('hidden');
-              }
-            }).catch(() => {
-              msgEl.textContent = 'Network error.';
-              msgEl.className = 'mt-2 text-sm text-red-600';
-              msgEl.classList.remove('hidden');
-            });
-          };
-        }
+      function renderShell() {
+        var sidebar = QCS.renderSidebar('ship');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">Ship my packages</li></ol></nav>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A] mb-2">Ship my packages</h1>'
+          + '<p class="text-slate-600 mb-6">Pick the packages you want shipped, choose a destination and recipient, and confirm.</p>'
+          + '<ol id="step-tracker" class="flex flex-wrap items-center gap-2 mb-6" aria-label="Steps"></ol>'
+          + '<section id="step-content" class="bg-white rounded-xl border border-slate-200 shadow-sm p-6"></section>'
+          + '<div id="step-nav" class="mt-4 flex flex-wrap items-center gap-3"></div>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+        update();
       }
 
       function update() {
+        renderTracker();
         document.getElementById('step-content').innerHTML = renderStep();
-        const main = document.querySelector('main');
-        const nextBtn = main.querySelector('#next-btn');
-        const backBtn = main.querySelector('#back-btn');
-        if (step < 4 && !main.querySelector('#next-btn')) {
-          const wrap = main.querySelector('#step-content');
-          if (wrap && step < 4) {
-            const n = document.createElement('button');
-            n.type = 'button'; n.id = 'next-btn'; n.className = 'mt-6 bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium'; n.textContent = 'Next →';
-            n.onclick = () => { step++; update(); };
-            main.appendChild(n);
-          }
-        }
-        if (step > 1 && !main.querySelector('#back-btn')) {
-          const b = document.createElement('button');
-          b.type = 'button'; b.id = 'back-btn'; b.className = 'mt-6 text-[#2563EB] font-medium'; b.textContent = '← Back';
-          b.onclick = () => { step--; update(); };
-          main.insertBefore(b, main.querySelector('#next-btn') || main.lastChild);
-        }
+        renderNav();
         bindStep();
       }
 
-      Promise.all([
-        fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/locker', auth).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/destinations', {}).then(r => r.ok ? r.json() : null),
-        fetch('/api/v1/recipients', auth).then(r => r.ok ? r.json() : null)
-      ]).then(([me, locker, dests, recs]) => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        state.packages = (locker && locker.data) || [];
-        state.destinations = (dests && dests.data) || [];
-        state.recipients = (recs && recs.data) || [];
-        state.selectedIds = preSelected.length ? preSelected : (state.packages.length === 1 ? [state.packages[0].id] : []);
-        document.getElementById('app').innerHTML = sidebar(user) + renderMain(user);
-        document.getElementById('logout-btn').onclick = () => {
-          fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-        };
-        bindStep();
-      });
+      function renderTracker() {
+        var steps = ['Packages', 'Destination', 'Recipient', 'Review'];
+        var tracker = document.getElementById('step-tracker');
+        if (!tracker) return;
+        tracker.innerHTML = steps.map(function (label, i) {
+          var n = i + 1;
+          var active = step === n;
+          var done = step > n;
+          var cls = active
+            ? 'bg-[#2563EB] text-white border-[#2563EB]'
+            : (done ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-white text-slate-600 border-slate-300');
+          return '<li class="px-3 py-1 rounded-full text-sm border font-medium ' + cls + '">' + n + '. ' + window.qcsEscapeHTML(label) + '</li>';
+        }).join('');
+      }
+
+      function renderStep() {
+        if (step === 1) return renderPackages();
+        if (step === 2) return renderDestinations();
+        if (step === 3) return renderRecipients();
+        return renderReview();
+      }
+
+      function renderPackages() {
+        var list = state.packages;
+        if (!list.length) {
+          return '<p class="text-slate-600">You have no packages in your locker yet. <a href="/dashboard/inbound" class="text-[#2563EB] underline">Pre-alert a package</a> or <a href="/dashboard/mailbox" class="text-[#2563EB] underline">copy your US address</a> to start.</p>';
+        }
+        var html = '<h2 class="text-lg font-semibold mb-4">Select packages to ship</h2>'
+          + '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        list.forEach(function (p) {
+          var sender = typeof p.sender_name === 'string' ? p.sender_name : (p.sender_name && p.sender_name.String) || 'Unknown';
+          var weight = typeof p.weight_lbs === 'number' ? p.weight_lbs : (p.weight_lbs && p.weight_lbs.Float64) || 0;
+          var checked = state.selectedIds.indexOf(p.id) >= 0 ? ' checked' : '';
+          html += '<label class="bg-white rounded-xl border border-slate-200 p-4 flex items-start gap-3 cursor-pointer hover:border-[#2563EB] hover:shadow-sm transition">'
+            + '<input type="checkbox" class="pkg-cb mt-1 h-4 w-4 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB]" data-id="' + window.qcsEscapeHTML(p.id) + '"' + checked + '>'
+            + '<span><span class="block font-medium">' + window.qcsEscapeHTML(sender) + '</span>'
+            + '<span class="block text-sm text-slate-500">' + weight + ' lbs · ' + window.qcsEscapeHTML(p.status || 'stored') + '</span></span></label>';
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function renderDestinations() {
+        if (!state.destinations.length) return '<p class="text-slate-600">No destinations available right now.</p>';
+        var html = '<h2 class="text-lg font-semibold mb-4">Choose destination</h2>'
+          + '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        state.destinations.forEach(function (d) {
+          var did = d.id || d.ID;
+          var name = d.name || d.Name || did;
+          var selected = state.destinationId === did;
+          var cls = selected ? 'border-[#2563EB] bg-blue-50 ring-2 ring-[#2563EB]' : 'border-slate-200 hover:border-[#2563EB]';
+          html += '<button type="button" class="dest-btn text-left border rounded-xl p-4 transition ' + cls + '" data-id="' + window.qcsEscapeHTML(did) + '">'
+            + '<p class="font-semibold">' + window.qcsEscapeHTML(name) + '</p>'
+            + (d.usd_per_lb ? '<p class="text-sm text-slate-500 mt-1">$' + window.qcsEscapeHTML(String(d.usd_per_lb)) + '/lb' + (d.transit ? ' · ' + window.qcsEscapeHTML(d.transit) : '') + '</p>' : '')
+            + '</button>';
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function renderRecipients() {
+        var html = '<div class="flex items-baseline justify-between mb-4">'
+          + '<h2 class="text-lg font-semibold">Choose recipient</h2>'
+          + '<a href="/dashboard/recipients" class="text-sm text-[#2563EB] hover:underline">+ Add recipient</a>'
+          + '</div>';
+        if (!state.recipients.length) {
+          html += '<p class="text-slate-600">You have no recipients yet. <a href="/dashboard/recipients" class="text-[#2563EB] underline">Add one</a> first.</p>';
+          return html;
+        }
+        html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        state.recipients.forEach(function (r) {
+          var rid = r.id || r.ID;
+          var name = (typeof r.name === 'string' ? r.name : (r.name && r.name.String)) || 'Unnamed';
+          var city = (typeof r.city === 'string' ? r.city : (r.city && r.city.String)) || '';
+          var selected = state.recipientId === rid;
+          var cls = selected ? 'border-[#2563EB] bg-blue-50 ring-2 ring-[#2563EB]' : 'border-slate-200 hover:border-[#2563EB]';
+          html += '<button type="button" class="recip-btn text-left border rounded-xl p-4 transition ' + cls + '" data-id="' + window.qcsEscapeHTML(rid) + '">'
+            + '<p class="font-semibold">' + window.qcsEscapeHTML(name) + '</p>'
+            + (city ? '<p class="text-sm text-slate-500 mt-1">' + window.qcsEscapeHTML(city) + '</p>' : '')
+            + '</button>';
+        });
+        html += '</div>';
+        return html;
+      }
+
+      function renderReview() {
+        var dest = state.destinations.filter(function (d) { return (d.id || d.ID) === state.destinationId; })[0];
+        var destName = dest ? (dest.name || dest.Name) : (state.destinationId || '—');
+        var recip = state.recipients.filter(function (r) { return (r.id || r.ID) === state.recipientId; })[0];
+        var recipName = recip
+          ? ((typeof recip.name === 'string' ? recip.name : (recip.name && recip.name.String)) || '—')
+          : (state.recipientId || '—');
+        var html = '<h2 class="text-lg font-semibold mb-4">Review &amp; submit</h2>'
+          + '<dl class="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm mb-4">'
+          + dlRow('Packages', String(state.selectedIds.length))
+          + dlRow('Destination', destName)
+          + dlRow('Recipient', recipName)
+          + dlRow('Service', state.serviceType)
+          + '</dl>'
+          + '<div>'
+          + '<label for="review-notes" class="block text-sm font-medium text-slate-700 mb-1">Special instructions (optional)</label>'
+          + '<textarea id="review-notes" rows="3" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB]" placeholder="e.g. fragile">' + window.qcsEscapeHTML(state.specialInstructions || '') + '</textarea>'
+          + '</div>'
+          + '<p id="submit-msg" class="mt-3 text-sm hidden" aria-live="polite"></p>';
+        return html;
+      }
+
+      function dlRow(label, value) {
+        return '<div><dt class="text-slate-500">' + window.qcsEscapeHTML(label) + '</dt><dd class="font-medium">' + window.qcsEscapeHTML(String(value)) + '</dd></div>';
+      }
+
+      function renderNav() {
+        var nav = document.getElementById('step-nav');
+        if (!nav) return;
+        var html = '';
+        if (step > 1) html += '<button type="button" id="back-btn" class="bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">← Back</button>';
+        if (step < 4) html += '<button type="button" id="next-btn" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Next →</button>';
+        else html += '<button type="button" id="submit-btn" class="bg-[#F97316] text-white px-6 py-3 rounded-lg font-semibold shadow-sm hover:opacity-95">Submit ship request</button>';
+        nav.innerHTML = html;
+      }
+
+      function canProceed() {
+        if (step === 1) return state.selectedIds.length > 0;
+        if (step === 2) return !!state.destinationId;
+        if (step === 3) return !!state.recipientId;
+        return true;
+      }
+
+      function bindStep() {
+        document.querySelectorAll('.pkg-cb').forEach(function (cb) {
+          cb.addEventListener('change', function () {
+            var id = cb.getAttribute('data-id');
+            if (cb.checked) {
+              if (state.selectedIds.indexOf(id) < 0) state.selectedIds.push(id);
+            } else {
+              state.selectedIds = state.selectedIds.filter(function (x) { return x !== id; });
+            }
+          });
+        });
+        document.querySelectorAll('.dest-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () { state.destinationId = btn.getAttribute('data-id'); update(); });
+        });
+        document.querySelectorAll('.recip-btn').forEach(function (btn) {
+          btn.addEventListener('click', function () { state.recipientId = btn.getAttribute('data-id'); update(); });
+        });
+
+        var next = document.getElementById('next-btn');
+        if (next) next.addEventListener('click', function () {
+          if (!canProceed()) {
+            QCS.toast('Pick an option to continue', 'warning');
+            return;
+          }
+          step++; update();
+        });
+        var back = document.getElementById('back-btn');
+        if (back) back.addEventListener('click', function () { step--; update(); });
+
+        var submit = document.getElementById('submit-btn');
+        if (submit) submit.addEventListener('click', function () {
+          state.specialInstructions = (document.getElementById('review-notes') || {}).value || '';
+          if (!state.selectedIds.length || !state.destinationId || !state.recipientId) {
+            QCS.toast('Pick packages, destination, and recipient first', 'warning');
+            return;
+          }
+          submit.disabled = true;
+          QCS.fetchJson('/api/v1/ship-requests', {
+            method: 'POST',
+            body: {
+              destination_id: state.destinationId,
+              service_type: state.serviceType,
+              recipient_id: state.recipientId || null,
+              locker_package_ids: state.selectedIds,
+              special_instructions: state.specialInstructions || null
+            }
+          }).then(function (d) {
+            var data = (d && d.data) || {};
+            var code = data.confirmation_code || data.id || '';
+            var msg = document.getElementById('submit-msg');
+            if (msg) {
+              msg.textContent = 'Created: ' + code + '. Redirecting…';
+              msg.className = 'mt-3 text-sm text-emerald-600';
+              msg.classList.remove('hidden');
+            }
+            QCS.toast('Ship request created', 'success');
+            setTimeout(function () { window.location.href = '/dashboard/ship-requests'; }, 1500);
+          }).catch(function (err) {
+            submit.disabled = false;
+            var msg = document.getElementById('submit-msg');
+            if (msg) {
+              msg.textContent = (err && err.message) || 'Submit failed.';
+              msg.className = 'mt-3 text-sm text-red-600';
+              msg.classList.remove('hidden');
+            }
+          });
+        });
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

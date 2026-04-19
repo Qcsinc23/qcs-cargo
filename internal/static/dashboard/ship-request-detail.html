@@ -5,138 +5,142 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ship Request Details | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com" defer></script>
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
     rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
   <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="dashboard-app"></div>
   <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login'; return; }
-      const pathParts = window.location.pathname.split('/');
-      const id = pathParts[pathParts.length - 1];
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+
+      var loginRedirect = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+      var token = QCS.readToken();
+      if (!token) { window.location.href = loginRedirect; return; }
+
+      var pathParts = window.location.pathname.split('/');
+      var id = pathParts[pathParts.length - 1];
       if (!id || id === 'ship-requests') { window.location.href = '/dashboard/ship-requests'; return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
 
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-      }
+      var app = document.getElementById('dashboard-app');
+      QCS.mountLoading(app, QCS.t('loading'));
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
-
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
-        });
-
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
-      }
-
-      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null).then(res => {
-          if (!res || !res.data) {
-            document.getElementById('app').innerHTML = '<div class="p-8"><p>Ship request not found.</p><a href="/dashboard/ship-requests" class="text-[#2563EB]">Back to list</a></div>';
-            return;
-          }
-          const sr = res.data.ship_request || res.data;
-          const items = res.data.items || [];
-          const status = sr.status || 'draft';
-          const bc = (code) => '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">' + (code || 'Detail') + '</li></ol></nav>';
-          // Pass 2 dashboard UX review: escape every server-supplied field;
-          // special_instructions is customer-controlled but is also rendered in
-          // staff/admin views, so an unescaped value here would bleed to those
-          // surfaces too. (Audit fix C-1 follow-on.)
-          var esc = window.qcsEscapeHTML;
-          var pwa = window.QCSPWA;
-          var instr = typeof sr.special_instructions === 'string'
-            ? sr.special_instructions
-            : (sr.special_instructions && sr.special_instructions.String) || '';
-          var totalCents = sr.total != null ? Number(sr.total) : 0;
-          var totalLabel = pwa ? pwa.formatMoney(totalCents, 'USD') : ('$' + totalCents.toFixed(2));
-          var statusBadge = pwa ? pwa.statusBadge(status) : esc(status);
-          let main = '<main class="flex-1 p-8">' +
-            bc(esc(sr.confirmation_code || sr.id)) +
-            '<a href="/dashboard/ship-requests" class="text-[#2563EB] mb-6 inline-block">&larr; Back to ship requests</a>' +
-            '<div class="flex flex-wrap items-end justify-between gap-3 mb-6"><div>' +
-            '<h1 class="text-3xl font-bold text-[#0F172A] mb-1">' + esc(sr.confirmation_code || sr.id) + '</h1>' +
-            '<p class="text-slate-500">' + esc(sr.destination_id || '') + '</p>' +
-            '</div><div>' + statusBadge + '</div></div>' +
-            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">' +
-            '<dl class="grid sm:grid-cols-2 gap-4 text-sm">' +
-            '<div><dt class="text-slate-500">Destination</dt><dd class="font-medium">' + esc(sr.destination_id || '—') + '</dd></div>' +
-            '<div><dt class="text-slate-500">Service</dt><dd class="font-medium">' + esc(sr.service_type || '—') + '</dd></div>' +
-            '<div><dt class="text-slate-500">Total</dt><dd class="font-medium">' + esc(totalLabel) + '</dd></div>' +
-            (instr ? '<div class="sm:col-span-2"><dt class="text-slate-500">Special instructions</dt><dd class="font-medium whitespace-pre-line">' + esc(instr) + '</dd></div>' : '') +
-            '</dl></div>' +
-            '<h2 class="text-lg font-semibold text-[#0F172A] mb-2">Packages (' + items.length + ')</h2>' +
-            '<ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6 shadow-sm">';
-          items.forEach(it => {
-            main += '<li class="py-3 px-4">Package ' + esc(it.locker_package_id || it.id) + '</li>';
+      Promise.all([
+        QCS.fetchJson('/api/v1/me'),
+        QCS.fetchJson('/api/v1/ship-requests/' + encodeURIComponent(id))
+      ]).then(function (results) {
+        var me = results[0];
+        if (!me || !me.data) { window.location.href = loginRedirect; return; }
+        if (!results[1] || !results[1].data) {
+          QCS.mountError(app, {
+            title: 'Ship request not found',
+            description: 'We could not find that ship request.',
+            actionLabel: 'Back to ship requests',
+            onRetry: function () { window.location.href = '/dashboard/ship-requests'; }
           });
-          main += '</ul>';
-          if (status === 'draft' || status === 'pending_customs') {
-            main += '<div class="flex flex-wrap gap-3">' +
-              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/customs" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Customs declaration</a>' +
-              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/pay" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Pay now</a>' +
-              '</div>';
-          } else if (status === 'pending_payment') {
-            main += '<div class="flex flex-wrap gap-3">' +
-              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/pay" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Pay ' + esc(totalLabel) + '</a>' +
-              '</div>';
-          }
-          main += '</main></div>';
-          document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + main;
-          document.getElementById('logout-btn').onclick = () => {
-            fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; });
-          };
+          return;
+        }
+        renderShell(results[1].data);
+        QCS.bindLogout();
+      }).catch(function (err) {
+        QCS.mountError(app, {
+          title: 'Unable to load ship request',
+          description: (err && err.message) || 'Network error.',
+          actionLabel: 'Sign in again',
+          onRetry: function () { window.location.href = loginRedirect; }
         });
       });
+
+      function renderShell(payload) {
+        var sr = payload.ship_request || payload;
+        var items = payload.items || [];
+        var status = sr.status || 'draft';
+        var instr = typeof sr.special_instructions === 'string'
+          ? sr.special_instructions
+          : (sr.special_instructions && sr.special_instructions.String) || '';
+        var totalCents = sr.total != null ? Number(sr.total) : 0;
+        var totalLabel = QCS.formatMoney(totalCents, 'USD');
+        var code = sr.confirmation_code || (sr.id ? String(sr.id).slice(0, 8) : '—');
+
+        var sidebar = QCS.renderSidebar('ship-requests');
+        var html = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600">'
+          + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li>'
+          + '<li aria-hidden="true">/</li>'
+          + '<li class="text-[#0F172A] font-medium" aria-current="page">' + window.qcsEscapeHTML(code) + '</li></ol></nav>'
+          + '<div class="flex flex-wrap items-end justify-between gap-3 mb-6">'
+          + '<div>'
+          + '<h1 class="text-3xl font-bold text-[#0F172A]">' + window.qcsEscapeHTML(code) + '</h1>'
+          + '<p class="text-slate-500 mt-1">' + window.qcsEscapeHTML(sr.destination_id || '') + '</p>'
+          + '</div>'
+          + '<div class="flex items-center gap-2">' + QCS.statusBadge(status)
+          + '<span class="text-xl font-bold ml-2">' + window.qcsEscapeHTML(totalLabel) + '</span></div>'
+          + '</div>'
+          + '<div class="grid lg:grid-cols-3 gap-6 mb-6">'
+          + '<section class="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<h2 class="text-lg font-semibold mb-3">Summary</h2>'
+          + '<dl class="grid sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">'
+          + dlRow('Destination', sr.destination_id || '—')
+          + dlRow('Service', sr.service_type || '—')
+          + dlRow('Total', totalLabel)
+          + dlRow('Created', sr.created_at ? QCS.formatDate(sr.created_at, { dateStyle: 'medium', timeStyle: 'short' }) : '—')
+          + (instr ? '<div class="sm:col-span-2"><dt class="text-slate-500">Special instructions</dt><dd class="font-medium whitespace-pre-line">' + window.qcsEscapeHTML(instr) + '</dd></div>' : '')
+          + '</dl>'
+          + '</section>'
+          + '<aside class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3">'
+          + '<h2 class="text-lg font-semibold">Actions</h2>'
+          + actionsHTML(sr.id, status, totalLabel)
+          + '<a href="/dashboard/ship-requests" class="block text-center bg-white border border-slate-300 px-4 py-2 rounded-lg font-medium hover:bg-slate-50">Back</a>'
+          + '</aside>'
+          + '</div>'
+          + '<section class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">'
+          + '<h2 class="text-lg font-semibold mb-3">Packages (' + items.length + ')</h2>'
+          + (items.length === 0
+              ? '<p class="text-slate-500 text-sm">No packages attached.</p>'
+              : '<ul class="divide-y divide-slate-100">'
+                + items.map(function (it) {
+                    return '<li class="py-2 flex items-center justify-between"><span class="font-mono text-sm">' + window.qcsEscapeHTML(it.locker_package_id || it.id) + '</span></li>';
+                  }).join('')
+                + '</ul>')
+          + '</section>'
+          + '</main></div>';
+        app.innerHTML = html;
+        var main = document.getElementById('qcs-main');
+        if (main) main.focus({ preventScroll: true });
+      }
+
+      function dlRow(label, value) {
+        return '<div><dt class="text-slate-500">' + window.qcsEscapeHTML(label) + '</dt><dd class="font-medium">' + window.qcsEscapeHTML(String(value)) + '</dd></div>';
+      }
+
+      function actionsHTML(srId, status, totalLabel) {
+        var html = '';
+        if (status === 'draft' || status === 'pending_customs') {
+          html += '<a href="/dashboard/ship-requests/' + encodeURIComponent(srId) + '/customs" class="block text-center bg-[#2563EB] text-white px-4 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Customs declaration</a>';
+          html += '<a href="/dashboard/ship-requests/' + encodeURIComponent(srId) + '/pay" class="block text-center bg-[#F97316] text-white px-4 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Pay now</a>';
+        } else if (status === 'pending_payment') {
+          html += '<a href="/dashboard/ship-requests/' + encodeURIComponent(srId) + '/pay" class="block text-center bg-[#F97316] text-white px-4 py-2 rounded-lg font-semibold shadow-sm hover:opacity-95">Pay ' + window.qcsEscapeHTML(totalLabel) + '</a>';
+        } else {
+          html += '<p class="text-sm text-slate-500">No further action required.</p>';
+        }
+        return html;
+      }
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>
