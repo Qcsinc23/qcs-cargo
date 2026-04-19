@@ -196,18 +196,15 @@
 
   function mountLoading(target, message) {
     if (!target) return;
-    // CRF-006 (backlog) fix: defer the spinner by ~150ms. On fast
-    // networks the request often resolves first, and showing the
-    // spinner only to immediately replace it produces a perceived
-    // flicker. If the caller mounts new content within that window,
-    // the deferred render is skipped.
-    var token = (target.__qcsLoadingToken || 0) + 1;
-    target.__qcsLoadingToken = token;
-    setTimeout(function () {
-      if (target.__qcsLoadingToken === token) {
-        target.innerHTML = renderLoadingHTML(message);
-      }
-    }, 150);
+    // Earlier revisions deferred this render by 150ms to avoid a
+    // perceived flicker on fast networks (CRF-006). The deferred
+    // timer was never invalidated when the caller subsequently
+    // replaced target.innerHTML with rendered content, so on fast
+    // networks the timer would fire AFTER the dashboard had already
+    // been painted and overwrite it with the spinner — leaving the
+    // dashboard permanently stuck on "Loading…". Render immediately;
+    // a brief spinner flash is far better than a hung view.
+    target.innerHTML = renderLoadingHTML(message);
   }
 
   function renderEmptyState(options) {

@@ -2,8 +2,8 @@
 // pipeline change forces installed clients to drop the previous shell
 // cache. Without this bump, customers hard-cached on the old long-lived
 // asset URLs would never see the revised cache headers.
-const SHELL_CACHE = 'qcs-cargo-shell-v6';
-const RUNTIME_CACHE = 'qcs-cargo-runtime-v6';
+const SHELL_CACHE = 'qcs-cargo-shell-v7';
+const RUNTIME_CACHE = 'qcs-cargo-runtime-v7';
 const QUEUE_DB = 'qcs-cargo-offline';
 const QUEUE_STORE = 'warehouse_actions';
 const SYNC_TAG = 'qcs-warehouse-replay';
