@@ -19,11 +19,13 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
       const token = localStorage.getItem('qcs_access_token');
@@ -52,6 +54,7 @@
           { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
           { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
           { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
+          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
           { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
           { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
         ];
@@ -85,27 +88,46 @@
           const items = res.data.items || [];
           const status = sr.status || 'draft';
           const bc = (code) => '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">' + (code || 'Detail') + '</li></ol></nav>';
+          // Pass 2 dashboard UX review: escape every server-supplied field;
+          // special_instructions is customer-controlled but is also rendered in
+          // staff/admin views, so an unescaped value here would bleed to those
+          // surfaces too. (Audit fix C-1 follow-on.)
+          var esc = window.qcsEscapeHTML;
+          var pwa = window.QCSPWA;
+          var instr = typeof sr.special_instructions === 'string'
+            ? sr.special_instructions
+            : (sr.special_instructions && sr.special_instructions.String) || '';
+          var totalCents = sr.total != null ? Number(sr.total) : 0;
+          var totalLabel = pwa ? pwa.formatMoney(totalCents, 'USD') : ('$' + totalCents.toFixed(2));
+          var statusBadge = pwa ? pwa.statusBadge(status) : esc(status);
           let main = '<main class="flex-1 p-8">' +
-            bc(sr.confirmation_code || sr.id) +
-            '<a href="/dashboard/ship-requests" class="text-[#2563EB] mb-6 inline-block">← Back to ship requests</a>' +
-            '<h1 class="text-3xl font-bold text-[#0F172A] mb-1">' + (sr.confirmation_code || sr.id) + '</h1>' +
-            '<p class="text-slate-500 mb-6">' + status + ' · ' + (sr.destination_id || '') + '</p>' +
-            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6">' +
-            '<p><strong>Destination:</strong> ' + (sr.destination_id || '—') + '</p>' +
-            '<p class="mt-2"><strong>Service:</strong> ' + (sr.service_type || '—') + '</p>' +
-            ((typeof sr.special_instructions === 'string' ? sr.special_instructions : (sr.special_instructions && sr.special_instructions.String)) ? '<p class="mt-2"><strong>Instructions:</strong> ' + (typeof sr.special_instructions === 'string' ? sr.special_instructions : sr.special_instructions.String) + '</p>' : '') +
-            '<p class="mt-2"><strong>Total:</strong> $' + (sr.total != null ? Number(sr.total).toFixed(2) : '0.00') + '</p>' +
-            '</div>' +
+            bc(esc(sr.confirmation_code || sr.id)) +
+            '<a href="/dashboard/ship-requests" class="text-[#2563EB] mb-6 inline-block">&larr; Back to ship requests</a>' +
+            '<div class="flex flex-wrap items-end justify-between gap-3 mb-6"><div>' +
+            '<h1 class="text-3xl font-bold text-[#0F172A] mb-1">' + esc(sr.confirmation_code || sr.id) + '</h1>' +
+            '<p class="text-slate-500">' + esc(sr.destination_id || '') + '</p>' +
+            '</div><div>' + statusBadge + '</div></div>' +
+            '<div class="bg-white rounded-xl border border-slate-200 p-6 mb-6 shadow-sm">' +
+            '<dl class="grid sm:grid-cols-2 gap-4 text-sm">' +
+            '<div><dt class="text-slate-500">Destination</dt><dd class="font-medium">' + esc(sr.destination_id || '—') + '</dd></div>' +
+            '<div><dt class="text-slate-500">Service</dt><dd class="font-medium">' + esc(sr.service_type || '—') + '</dd></div>' +
+            '<div><dt class="text-slate-500">Total</dt><dd class="font-medium">' + esc(totalLabel) + '</dd></div>' +
+            (instr ? '<div class="sm:col-span-2"><dt class="text-slate-500">Special instructions</dt><dd class="font-medium whitespace-pre-line">' + esc(instr) + '</dd></div>' : '') +
+            '</dl></div>' +
             '<h2 class="text-lg font-semibold text-[#0F172A] mb-2">Packages (' + items.length + ')</h2>' +
-            '<ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6">';
+            '<ul class="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100 mb-6 shadow-sm">';
           items.forEach(it => {
-            main += '<li class="py-3 px-4">Package ' + (it.locker_package_id || it.id) + '</li>';
+            main += '<li class="py-3 px-4">Package ' + esc(it.locker_package_id || it.id) + '</li>';
           });
           main += '</ul>';
           if (status === 'draft' || status === 'pending_customs') {
             main += '<div class="flex flex-wrap gap-3">' +
-              '<a href="/dashboard/ship-requests/' + sr.id + '/customs" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Customs declaration</a>' +
-              '<a href="/dashboard/ship-requests/' + sr.id + '/pay" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Pay now</a>' +
+              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/customs" class="bg-[#2563EB] text-white px-6 py-2 rounded-lg font-medium">Customs declaration</a>' +
+              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/pay" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Pay now</a>' +
+              '</div>';
+          } else if (status === 'pending_payment') {
+            main += '<div class="flex flex-wrap gap-3">' +
+              '<a href="/dashboard/ship-requests/' + encodeURIComponent(sr.id) + '/pay" class="bg-[#F97316] text-white px-6 py-2 rounded-lg font-medium">Pay ' + esc(totalLabel) + '</a>' +
               '</div>';
           }
           main += '</main></div>';

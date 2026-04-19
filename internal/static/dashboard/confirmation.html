@@ -5,110 +5,129 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ship Request Confirmed | QCS Cargo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
-    rel="stylesheet" />
-  <style>
-    body {
-      font-family: 'Inter', sans-serif
-    }
-
-    h1,
-    h2 {
-      font-family: 'Plus Jakarta Sans', sans-serif
-    }
-  </style>
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2 { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
-  <div id="app">Loading…</div>
+  <a href="#qcs-main" class="qcs-skip-link">Skip to main content</a>
+  <div id="app"></div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
-      const token = localStorage.getItem('qcs_access_token');
-      if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname); return; }
-      const pathParts = window.location.pathname.split('/').filter(Boolean);
-      const idx = pathParts.indexOf('ship-requests');
-      const id = idx >= 0 && pathParts[idx + 1] && pathParts[idx + 1] !== 'confirmation' ? pathParts[idx + 1] : null;
+      'use strict';
+      var QCS = window.QCSPWA;
+      QCS.initBase({ registerSW: true, keyboard: true, utilityDock: true });
+
+      var pathParts = window.location.pathname.split('/').filter(Boolean);
+      var idx = pathParts.indexOf('ship-requests');
+      var id = idx >= 0 && pathParts[idx + 1] && pathParts[idx + 1] !== 'confirmation' ? pathParts[idx + 1] : null;
       if (!id) { window.location.href = '/dashboard/ship-requests'; return; }
-      const auth = { headers: { 'Authorization': 'Bearer ' + token } };
 
-      function qcsEscapeHTML(str) {
-        const div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
+      var app = document.getElementById('app');
+      QCS.mountLoading(app, 'Confirming payment…');
+
+      var sidebar = QCS.renderSidebar('ship-requests');
+      var bc = '<nav aria-label="Breadcrumb" class="mb-4">'
+        + '<ol class="flex items-center gap-2 text-sm text-slate-600">'
+        + '<li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li>'
+        + '<li aria-hidden="true">/</li>'
+        + '<li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li>'
+        + '<li aria-hidden="true">/</li>'
+        + '<li class="text-[#0F172A] font-medium" aria-current="page">Confirmation</li>'
+        + '</ol></nav>';
+
+      // Atomic webhook reconciliation (audit fix C-3) flips payment_status='paid'
+      // server-side as soon as Stripe fires the .succeeded event. From the
+      // client we just poll the ship request a few times to surface the
+      // updated state. No client-side reconcile call is needed (and the
+      // legacy /reconcile endpoint requires admin role anyway).
+      var attempts = 0;
+      var maxAttempts = 8;
+      var intervalMs = 1000;
+
+      function poll() {
+        QCS.fetchJson('/api/v1/ship-requests/' + encodeURIComponent(id))
+          .then(function (res) {
+            var sr = (res && res.data && (res.data.ship_request || res.data)) || null;
+            if (!sr) {
+              QCS.mountError(app, {
+                title: 'Ship request not found',
+                description: 'We could not find a ship request with that identifier.',
+                actionLabel: 'Back to ship requests',
+                onRetry: function () { window.location.href = '/dashboard/ship-requests'; }
+              });
+              return;
+            }
+            var paymentStatus = String(sr.payment_status || sr.status || '').toLowerCase();
+            attempts += 1;
+            if (paymentStatus === 'paid' || attempts >= maxAttempts) {
+              renderResult(sr, paymentStatus);
+              return;
+            }
+            setTimeout(poll, intervalMs);
+          })
+          .catch(function (err) {
+            QCS.mountError(app, {
+              title: 'Could not load confirmation',
+              description: (err && err.message) || 'Network error.',
+              onRetry: function () { window.location.reload(); }
+            });
+          });
       }
 
-      function sidebar(user, active) {
-        const suiteCode = (user && user.suite_code) || '—';
-        const links = [
-          { href: '/dashboard', label: 'Dashboard', id: 'dashboard' },
-          { href: '/dashboard/inbox', label: 'My Packages', id: 'inbox' },
-          { href: '/dashboard/mailbox', label: 'My Mailbox', id: 'mailbox' },
-          { href: '/dashboard/inbound', label: 'Expected Packages', id: 'inbound' },
-          { href: '/dashboard/ship-requests', label: 'Ship Requests', id: 'ship-requests' },
-          { href: '/dashboard/bookings', label: 'Bookings', id: 'bookings' },
-          { href: '/dashboard/recipients', label: 'Recipients', id: 'recipients' },
-          { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
-          { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
-          { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
-          { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
-          { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
-        ];
+      function renderResult(sr, paymentStatus) {
+        var code = sr.confirmation_code || sr.id || id;
+        var total = QCS.formatMoney(sr.total || 0, 'USD');
+        var isPaid = paymentStatus === 'paid';
+        var isReview = paymentStatus === 'review_required';
 
-        let navHtml = '';
-        links.forEach(link => {
-          const isActive = (active === link.id);
-          navHtml += `<a href="${link.href}" class="block py-2 px-3 rounded-lg ${isActive ? 'bg-[#1E293B]' : 'hover:bg-[#1E293B]'}">${link.label}</a>`;
-        });
+        var card;
+        if (isPaid) {
+          card = '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-success mb-3" aria-hidden="true">Payment received</div>'
+            + '<h1 class="text-2xl font-bold text-emerald-900 mb-2">Thank you — your payment is confirmed</h1>'
+            + '<p class="text-emerald-800 mb-1">Confirmation: <strong>' + window.qcsEscapeHTML(code) + '</strong></p>'
+            + '<p class="text-emerald-800 mb-5">Amount: <strong>' + window.qcsEscapeHTML(total) + '</strong></p>'
+            + '<div class="flex flex-wrap gap-3">'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">View details</a>'
+            + '<a href="/dashboard/ship-requests" class="border border-slate-300 px-5 py-2 rounded-lg">All ship requests</a>'
+            + '</div></div>';
+        } else if (isReview) {
+          card = '<div class="bg-amber-50 border border-amber-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-warning mb-3" aria-hidden="true">Under review</div>'
+            + '<h1 class="text-2xl font-bold text-amber-900 mb-2">Your payment is being reviewed</h1>'
+            + '<p class="text-amber-800 mb-5">Stripe completed your charge but the recorded amount needs a quick verification by our team. We will email you within one business day.</p>'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">View details</a>'
+            + '</div>';
+        } else {
+          // Webhook hasn't reached us yet (still processing). Show waiting state with manual refresh.
+          card = '<div class="bg-blue-50 border border-blue-200 rounded-xl p-8 max-w-xl shadow-sm">'
+            + '<div class="qcs-badge qcs-badge-info mb-3" aria-hidden="true">Processing</div>'
+            + '<h1 class="text-2xl font-bold text-blue-900 mb-2">We are confirming your payment</h1>'
+            + '<p class="text-blue-800 mb-5">Stripe sent us your payment but we have not received the final webhook yet. This usually takes a few seconds.</p>'
+            + '<div class="flex flex-wrap gap-3">'
+            + '<button type="button" id="refresh-btn" class="bg-[#0F172A] text-white px-5 py-2 rounded-lg font-medium">Refresh status</button>'
+            + '<a href="/dashboard/ship-requests/' + encodeURIComponent(id) + '" class="border border-slate-300 px-5 py-2 rounded-lg">View ship request</a>'
+            + '</div></div>';
+        }
 
-        return `<div class="flex min-h-screen">
-          <aside class="w-64 bg-[#0F172A] text-white py-6 px-4">
-            <a href="/" class="font-bold text-lg block mb-8">QCS Cargo</a>
-            <nav class="space-y-1" aria-label="Main navigation">
-              ${navHtml}
-            </nav>
-            <p class="mt-8 text-slate-400 text-sm">Suite: ${qcsEscapeHTML(suiteCode)}</p>
-            <button type="button" id="logout-btn" class="mt-4 text-sm text-slate-400 hover:text-white">Sign out</button>
-          </aside>`;
+        app.innerHTML = '<div class="qcs-page-wrap">' + sidebar
+          + '<main id="qcs-main" class="qcs-page-main" tabindex="-1">'
+          + bc + card
+          + '</main></div>';
+        QCS.bindLogout();
+        var rb = document.getElementById('refresh-btn');
+        if (rb) rb.addEventListener('click', function () { window.location.reload(); });
       }
 
-      fetch('/api/v1/me', auth).then(r => r.ok ? r.json() : null).then(me => {
-        if (!me) { window.location.href = '/login'; return; }
-        const user = me.data;
-        const params = new URLSearchParams(window.location.search);
-        const redirectStatus = params.get('redirect_status');
-        function render(sr) {
-          const code = (sr && (sr.confirmation_code || sr.id)) || id;
-          const bc = '<nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/dashboard" class="text-[#2563EB] hover:underline">Dashboard</a></li><li aria-hidden="true">/</li><li><a href="/dashboard/ship-requests" class="text-[#2563EB] hover:underline">Ship Requests</a></li><li aria-hidden="true">/</li><li class="text-[#0F172A] font-medium" aria-current="page">Confirmation</li></ol></nav>';
-          const main = '<main class="flex-1 p-8">' +
-            bc +
-            '<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-8 max-w-lg">' +
-            '<h1 class="text-2xl font-bold text-emerald-800 mb-2">Ship request confirmed</h1>' +
-            '<p class="text-emerald-700 mb-6">Your ship request ' + code + ' has been confirmed. We will process it shortly.</p>' +
-            '<div class="flex flex-wrap gap-3">' +
-            '<a href="/dashboard/ship-requests" class="bg-[#0F172A] text-white px-6 py-2 rounded-lg font-medium">Back to ship requests</a>' +
-            '<a href="/dashboard/ship-requests/' + id + '" class="bg-white border border-slate-300 text-slate-700 px-6 py-2 rounded-lg font-medium">View details</a>' +
-            '</div></div></main></div>';
-          document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + main;
-          document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
-        }
-        if (redirectStatus === 'succeeded') {
-          fetch('/api/v1/ship-requests/' + id + '/reconcile', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
-            .then(function () { return fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null); })
-            .then(function (res) { render(res && res.data ? (res.data.ship_request || res.data) : null); });
-          return;
-        }
-        fetch('/api/v1/ship-requests/' + id, auth).then(r => r.ok ? r.json() : null).then(function (res) {
-          if (!res || !res.data) {
-            document.getElementById('app').innerHTML = sidebar(user, 'ship-requests') + '<main class="flex-1 p-8"><p>Ship request not found.</p><a href="/dashboard/ship-requests" class="text-[#2563EB]">Back to list</a></main></div>';
-            document.getElementById('logout-btn').onclick = () => { fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).then(() => { localStorage.removeItem('qcs_access_token'); window.location.href = '/'; }); };
-            return;
-          }
-          render(res.data.ship_request || res.data);
-        });
-      });
+      poll();
     })();
   </script>
   <script src="/dashboard/mobile-nav.js"></script>

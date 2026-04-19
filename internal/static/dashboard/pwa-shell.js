@@ -14,6 +14,26 @@
     notifications: '/dashboard/settings/notifications'
   };
 
+  // Single source of truth for the customer dashboard sidebar. Every page
+  // renders this via QCSPWA.renderSidebar() so a change here propagates
+  // everywhere — no more 13-page sweep when a tab is added or relabeled.
+  var SIDEBAR_LINKS = [
+    { key: 'dashboard',    href: '/dashboard',                 label: 'Dashboard',         icon: '🏠' },
+    { key: 'inbox',        href: '/dashboard/inbox',           label: 'My Packages',       icon: '📦' },
+    { key: 'mailbox',      href: '/dashboard/mailbox',         label: 'My Mailbox',        icon: '📬' },
+    { key: 'inbound',      href: '/dashboard/inbound',         label: 'Expected Packages', icon: '🛬' },
+    { key: 'ship',         href: '/dashboard/ship',            label: 'Ship a Package',    icon: '✈️',  cta: true },
+    { key: 'ship-requests',href: '/dashboard/ship-requests',   label: 'Ship Requests',     icon: '📤' },
+    { key: 'shipments',    href: '/dashboard/shipments',       label: 'Shipments',         icon: '🚚' },
+    { key: 'bookings',     href: '/dashboard/bookings',        label: 'Bookings',          icon: '📅' },
+    { key: 'recipients',   href: '/dashboard/recipients',      label: 'Recipients',        icon: '👥' },
+    { key: 'templates',    href: '/dashboard/templates',       label: 'Templates',         icon: '📑' },
+    { key: 'parcel-plus',  href: '/dashboard/parcel-plus',     label: 'Parcel+',           icon: '✨' },
+    { key: 'invoices',     href: '/dashboard/invoices',        label: 'Invoices',          icon: '💳' },
+    { key: 'profile',      href: '/dashboard/profile',         label: 'Profile',           icon: '👤' },
+    { key: 'settings',     href: '/dashboard/settings',        label: 'Settings',          icon: '⚙️' }
+  ];
+
   var dict = {
     en: {
       loading: 'Loading...',
@@ -34,7 +54,15 @@
       push_unsupported: 'Push notifications are not supported in this browser.',
       push_denied: 'Push permission was denied.',
       push_ready: 'Push notifications enabled on this device.',
-      push_local_only: 'Push subscribed locally; server endpoint not available.'
+      push_local_only: 'Push subscribed locally; server endpoint not available.',
+      error_title: 'Something went wrong',
+      error_desc: 'We could not load this page. Please try again.',
+      error_action: 'Retry',
+      session_expired: 'Your session has expired. Please sign in again.',
+      sign_out: 'Sign out',
+      app_brand: 'QCS Cargo',
+      net_error: 'Network error. Please check your connection.',
+      copy_done: 'Copied to clipboard'
     },
     es: {
       loading: 'Cargando...',
@@ -55,7 +83,15 @@
       push_unsupported: 'Las notificaciones push no son compatibles con este navegador.',
       push_denied: 'El permiso de push fue denegado.',
       push_ready: 'Notificaciones push habilitadas en este dispositivo.',
-      push_local_only: 'Push suscrito localmente; endpoint del servidor no disponible.'
+      push_local_only: 'Push suscrito localmente; endpoint del servidor no disponible.',
+      error_title: 'Algo salio mal',
+      error_desc: 'No pudimos cargar esta pagina. Intentalo de nuevo.',
+      error_action: 'Reintentar',
+      session_expired: 'Tu sesion expiro. Vuelve a iniciar sesion.',
+      sign_out: 'Cerrar sesion',
+      app_brand: 'QCS Cargo',
+      net_error: 'Error de red. Verifica tu conexion.',
+      copy_done: 'Copiado al portapapeles'
     }
   };
 
@@ -176,6 +212,270 @@
   function mountEmpty(target, options) {
     if (!target) return;
     target.innerHTML = renderEmptyState(options);
+  }
+
+  function renderErrorState(options) {
+    var opts = options || {};
+    var title = opts.title || t('error_title');
+    var description = opts.description || t('error_desc');
+    var actionLabel = opts.actionLabel || t('error_action');
+    var actionId = opts.actionId || 'qcs-error-retry';
+    return '' +
+      '<section class="qcs-error-state" role="alert" aria-live="assertive">' +
+      '<svg class="qcs-error-icon" aria-hidden="true" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>' +
+      '<h2 class="qcs-error-title">' + window.qcsEscapeHTML(title) + '</h2>' +
+      '<p class="qcs-error-desc">' + window.qcsEscapeHTML(description) + '</p>' +
+      '<button type="button" id="' + window.qcsEscapeHTML(actionId) + '" class="qcs-error-action">' + window.qcsEscapeHTML(actionLabel) + '</button>' +
+      '</section>';
+  }
+
+  function mountError(target, options) {
+    if (!target) return;
+    var opts = options || {};
+    target.innerHTML = renderErrorState(opts);
+    var actionId = opts.actionId || 'qcs-error-retry';
+    var btn = document.getElementById(actionId);
+    if (btn && typeof opts.onRetry === 'function') {
+      btn.addEventListener('click', opts.onRetry);
+    } else if (btn) {
+      btn.addEventListener('click', function () { window.location.reload(); });
+    }
+  }
+
+  // Toast notifications. Stacks; auto-dismisses; aria-live=polite.
+  function toast(message, level, options) {
+    var opts = options || {};
+    var lvl = level || 'info';
+    var stack = document.getElementById('qcs-toast-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'qcs-toast-stack';
+      stack.className = 'qcs-toast-stack';
+      stack.setAttribute('role', 'status');
+      stack.setAttribute('aria-live', 'polite');
+      document.body.appendChild(stack);
+    }
+    var el = document.createElement('div');
+    el.className = 'qcs-toast qcs-toast-' + lvl;
+    el.textContent = message == null ? '' : String(message);
+    stack.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('is-shown'); });
+    var ms = typeof opts.duration === 'number' ? opts.duration : (lvl === 'error' ? 6000 : 3500);
+    setTimeout(function () {
+      el.classList.remove('is-shown');
+      el.classList.add('is-hidden');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 250);
+    }, ms);
+  }
+
+  // fetchJson wraps fetch with: bearer auth, JSON body/parse, 401 => attempt
+  // refresh via /auth/refresh and retry once, throws QCSHttpError otherwise.
+  function QCSHttpError(message, status, body) {
+    this.message = message;
+    this.status = status;
+    this.body = body;
+  }
+  QCSHttpError.prototype = Object.create(Error.prototype);
+
+  function buildHeaders(extra) {
+    var token = readToken();
+    var h = { 'Accept': 'application/json' };
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    if (extra) {
+      for (var k in extra) {
+        if (Object.prototype.hasOwnProperty.call(extra, k)) h[k] = extra[k];
+      }
+    }
+    return h;
+  }
+
+  function attemptRefresh() {
+    return fetch('/api/v1/auth/refresh', { method: 'POST', credentials: 'include' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.data && j.data.access_token) {
+          try { localStorage.setItem('qcs_access_token', j.data.access_token); } catch (e) {}
+          return true;
+        }
+        return false;
+      })
+      .catch(function () { return false; });
+  }
+
+  function fetchJson(url, options) {
+    var opts = options || {};
+    var method = (opts.method || 'GET').toUpperCase();
+    var hasBody = opts.body !== undefined && opts.body !== null;
+    var bodyIsForm = hasBody && (opts.body instanceof FormData);
+    var headers = buildHeaders(opts.headers);
+    if (hasBody && !bodyIsForm && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    var init = {
+      method: method,
+      headers: headers,
+      credentials: 'include',
+      signal: opts.signal
+    };
+    if (hasBody) init.body = bodyIsForm ? opts.body : JSON.stringify(opts.body);
+    var attempt = 0;
+    function run() {
+      return fetch(url, init).then(function (resp) {
+        if (resp.status === 401 && attempt === 0 && opts.retryOnRefresh !== false) {
+          attempt += 1;
+          return attemptRefresh().then(function (ok) {
+            if (!ok) {
+              var loginRedirect = '/login?redirect=' + encodeURIComponent(window.location.pathname + window.location.search);
+              try { localStorage.removeItem('qcs_access_token'); } catch (e) {}
+              window.location.href = loginRedirect;
+              return Promise.reject(new QCSHttpError(t('session_expired'), 401, null));
+            }
+            init.headers = buildHeaders(opts.headers);
+            return run();
+          });
+        }
+        var ct = resp.headers.get('Content-Type') || '';
+        var bodyPromise = ct.indexOf('application/json') >= 0
+          ? resp.json().catch(function () { return null; })
+          : resp.text().catch(function () { return null; });
+        return bodyPromise.then(function (body) {
+          if (!resp.ok) {
+            var msg = (body && body.error && body.error.message) || ('HTTP ' + resp.status);
+            throw new QCSHttpError(msg, resp.status, body);
+          }
+          return body;
+        });
+      });
+    }
+    return run();
+  }
+
+  // statusBadge returns escaped HTML for a colored status pill.
+  function statusBadge(value) {
+    var v = (value == null ? '' : String(value)).toLowerCase().trim();
+    var cls = 'qcs-badge qcs-badge-neutral';
+    if (v === 'paid' || v === 'delivered' || v === 'completed' || v === 'received' || v === 'active' || v === 'shipped' || v === 'staged') cls = 'qcs-badge qcs-badge-success';
+    else if (v === 'pending' || v === 'pending_payment' || v === 'pending_customs' || v === 'in_progress' || v === 'processing' || v === 'queued' || v === 'in_transit' || v === 'requires_action' || v === 'in_progres') cls = 'qcs-badge qcs-badge-warning';
+    else if (v === 'failed' || v === 'cancelled' || v === 'canceled' || v === 'review_required' || v === 'banned' || v === 'inactive') cls = 'qcs-badge qcs-badge-danger';
+    else if (v === 'draft' || v === 'unpaid') cls = 'qcs-badge qcs-badge-info';
+    var label = (value == null ? '—' : String(value).replace(/_/g, ' '));
+    return '<span class="' + cls + '">' + window.qcsEscapeHTML(label) + '</span>';
+  }
+
+  function formatMoney(amount, currency) {
+    var n = Number(amount || 0);
+    var cur = (currency || 'USD').toUpperCase();
+    try {
+      return new Intl.NumberFormat(getLocale() === 'es' ? 'es-US' : 'en-US', {
+        style: 'currency', currency: cur, minimumFractionDigits: 2
+      }).format(n);
+    } catch (e) {
+      return cur + ' ' + n.toFixed(2);
+    }
+  }
+
+  function formatDate(value, opts) {
+    if (!value) return '—';
+    var d = (value instanceof Date) ? value : new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    var o = opts || { dateStyle: 'medium' };
+    try {
+      return new Intl.DateTimeFormat(getLocale() === 'es' ? 'es-US' : 'en-US', o).format(d);
+    } catch (e) {
+      return d.toISOString().slice(0, 10);
+    }
+  }
+
+  // safeURL returns the URL if it is a same-origin path or http(s) URL on
+  // the same origin, otherwise '#'. Use when interpolating user-supplied URLs.
+  function safeURL(url) {
+    if (url == null) return '#';
+    var s = String(url).trim();
+    if (!s) return '#';
+    if (s.charAt(0) === '/' && (s.length === 1 || s.charAt(1) !== '/')) return s;
+    var lower = s.toLowerCase();
+    if (lower.indexOf('http://') === 0 || lower.indexOf('https://') === 0) {
+      try {
+        var parsed = new URL(s);
+        if (parsed.origin === window.location.origin) return parsed.pathname + parsed.search + parsed.hash;
+      } catch (e) {}
+    }
+    return '#';
+  }
+
+  // renderSidebar returns the canonical HTML string for the customer sidebar.
+  // active = the SIDEBAR_LINKS.key of the current page (so it gets aria-current
+  // and the active class).
+  function renderSidebar(active, opts) {
+    var options = opts || {};
+    var brand = window.qcsEscapeHTML(t('app_brand'));
+    var html = '<aside class="qcs-sidebar" aria-label="Primary navigation" data-qcs-sidebar="">' +
+      '<a href="/dashboard" class="qcs-sidebar-brand">' +
+      '<span aria-hidden="true">📦</span> <span>' + brand + '</span>' +
+      '</a>' +
+      '<nav class="qcs-sidebar-nav" aria-label="Sections">';
+    for (var i = 0; i < SIDEBAR_LINKS.length; i += 1) {
+      var item = SIDEBAR_LINKS[i];
+      var isActive = item.key === active;
+      var cls = 'qcs-sidebar-link';
+      if (isActive) cls += ' is-active';
+      if (item.cta) cls += ' is-cta';
+      html += '<a href="' + window.qcsEscapeHTML(item.href) + '" class="' + cls + '"' +
+        (isActive ? ' aria-current="page"' : '') + '>' +
+        '<span class="qcs-sidebar-icon" aria-hidden="true">' + window.qcsEscapeHTML(item.icon) + '</span>' +
+        '<span>' + window.qcsEscapeHTML(item.label) + '</span>' +
+        '</a>';
+    }
+    html += '</nav>';
+    if (options.showLogout !== false) {
+      html += '<button type="button" id="qcs-sidebar-logout" class="qcs-sidebar-logout">' + window.qcsEscapeHTML(t('sign_out')) + '</button>';
+    }
+    html += '</aside>';
+    return html;
+  }
+
+  // bindLogout attaches a logout handler to #qcs-sidebar-logout (plus any
+  // legacy buttons with class .sidebar-logout or id #logout-btn).
+  function bindLogout() {
+    var btns = [].concat(
+      [document.getElementById('qcs-sidebar-logout')].filter(Boolean),
+      [document.getElementById('logout-btn')].filter(Boolean),
+      [].slice.call(document.querySelectorAll('.sidebar-logout'))
+    );
+    btns.forEach(function (btn) {
+      if (btn._qcsBound) return;
+      btn._qcsBound = true;
+      btn.addEventListener('click', function () {
+        fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' })
+          .catch(function () {})
+          .then(function () {
+            try { localStorage.removeItem('qcs_access_token'); } catch (e) {}
+            window.location.href = '/';
+          });
+      });
+    });
+  }
+
+  // copyToClipboard with toast feedback. Falls back to a hidden textarea if
+  // the modern Clipboard API is unavailable.
+  function copyToClipboard(text) {
+    var done = function () { toast(t('copy_done'), 'success'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(String(text || '')).then(done, function () {
+        legacyCopy(text); done();
+      });
+    }
+    legacyCopy(text); done();
+    return Promise.resolve();
+  }
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = String(text || '');
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'absolute';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
   }
 
   function readToken() {
@@ -497,6 +797,19 @@
     mountLoading: mountLoading,
     renderEmptyState: renderEmptyState,
     mountEmpty: mountEmpty,
+    renderErrorState: renderErrorState,
+    mountError: mountError,
+    toast: toast,
+    fetchJson: fetchJson,
+    HttpError: QCSHttpError,
+    statusBadge: statusBadge,
+    formatMoney: formatMoney,
+    formatDate: formatDate,
+    safeURL: safeURL,
+    renderSidebar: renderSidebar,
+    bindLogout: bindLogout,
+    copyToClipboard: copyToClipboard,
+    sidebarLinks: SIDEBAR_LINKS,
     openNotificationStream: openNotificationStream,
     subscribePush: subscribePush,
     showShortcutHelp: showShortcutHelp,

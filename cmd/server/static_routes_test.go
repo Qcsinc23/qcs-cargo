@@ -25,6 +25,9 @@ func TestResolveStaticPath(t *testing.T) {
 		{in: "dashboard/inbound/abc", want: "dashboard/inbound-detail.html"},
 		{in: "dashboard/bookings/new", want: "dashboard/booking-wizard.html"},
 		{in: "dashboard/bookings/abc", want: "dashboard/booking-detail.html"},
+		// Dashboard UX review: shipment + invoice detail routes were missing.
+		{in: "dashboard/shipments/abc", want: "dashboard/shipment-detail.html"},
+		{in: "dashboard/invoices/abc", want: "dashboard/invoice-detail.html"},
 		{in: "verify", want: "verify.html"},
 		{in: "verify-email", want: "verify-email.html"},
 		{in: "login", want: "login.html"},

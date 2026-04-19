@@ -19,13 +19,16 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
+      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
       const token = localStorage.getItem('qcs_access_token');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/bookings/new'); return; }
       const auth = { headers: { 'Authorization': 'Bearer ' + token } };
@@ -50,6 +53,7 @@
           { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
           { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
           { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
+          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
           { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
           { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
         ];
@@ -132,9 +136,12 @@
             var el = document.getElementById('wizard-slots');
             if (!el) return;
             var html = '';
+            // Pass 2 dashboard UX review: slot.label is server-supplied;
+            // escape both the rendered label and the attribute id.
+            var esc = window.qcsEscapeHTML;
             slots.forEach(function (slot) {
               var sel = state.timeSlot === slot.id ? ' border-[#2563EB] bg-blue-50' : '';
-              html += '<button type="button" class="slot-btn border rounded-lg px-4 py-2 text-sm' + sel + '" data-slot="' + slot.id + '">' + slot.label + '</button>';
+              html += '<button type="button" class="slot-btn border rounded-lg px-4 py-2 text-sm' + sel + '" data-slot="' + esc(slot.id) + '">' + esc(slot.label || '') + '</button>';
             });
             el.innerHTML = html || 'No slots';
             el.querySelectorAll('.slot-btn').forEach(function (btn) {
