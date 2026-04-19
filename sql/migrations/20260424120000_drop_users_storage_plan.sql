@@ -15,9 +15,15 @@
 -- the live state in production at the time of writing.
 --
 -- goose wraps each migration in a transaction by default, so no
--- explicit BEGIN/COMMIT.
+-- explicit BEGIN/COMMIT. The DROP TABLE users + RENAME pair trips
+-- foreign_keys=ON because other tables reference users(id); we use
+-- PRAGMA defer_foreign_keys=1 (which SQLite honors for the lifetime
+-- of the enclosing transaction) so the FK check is deferred until
+-- COMMIT. By COMMIT the rebuilt `users` table has the same primary
+-- key values, so the FK check passes.
 
 -- +goose Up
+PRAGMA defer_foreign_keys = 1;
 DROP TABLE IF EXISTS users__new_202604241200;
 CREATE TABLE users__new_202604241200 (
     id TEXT PRIMARY KEY,
@@ -76,6 +82,7 @@ CREATE INDEX IF NOT EXISTS idx_users_email_verification_token
 -- +goose Down
 -- Restore the storage_plan column with its original default. Existing
 -- rows will pick up 'free' via the column default.
+PRAGMA defer_foreign_keys = 1;
 DROP TABLE IF EXISTS users__old_202604241200;
 CREATE TABLE users__old_202604241200 (
     id TEXT PRIMARY KEY,
