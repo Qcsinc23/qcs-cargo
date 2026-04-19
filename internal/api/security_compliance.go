@@ -69,12 +69,16 @@ func securityMFASetup(c *fiber.Ctx) error {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "Invalid body"))
 	}
 
+	// Pass 3 D1: TOTP enrolment was previously accepted but verification
+	// returned 501 IMPLEMENTATION_PENDING, leaving the user stranded with an
+	// unusable factor. Until RFC 6238 verify is wired end-to-end, only
+	// email_otp is a valid method on this endpoint.
 	method := strings.TrimSpace(body.Method)
 	if method == "" {
 		method = "email_otp"
 	}
-	if method != "email_otp" && method != "totp" {
-		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "method must be email_otp or totp"))
+	if method != "email_otp" {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "method must be email_otp"))
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -108,9 +112,6 @@ ON CONFLICT(user_id) DO UPDATE SET
 	resp := fiber.Map{
 		"method":      method,
 		"mfa_enabled": false,
-	}
-	if method == "totp" {
-		resp["secret"] = secret
 	}
 
 	return c.JSON(fiber.Map{"status": "success", "data": resp})
@@ -167,22 +168,18 @@ WHERE user_id = ?
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to create MFA challenge"))
 	}
 
-	// Pass 2.5 HIGH-02: enqueue the OTP via the outbound email worker so
-	// production users actually receive the code. Previously the code was
-	// only returned to the client under AllowDebugAuthArtifacts (dev/test),
-	// so MFA challenges were silently inoperative in production. Email
-	// delivery is best-effort here: the OTP row is already persisted, so a
+	// Pass 2.5 HIGH-02 / Pass 3 D1: enqueue the OTP via the outbound email
+	// worker so production users actually receive the code. email_otp is now
+	// the only supported method, so there is no longer a TOTP branch to skip.
+	// Email delivery is best-effort: the OTP row is already persisted, so a
 	// transient enqueue failure should not fail the request — the user can
-	// retry. We skip enqueueing for TOTP because the code is not delivered
-	// out-of-band for that method.
-	if !strings.EqualFold(strings.TrimSpace(method), "totp") {
-		if u, lookupErr := db.Queries().GetUserByID(c.Context(), userID); lookupErr == nil && strings.TrimSpace(u.Email) != "" {
-			if enqErr := services.EnqueueEmail(c.Context(), services.TemplateMFAChallengeCode, u.Email, map[string]any{"code": code}); enqErr != nil {
-				log.Printf("[mfa challenge] enqueue email for user %s: %v", userID, enqErr)
-			}
-		} else if lookupErr != nil {
-			log.Printf("[mfa challenge] lookup user %s for email enqueue: %v", userID, lookupErr)
+	// retry.
+	if u, lookupErr := db.Queries().GetUserByID(c.Context(), userID); lookupErr == nil && strings.TrimSpace(u.Email) != "" {
+		if enqErr := services.EnqueueEmail(c.Context(), services.TemplateMFAChallengeCode, u.Email, map[string]any{"code": code}); enqErr != nil {
+			log.Printf("[mfa challenge] enqueue email for user %s: %v", userID, enqErr)
 		}
+	} else if lookupErr != nil {
+		log.Printf("[mfa challenge] lookup user %s for email enqueue: %v", userID, lookupErr)
 	}
 
 	data := fiber.Map{
@@ -229,14 +226,14 @@ WHERE user_id = ?
 	if err != nil {
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to verify MFA"))
 	}
-	// Pass 2.5 HIGH-02: TOTP verification is not yet implemented. The
-	// existing verify path only knows how to compare email-OTP hashes, so
-	// silently treating a TOTP enrollment as if it were email-OTP would
-	// either lock the user out or accept the wrong proof. Reject explicitly.
+	// Pass 3 D1: TOTP enrolment is no longer accepted at /mfa/setup, but a
+	// row may still exist from before the cutover (or from a direct DB
+	// write). Reject explicitly with a 400 so the user re-enrols on email_otp
+	// rather than getting stuck against the email-OTP hash comparison below.
 	if strings.EqualFold(strings.TrimSpace(method), "totp") {
-		return c.Status(501).JSON(ErrorResponse{}.withCode(
-			"IMPLEMENTATION_PENDING",
-			"TOTP verification is not yet available. Please re-enroll using the email method.",
+		return c.Status(400).JSON(ErrorResponse{}.withCode(
+			"VALIDATION_ERROR",
+			"TOTP is no longer a supported MFA method. Please re-enroll using email_otp.",
 		))
 	}
 	if !otpHash.Valid || strings.TrimSpace(otpHash.String) == "" {

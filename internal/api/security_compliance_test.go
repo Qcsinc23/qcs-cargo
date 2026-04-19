@@ -338,11 +338,13 @@ func TestMFAChallenge_EnqueuesEmail(t *testing.T) {
 	assert.GreaterOrEqual(t, count, 1, "MFA challenge must enqueue an outbound_emails row")
 }
 
-// TestMFAVerify_RejectsTOTPMethod asserts that until RFC 6238 verification
-// is implemented, a user enrolled via the "totp" method cannot verify and
-// gets a clear IMPLEMENTATION_PENDING response (not a generic 400/401 that
-// would look like an attacker-suppressed lockout).
-func TestMFAVerify_RejectsTOTPMethod(t *testing.T) {
+// TestMFASetup_RejectsTOTPMethod is the Pass 3 D1 regression. TOTP is no
+// longer a valid MFA method on /mfa/setup — the enum only accepts
+// email_otp. A request that asks for "totp" must be rejected at setup time
+// with a 400 VALIDATION_ERROR, not silently enrolled and then 501'd at
+// /mfa/verify (which previously left users stranded with an unusable
+// factor).
+func TestMFASetup_RejectsTOTPMethod(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
 	app := setupTestApp(t)
 	aliceToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
@@ -353,23 +355,15 @@ func TestMFAVerify_RejectsTOTPMethod(t *testing.T) {
 	setupResp, err := app.Test(setupReq)
 	require.NoError(t, err)
 	defer setupResp.Body.Close()
-	require.Equal(t, http.StatusOK, setupResp.StatusCode)
-
-	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/verify", bytes.NewReader([]byte(`{"code":"123456"}`)))
-	verifyReq.Header.Set("Authorization", "Bearer "+aliceToken)
-	verifyReq.Header.Set("Content-Type", "application/json")
-	verifyResp, err := app.Test(verifyReq)
-	require.NoError(t, err)
-	defer verifyResp.Body.Close()
-	require.Equal(t, http.StatusNotImplemented, verifyResp.StatusCode)
+	require.Equal(t, http.StatusBadRequest, setupResp.StatusCode)
 
 	var body struct {
 		Error struct {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
-	require.NoError(t, json.NewDecoder(verifyResp.Body).Decode(&body))
-	assert.Equal(t, "IMPLEMENTATION_PENDING", body.Error.Code)
+	require.NoError(t, json.NewDecoder(setupResp.Body).Decode(&body))
+	assert.Equal(t, "VALIDATION_ERROR", body.Error.Code)
 }
 
 // TestSecurityFeatureFlagsList_RequiresAdmin is the Pass 2.5 MED-17
