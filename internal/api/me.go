@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/Qcsinc23/qcs-cargo/internal/db"
@@ -168,20 +167,3 @@ func MeAvatarUpload(c *fiber.Ctx) error {
 	u, _ := db.Queries().GetUserByID(c.Context(), userID)
 	return c.JSON(fiber.Map{"data": userToMap(u)})
 }
-
-// imageExtFromContentType is retained for backward compatibility with callers
-// outside the avatar upload flow (e.g. tests). It is no longer used by the
-// avatar handler — H-9 derives the extension from sniffed bytes.
-func imageExtFromContentType(ct string) string {
-	switch {
-	case strings.Contains(ct, "jpeg") || strings.Contains(ct, "jpg"):
-		return ".jpg"
-	case strings.Contains(ct, "png"):
-		return ".png"
-	case strings.Contains(ct, "webp"):
-		return ".webp"
-	default:
-		return ".jpg"
-	}
-}
-
