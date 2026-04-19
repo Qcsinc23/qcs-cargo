@@ -27,8 +27,15 @@ Unified product per QCS Cargo Unified PRD v3.
 - Database schema reference: [docs/database/SCHEMA.md](docs/database/SCHEMA.md)
 - Security/compliance additions: [docs/SECURITY_COMPLIANCE.md](docs/SECURITY_COMPLIANCE.md)
 - Parcel feature additions: [docs/PARCEL_FEATURES.md](docs/PARCEL_FEATURES.md)
-- PWA/UX additions: [docs/PWA_UX.md](docs/PWA_UX.md)
+- PWA/UX shared dashboard shell: [docs/PWA_UX.md](docs/PWA_UX.md)
 - Platform/scaling additions: [docs/PLATFORM_SCALING.md](docs/PLATFORM_SCALING.md)
+- End-user walkthrough (customer / warehouse / admin): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+
+## Customer dashboard
+
+Every signed-in dashboard tab renders through the shared `QCSPWA` shell defined in `internal/static/dashboard/pwa-shell.js`. Sidebar links, error/empty/loading states, fetch-with-401-refresh, status badges, money/date formatting, and the floating theme/locale dock are all single-source-of-truth there. Adding or relabeling a tab is a one-line change in `SIDEBAR_LINKS`.
+
+See [docs/PWA_UX.md](docs/PWA_UX.md) for the full sidebar inventory and the helper API.
 
 ## Quick start
 
