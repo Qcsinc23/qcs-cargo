@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Service Queue | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/admin/common.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
@@ -34,9 +35,12 @@
           '<a href="/warehouse/exceptions" class="block py-2 px-3 rounded-lg hover:bg-[#1E293B]">Exceptions</a></nav>' +
           '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a><a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a><button type="button" class="sidebar-logout mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
         function render(list) {
+          // Pass 2 audit fix C-1: HTML-escape user_name and sender_name —
+          // both customer-controlled and historically the XSS sink.
+          const esc = window.QCSAdmin.escapeHTML;
           const rows = (list || []).map(sr => {
             const created = sr.created_at ? new Date(sr.created_at).toLocaleString() : '—';
-            return '<tr class="border-b border-slate-200"><td class="py-3 px-4">' + (sr.user_name || '—') + '</td><td class="py-3 px-4">' + (sr.sender_name || '—') + '</td><td class="py-3 px-4">' + (sr.service_type || '—') + '</td><td class="py-3 px-4">' + (sr.status || '') + '</td><td class="py-3 px-4">' + created + '</td><td class="py-3 px-4">' + (sr.storage_bay || '—') + '</td><td class="py-3 px-4"><button type="button" class="complete-btn bg-emerald-600 text-white px-3 py-1 rounded text-sm" data-id="' + sr.id + '">Complete</button></td></tr>';
+            return '<tr class="border-b border-slate-200"><td class="py-3 px-4">' + esc(sr.user_name || '—') + '</td><td class="py-3 px-4">' + esc(sr.sender_name || '—') + '</td><td class="py-3 px-4">' + esc(sr.service_type || '—') + '</td><td class="py-3 px-4">' + esc(sr.status || '') + '</td><td class="py-3 px-4">' + esc(created) + '</td><td class="py-3 px-4">' + esc(sr.storage_bay || '—') + '</td><td class="py-3 px-4"><button type="button" class="complete-btn bg-emerald-600 text-white px-3 py-1 rounded text-sm" data-id="' + esc(sr.id) + '">Complete</button></td></tr>';
           }).join('');
           return '<main class="flex-1 p-8"><nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/warehouse" class="hover:underline">Warehouse</a></li><li aria-current="page" class="font-medium">Service Queue</li></ol></nav><h1 class="text-3xl font-bold mb-6">Service Queue</h1><div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-3 px-4">Customer</th><th class="text-left py-3 px-4">Sender</th><th class="text-left py-3 px-4">Service</th><th class="text-left py-3 px-4">Status</th><th class="text-left py-3 px-4">Created</th><th class="text-left py-3 px-4">Bay</th><th class="text-left py-3 px-4">Action</th></tr></thead><tbody id="tbody">' + rows + '</tbody></table></div></main>';
         }

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Drop-off Receiving | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/admin/common.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
@@ -34,9 +35,13 @@
           '<a href="/admin" class="block mt-6 text-sm text-slate-400 hover:text-white">Admin</a><a href="/dashboard" class="block mt-2 text-sm text-slate-400 hover:text-white">Customer Dashboard</a><button type="button" class="sidebar-logout mt-4 text-sm text-slate-400 hover:text-white">Sign out</button></aside>';
         function renderList(data) {
           const list = (data && data.data) || [];
+          // Pass 2 audit fix C-1: HTML-escape server-supplied fields and
+          // attribute-encode the booking id when interpolating into a
+          // data-id attribute.
+          const esc = (window.QCSAdmin && window.QCSAdmin.escapeHTML) ? window.QCSAdmin.escapeHTML : function(v){return String(v==null?'':v).replace(/[&<>"'`]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]);};
           const rows = list.map(b => {
-            const checkInBtn = '<button type="button" class="check-in-btn px-3 py-1 rounded bg-emerald-600 text-white text-sm" data-id="' + b.id + '">Check in</button>';
-            return '<tr class="border-b border-slate-200"><td class="py-3 px-4">' + (b.confirmation_code || '—') + '</td><td class="py-3 px-4">' + (b.scheduled_date || '') + '</td><td class="py-3 px-4">' + (b.time_slot || '') + '</td><td class="py-3 px-4">' + (b.status || '') + '</td><td class="py-3 px-4">' + checkInBtn + '</td></tr>';
+            const checkInBtn = '<button type="button" class="check-in-btn px-3 py-1 rounded bg-emerald-600 text-white text-sm" data-id="' + esc(b.id) + '">Check in</button>';
+            return '<tr class="border-b border-slate-200"><td class="py-3 px-4">' + esc(b.confirmation_code || '—') + '</td><td class="py-3 px-4">' + esc(b.scheduled_date || '') + '</td><td class="py-3 px-4">' + esc(b.time_slot || '') + '</td><td class="py-3 px-4">' + esc(b.status || '') + '</td><td class="py-3 px-4">' + checkInBtn + '</td></tr>';
           }).join('');
           return '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-3 px-4">Confirmation</th><th class="text-left py-3 px-4">Date</th><th class="text-left py-3 px-4">Time</th><th class="text-left py-3 px-4">Status</th><th class="text-left py-3 px-4">Action</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
         }

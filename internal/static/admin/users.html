@@ -50,13 +50,18 @@
             '<h1 class="text-3xl font-bold mb-6">Users</h1><p class="text-slate-600 mb-4">' + list.length + ' user(s)</p>' +
             '<div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50 border-b"><tr>' +
             '<th class="text-left py-3 px-4 font-medium text-slate-600">Email</th><th class="text-left py-3 px-4 font-medium text-slate-600">Name</th><th class="text-left py-3 px-4 font-medium text-slate-600">Role</th><th class="text-left py-3 px-4 font-medium text-slate-600">Status</th><th class="text-left py-3 px-4 font-medium text-slate-600">Suite</th></tr></thead><tbody>';
+          // Pass 2 audit fix C-1: HTML-escape every server-supplied field
+          // before splicing into innerHTML. u.name is a customer-controlled
+          // value and was the original stored-XSS sink for this page.
+          const esc = window.QCSAdmin.escapeHTML;
           list.forEach(u => {
+            const safeRole = (u.role === 'admin') ? 'admin' : (u.role || '—');
             main += '<tr class="border-b border-slate-100 hover:bg-slate-50">' +
-              '<td class="py-3 px-4">' + (u.email || '—') + '</td>' +
-              '<td class="py-3 px-4">' + (u.name || '—') + '</td>' +
-              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm ' + (u.role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100') + '">' + (u.role || '—') + '</span></td>' +
-              '<td class="py-3 px-4">' + (u.status || '—') + '</td>' +
-              '<td class="py-3 px-4 font-mono text-sm">' + (u.suite_code || '—') + '</td></tr>';
+              '<td class="py-3 px-4">' + esc(u.email || '—') + '</td>' +
+              '<td class="py-3 px-4">' + esc(u.name || '—') + '</td>' +
+              '<td class="py-3 px-4"><span class="px-2 py-1 rounded text-sm ' + (u.role === 'admin' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100') + '">' + esc(safeRole) + '</span></td>' +
+              '<td class="py-3 px-4">' + esc(u.status || '—') + '</td>' +
+              '<td class="py-3 px-4 font-mono text-sm">' + esc(u.suite_code || '—') + '</td></tr>';
           });
           main += '</tbody></table></div></main></div>';
           document.getElementById('app').innerHTML = adminSidebar('users') + main;

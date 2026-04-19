@@ -308,6 +308,21 @@ func parcelCustomsDocCreate(c *fiber.Ctx) error {
 	if strings.TrimSpace(body.ShipRequestID) == "" && strings.TrimSpace(body.LockerPackageID) == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "ship_request_id or locker_package_id required"))
 	}
+	// Pass 2 audit fix H-5: tighten validation on the user-supplied file_url
+	// and file_name. Without this, a user could store javascript: URLs or
+	// HTML payloads that would later be reflected to staff-facing UIs.
+	if err := services.ValidateUploadedFileURL(body.FileURL); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	if err := services.ValidateFileName(body.FileName); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	if !isAllowedCustomsDocType(body.DocType) {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "invalid doc_type"))
+	}
+	if body.SizeBytes < 0 || body.SizeBytes > 25*1024*1024 {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "size_bytes must be between 0 and 25MB"))
+	}
 
 	if sid := strings.TrimSpace(body.ShipRequestID); sid != "" {
 		var exists int
@@ -415,13 +430,45 @@ func parcelDeliverySignatureCapture(c *fiber.Ctx) error {
 	if body.ShipRequestID == "" || body.SignerName == "" || body.SignatureData == "" {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "ship_request_id, signer_name, and signature_data required"))
 	}
+	// Pass 2 audit fix M-10: bound payload sizes and validate the data URL
+	// shape so callers cannot pad the signatures table or smuggle non-image
+	// content.
+	if cleaned, err := services.ValidateName(body.SignerName); err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "signer_name "+err.Error()))
+	} else {
+		body.SignerName = cleaned
+	}
+	const maxSignatureBytes = 256 * 1024 // 256 KB
+	if len(body.SignatureData) > maxSignatureBytes {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "signature_data exceeds 256KB"))
+	}
+	if !strings.HasPrefix(body.SignatureData, "data:image/png;base64,") &&
+		!strings.HasPrefix(body.SignatureData, "data:image/jpeg;base64,") &&
+		!strings.HasPrefix(body.SignatureData, "data:image/webp;base64,") {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", "signature_data must be a base64 PNG/JPEG/WEBP data URL"))
+	}
 
-	var exists int
-	if err := db.DB().QueryRowContext(c.Context(), `SELECT 1 FROM ship_requests WHERE id = ? AND user_id = ? LIMIT 1`, body.ShipRequestID, userID).Scan(&exists); err != nil {
+	// Freeze signatures once the ship request is in a terminal delivered/closed
+	// state so a customer cannot rewrite the recorded delivery proof after
+	// the fact. We accept first-time captures while still allowing legitimate
+	// corrections during delivery.
+	var existsRow struct {
+		Status string
+		PrevID sql.NullString
+	}
+	if err := db.DB().QueryRowContext(c.Context(), `
+		SELECT s.status,
+		       (SELECT id FROM delivery_signatures WHERE user_id = ? AND ship_request_id = ? LIMIT 1)
+		FROM ship_requests s
+		WHERE s.id = ? AND s.user_id = ? LIMIT 1
+	`, userID, body.ShipRequestID, body.ShipRequestID, userID).Scan(&existsRow.Status, &existsRow.PrevID); err != nil {
 		if err == sql.ErrNoRows {
 			return c.Status(404).JSON(ErrorResponse{}.withCode("NOT_FOUND", "Ship request not found"))
 		}
 		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Failed to validate ship request"))
+	}
+	if existsRow.PrevID.Valid && (strings.EqualFold(existsRow.Status, "delivered") || strings.EqualFold(existsRow.Status, "closed") || strings.EqualFold(existsRow.Status, "completed")) {
+		return c.Status(409).JSON(ErrorResponse{}.withCode("SIGNATURE_LOCKED", "delivery signature can no longer be modified"))
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1115,4 +1162,14 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// isAllowedCustomsDocType is the closed enum of customs pre-clearance document
+// types we accept. Pass 2 audit fix H-5.
+func isAllowedCustomsDocType(t string) bool {
+	switch strings.ToLower(strings.TrimSpace(t)) {
+	case "invoice", "packing_list", "id_proof", "permit", "certificate", "other":
+		return true
+	}
+	return false
 }

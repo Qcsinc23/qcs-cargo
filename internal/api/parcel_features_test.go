@@ -70,6 +70,9 @@ func TestParcelFeatures_ConsolidationPhotosExportAndImport(t *testing.T) {
 }
 
 func TestParcelFeatures_CustomsSignatureAndLoyalty(t *testing.T) {
+	// Pass 2 audit fix H-5: customs-docs now validates file_url against an
+	// upload host allowlist; configure one for the test fixture.
+	t.Setenv("UPLOAD_HOST_ALLOWLIST", "cdn.example.com")
 	app := setupTestApp(t)
 	accessToken, _ := issueAuthTokens(t, testdata.CustomerAliceID)
 

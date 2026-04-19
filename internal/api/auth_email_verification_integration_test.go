@@ -27,6 +27,9 @@ func TestAuthRegister_DuplicateUnverifiedEmailReturnsVerificationMessage(t *test
 		"password":"StrongPass1!"
 	}`)
 
+	// Bcrypt at cost 12 + the integrity-guardrails migration mean these
+	// requests routinely exceed Fiber's 1s default test timeout when run
+	// under -race. Use an explicit 5s budget to keep the test reliable.
 	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", bytes.NewReader(payload))
 	firstReq.Header.Set("Content-Type", "application/json")
 	firstResp, err := app.Test(firstReq, 5000)

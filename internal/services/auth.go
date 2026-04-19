@@ -332,17 +332,40 @@ type RefreshClaims struct {
 	SessionID string `json:"session_id"`
 }
 
+// devJWTSecret is generated once per process when running outside production.
+// Each restart invalidates dev tokens so that compromised dev secrets cannot
+// outlive a process. Pass 2 audit fix L-5.
+var devJWTSecret = func() []byte {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		panic("failed to seed development JWT secret: " + err.Error())
+	}
+	return b
+}()
+
 func getJWTSecret() []byte {
 	s := os.Getenv("JWT_SECRET")
 	if len(s) < 32 {
-		// In development mode, allow fallback with warning
+		// In development mode, allow fallback with warning.
 		if !isProductionEnv() {
-			log.Println("WARNING: Using development JWT secret. Set JWT_SECRET in production!")
-			return []byte("qcs-dev-secret-change-in-production-32bytes!!")
+			log.Println("WARNING: Using ephemeral development JWT secret. Set JWT_SECRET in production!")
+			return devJWTSecret
 		}
 		panic("JWT_SECRET environment variable must be at least 32 characters")
 	}
-	return []byte(s)[:32]
+	// Pass 2 audit fix M-2: do not silently truncate to 32 bytes; HMAC-SHA256
+	// accepts arbitrary key lengths and longer secrets are stronger.
+	return []byte(s)
+}
+
+// jwtKeyFunc is the keyfunc shared by all token validators. Pass 2 audit fix
+// M-1: pin the signing method to HMAC family so that an attacker cannot trick
+// the parser into a key-confusion attack by forging an "alg" header.
+func jwtKeyFunc(t *jwt.Token) (interface{}, error) {
+	if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+		return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+	}
+	return getJWTSecret(), nil
 }
 
 func issueAccessToken(userID, email, role string) (string, error) {
@@ -375,7 +398,7 @@ func issueRefreshToken(sessionID string) (string, error) {
 // ValidateAccessToken returns user_id, email, role or error.
 func ValidateAccessToken(tokenString string) (userID, email, role string, err error) {
 	var claims AccessClaims
-	t, err := jwt.ParseWithClaims(tokenString, &claims, func(*jwt.Token) (interface{}, error) { return getJWTSecret(), nil })
+	t, err := jwt.ParseWithClaims(tokenString, &claims, jwtKeyFunc)
 	if err != nil || !t.Valid {
 		return "", "", "", fmt.Errorf("invalid token")
 	}
@@ -385,7 +408,7 @@ func ValidateAccessToken(tokenString string) (userID, email, role string, err er
 // ValidateAccessTokenClaims returns parsed access claims, including JTI for token revocation checks.
 func ValidateAccessTokenClaims(tokenString string) (AccessClaims, error) {
 	var claims AccessClaims
-	t, err := jwt.ParseWithClaims(tokenString, &claims, func(*jwt.Token) (interface{}, error) { return getJWTSecret(), nil })
+	t, err := jwt.ParseWithClaims(tokenString, &claims, jwtKeyFunc)
 	if err != nil || !t.Valid {
 		return AccessClaims{}, fmt.Errorf("invalid token")
 	}
@@ -395,7 +418,7 @@ func ValidateAccessTokenClaims(tokenString string) (AccessClaims, error) {
 // ValidateRefreshToken returns session_id or error.
 func ValidateRefreshToken(tokenString string) (sessionID string, err error) {
 	var claims RefreshClaims
-	t, err := jwt.ParseWithClaims(tokenString, &claims, func(*jwt.Token) (interface{}, error) { return getJWTSecret(), nil })
+	t, err := jwt.ParseWithClaims(tokenString, &claims, jwtKeyFunc)
 	if err != nil || !t.Valid {
 		return "", fmt.Errorf("invalid refresh token")
 	}
@@ -507,6 +530,10 @@ const PasswordResetExpiry = 1 * time.Hour
 
 // RequestPasswordReset inserts a reset token and returns the rawToken and the full reset link.
 // The caller is responsible for sending the link to the user via email.
+//
+// Pass 2 audit fix H-1: invalidates any prior outstanding password reset tokens
+// for the same user before issuing a new one, so a leaked older link cannot be
+// used after the customer requested a fresh reset.
 func RequestPasswordReset(ctx context.Context, userID, appURL string) (rawToken, link string, err error) {
 	tok := make([]byte, 32)
 	if _, err = rand.Read(tok); err != nil {
@@ -518,6 +545,11 @@ func RequestPasswordReset(ctx context.Context, userID, appURL string) (rawToken,
 	expires := time.Now().Add(PasswordResetExpiry).UTC().Format(time.RFC3339)
 
 	sqlDB := db.DB()
+	if _, err = sqlDB.ExecContext(ctx,
+		`UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0`, userID,
+	); err != nil {
+		return "", "", fmt.Errorf("RequestPasswordReset: revoke previous tokens: %w", err)
+	}
 	_, err = sqlDB.ExecContext(ctx,
 		`INSERT INTO password_resets (id, user_id, token_hash, used, expires_at, created_at)
 		 VALUES (?, ?, ?, 0, ?, ?)`,
@@ -528,6 +560,30 @@ func RequestPasswordReset(ctx context.Context, userID, appURL string) (rawToken,
 	}
 	link = appURL + "/reset-password?token=" + rawToken
 	return rawToken, link, nil
+}
+
+// invalidateAllUserSessions deletes every refresh-token session for a user.
+// Used by password reset, password change, and account deactivation flows so a
+// stolen session cannot survive a credential change. Pass 2 audit fix H-1.
+//
+// Caller must pass an executor (either *sql.DB or *sql.Tx via the wrapped
+// queries object) that participates in the surrounding transaction.
+func invalidateAllUserSessionsTx(ctx context.Context, exec interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}, userID string) error {
+	if userID == "" {
+		return nil
+	}
+	if _, err := exec.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID); err != nil {
+		return fmt.Errorf("invalidate sessions: %w", err)
+	}
+	return nil
+}
+
+// InvalidateAllUserSessions is the package-level helper used by handlers that
+// do not own a transaction (e.g. ChangePassword via the global DB). Pass 2 H-1.
+func InvalidateAllUserSessions(ctx context.Context, userID string) error {
+	return invalidateAllUserSessionsTx(ctx, db.DB(), userID)
 }
 
 // ResetPassword validates the reset token and updates the user's password.
@@ -573,6 +629,18 @@ func ResetPassword(ctx context.Context, rawToken, newPassword string) error {
 	); err != nil {
 		return fmt.Errorf("ResetPassword: mark used: %w", err)
 	}
+	// Pass 2 audit fix H-1: invalidate every active refresh session and any
+	// other outstanding reset tokens so a previously-stolen session cannot
+	// outlive the password reset. Done inside the same transaction as the
+	// password update so the reset is atomic.
+	if err = invalidateAllUserSessionsTx(ctx, tx, userID); err != nil {
+		return fmt.Errorf("ResetPassword: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx,
+		`UPDATE password_resets SET used = 1 WHERE user_id = ? AND used = 0`, userID,
+	); err != nil {
+		return fmt.Errorf("ResetPassword: revoke other tokens: %w", err)
+	}
 	return tx.Commit()
 }
 
@@ -600,6 +668,20 @@ func ChangePassword(ctx context.Context, userID, currentPassword, newPassword st
 		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = db.DB().ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, string(hashed), now, userID)
-	return err
+	// Pass 2 audit fix H-1: a password change must invalidate other refresh
+	// sessions so a stolen session does not outlive the credential change.
+	// We perform the password update and session purge in a single transaction
+	// so a partial state cannot be observed.
+	tx, err := db.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err = tx.ExecContext(ctx, `UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, string(hashed), now, userID); err != nil {
+		return err
+	}
+	if err = invalidateAllUserSessionsTx(ctx, tx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

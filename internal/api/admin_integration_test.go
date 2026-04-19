@@ -37,7 +37,8 @@ func mustAdminAccessToken(t *testing.T) string {
 		Role:   "admin",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(secret)[:32])
+	// Pass 2 audit fix M-2: use the full JWT secret (no truncation).
+	signed, err := token.SignedString([]byte(secret))
 	require.NoError(t, err)
 	return signed
 }

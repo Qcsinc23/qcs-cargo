@@ -117,6 +117,14 @@ func authRegister(c *fiber.Ctx) error {
 	if err := services.ValidateEmail(normalizedEmail); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
+	// Pass 2 audit fix C-1 (server-side): bound the display name and reject
+	// HTML metacharacters so a malicious name cannot become stored XSS in the
+	// admin or warehouse UIs that render this field.
+	cleanName, err := services.ValidateName(body.Name)
+	if err != nil {
+		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	body.Name = cleanName
 	// Validate password complexity if provided
 	if body.Password != "" {
 		if err := services.ValidatePassword(body.Password); err != nil {
@@ -186,6 +194,15 @@ func authResendVerification(c *fiber.Ctx) error {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
 	}
 
+	// Pass 2 audit fix M-4: per-account + per-IP throttle so an attacker
+	// cannot bomb a victim's inbox by replaying this endpoint.
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "resend_verification:"+normalizedEmail, 3, 10*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many verification emails requested. Please wait before trying again."))
+	}
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "resend_verification_ip:"+c.IP(), 20, 10*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many requests from this network. Please wait before trying again."))
+	}
+
 	const msg = "If an account with that email exists, a verification email has been sent."
 	q := db.Queries()
 	user, err := q.GetUserByEmail(c.Context(), normalizedEmail)
@@ -220,6 +237,16 @@ func authMagicLinkRequest(c *fiber.Ctx) error {
 	// Validate email format
 	if err := services.ValidateEmail(normalizedEmail); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	// Pass 2 audit fix M-4: per-account + per-IP throttle. Bounds:
+	// 3 requests per 5 minutes per email, 20 per 5 minutes per source IP.
+	// Returns the same enum-safe message envelope on throttle so we do not
+	// inadvertently reveal account existence via the throttle response code.
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "magic_link:"+normalizedEmail, 3, 5*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many sign-in links requested. Please wait before trying again."))
+	}
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "magic_link_ip:"+c.IP(), 20, 5*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many requests from this network. Please wait before trying again."))
 	}
 	// Always return the same response regardless of whether the email exists.
 	// This prevents user enumeration (PRD 3.2.1).
@@ -290,6 +317,13 @@ func authForgotPassword(c *fiber.Ctx) error {
 	// Validate email format
 	if err := services.ValidateEmail(normalizedEmail); err != nil {
 		return c.Status(400).JSON(ErrorResponse{}.withCode("VALIDATION_ERROR", err.Error()))
+	}
+	// Pass 2 audit fix M-4: per-account + per-IP throttle.
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "forgot_password:"+normalizedEmail, 3, 15*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many password reset requests. Please wait before trying again."))
+	}
+	if err := services.CheckAndRecordAuthRequest(c.Context(), "forgot_password_ip:"+c.IP(), 20, 15*time.Minute); err != nil {
+		return c.Status(429).JSON(ErrorResponse{}.withCode("RATE_LIMITED", "Too many requests from this network. Please wait before trying again."))
 	}
 	const msg = "If an account with that email exists, you will receive a password reset link."
 	q := db.Queries()

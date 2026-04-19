@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Exceptions | QCS Cargo</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/admin/common.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
@@ -36,9 +37,12 @@
         function load() {
           fetch('/api/v1/warehouse/exceptions', auth).then(r => r.json()).then(j => {
             const list = (j && j.data) || [];
+            // Pass 2 audit fix C-1: HTML-escape every server-supplied field
+            // (carrier, tracking_number, status are operator/inbound-supplied).
+            const esc = window.QCSAdmin.escapeHTML;
             const rows = list.map(e => {
-              const resolveBtn = '<button type="button" class="resolve-btn px-3 py-1 rounded bg-emerald-600 text-white text-sm" data-id="' + (e.id || '') + '">Resolve</button>';
-              return '<tr class="border-b border-slate-200"><td class="py-3 px-4 font-mono text-sm">' + (e.id ? e.id.substring(0, 8) + '…' : '—') + '</td><td class="py-3 px-4">' + (e.tracking_number || '—') + '</td><td class="py-3 px-4">' + (e.carrier || '—') + '</td><td class="py-3 px-4">' + (e.status || '—') + '</td><td class="py-3 px-4">' + (e.received_at || '—') + '</td><td class="py-3 px-4">' + resolveBtn + '</td></tr>';
+              const resolveBtn = '<button type="button" class="resolve-btn px-3 py-1 rounded bg-emerald-600 text-white text-sm" data-id="' + esc(e.id || '') + '">Resolve</button>';
+              return '<tr class="border-b border-slate-200"><td class="py-3 px-4 font-mono text-sm">' + esc(e.id ? e.id.substring(0, 8) + '…' : '—') + '</td><td class="py-3 px-4">' + esc(e.tracking_number || '—') + '</td><td class="py-3 px-4">' + esc(e.carrier || '—') + '</td><td class="py-3 px-4">' + esc(e.status || '—') + '</td><td class="py-3 px-4">' + esc(e.received_at || '—') + '</td><td class="py-3 px-4">' + resolveBtn + '</td></tr>';
             }).join('');
             const main = '<main class="flex-1 p-8"><nav aria-label="Breadcrumb" class="mb-4"><ol class="flex items-center gap-2 text-sm text-slate-600"><li><a href="/warehouse" class="hover:underline">Warehouse</a></li><li aria-current="page" class="font-medium">Exceptions</li></ol></nav><h1 class="text-3xl font-bold mb-6">Exceptions (unmatched packages)</h1><div class="bg-white rounded-xl border border-slate-200 overflow-hidden"><table class="w-full"><thead class="bg-slate-50"><tr><th class="text-left py-3 px-4">ID</th><th class="text-left py-3 px-4">Tracking</th><th class="text-left py-3 px-4">Carrier</th><th class="text-left py-3 px-4">Status</th><th class="text-left py-3 px-4">Received</th><th class="text-left py-3 px-4">Action</th></tr></thead><tbody>' + rows + '</tbody></table></div></main>';
             document.getElementById('app').innerHTML = '<div class="flex min-h-screen">' + sidebar + main + '</div>';
