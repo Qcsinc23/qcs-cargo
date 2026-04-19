@@ -14,10 +14,32 @@ import (
 	"github.com/Qcsinc23/qcs-cargo/internal/middleware"
 	"github.com/Qcsinc23/qcs-cargo/internal/services"
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const refreshCookieName = "qcs_refresh"
 const refreshCookieMaxAge = 7 * 24 * 3600 // 7 days in seconds
+
+// forgotPasswordDummyHash is a precomputed bcrypt hash used by the
+// forgot-password handler to pay a constant ~250ms cost regardless of
+// whether the supplied email belongs to a real account. Pass 3 audit
+// fix DEF-009: the previous handler short-circuited on missing accounts
+// while the existing-account branch performed a DB write + email
+// enqueue, leaking ~hundreds of ms that an attacker could time to
+// enumerate registered emails. By forcing every request through one
+// bcrypt comparison at cost 12 we collapse the timing channel.
+var forgotPasswordDummyHash []byte
+
+func init() {
+	hash, err := bcrypt.GenerateFromPassword([]byte("dummy"), 12)
+	if err != nil {
+		// bcrypt only fails on cost out of range, which is a programmer
+		// error here. Panic at init so we fail fast in CI rather than
+		// silently degrading the timing-equalisation guarantee.
+		panic("forgot-password dummy bcrypt hash generation failed: " + err.Error())
+	}
+	forgotPasswordDummyHash = hash
+}
 
 func normalizeAuthEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
@@ -333,26 +355,53 @@ func authForgotPassword(c *fiber.Ctx) error {
 	}
 	const msg = "If an account with that email exists, you will receive a password reset link."
 	q := db.Queries()
-	user, err := q.GetUserByEmail(c.Context(), normalizedEmail)
-	if err != nil {
-		// Return 200 regardless — prevent enumeration
+	user, lookupErr := q.GetUserByEmail(c.Context(), normalizedEmail)
+
+	// Pass 3 audit fix DEF-009: pay a constant bcrypt cost on every
+	// request, regardless of whether the account exists. This collapses
+	// the timing side-channel that previously distinguished the
+	// "missing email" fast path from the "existing email" slow path
+	// (DB insert + email send). bcrypt.CompareHashAndPassword is
+	// constant-time per-byte by design, and the cost-12 hash dominates
+	// any other branching in this handler.
+	_ = bcrypt.CompareHashAndPassword(forgotPasswordDummyHash, []byte("dummy"))
+
+	if lookupErr != nil {
+		// Return 200 regardless — prevent enumeration. Identical body
+		// bytes to the existing-account branch; do not log normalizedEmail
+		// to avoid populating logs with attacker-controlled probe values.
 		return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 	}
+
+	// Existing account: fire-and-forget the reset-link generation +
+	// email send in a goroutine with its own background-derived
+	// context. Fiber cancels c.Context() as soon as we return, which
+	// would otherwise abort the DB insert in services.RequestPasswordReset
+	// and turn the "send email" step into a no-op. We also need the
+	// handler's wall-clock duration to be independent of the email send,
+	// so that the existing-account and missing-account branches return
+	// in equivalent time.
 	appURL := currentAppURL()
-	_, link, err := services.RequestPasswordReset(c.Context(), user.ID, appURL)
-	if err != nil {
-		log.Printf("forgot password: %v", err)
-		return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
-	}
-	if os.Getenv("RESEND_API_KEY") != "" {
-		if err := services.SendPasswordResetLink(user.Email, link); err != nil {
-			log.Printf("password reset email send: %v", err)
-			return c.Status(500).JSON(ErrorResponse{}.withCode("INTERNAL_ERROR", "Request failed"))
+	userID := user.ID
+	userEmail := user.Email
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, link, err := services.RequestPasswordReset(ctx, userID, appURL)
+		if err != nil {
+			log.Printf("forgot password: %v", err)
+			return
 		}
-	} else {
-		log.Printf("forgot password: mail transport not configured for %s", normalizedEmail)
-		logSensitiveAuthArtifact("[DEV] Password reset link for %s: %s", normalizedEmail, link)
-	}
+		if os.Getenv("RESEND_API_KEY") != "" {
+			if err := services.SendPasswordResetLink(userEmail, link); err != nil {
+				log.Printf("password reset email send: %v", err)
+			}
+		} else {
+			log.Printf("forgot password: mail transport not configured")
+			logSensitiveAuthArtifact("[DEV] Password reset link for %s: %s", userEmail, link)
+		}
+	}()
+
 	return c.JSON(fiber.Map{"data": fiber.Map{"message": msg}})
 }
 
