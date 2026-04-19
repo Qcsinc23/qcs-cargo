@@ -4,7 +4,7 @@
 
 Unified product per QCS Cargo Unified PRD v3.
 
-- **Repo:** [github.com/Qcsinc23/qcs-cargo](https://github.com/Qcsinc23/qcs-cargo) Stack: Go Fiber API + SQLite/Postgres + WASM PWA frontend (go-app).
+- **Repo:** [github.com/Qcsinc23/qcs-cargo](https://github.com/Qcsinc23/qcs-cargo) Stack: Go Fiber API + SQLite/Postgres + server-rendered HTML frontend (Tailwind CSS).
 
 ## Audit remediation status
 
@@ -53,29 +53,20 @@ make run
 - Keep local and CI toolchains aligned with `go.mod` to avoid drift.
 - CI now enforces the repo's meaningful gates: lint (with `go vet` fallback if `golangci-lint` cannot be installed), unit/package tests with coverage output, integration tests, smoke, release artifact builds, Playwright E2E, and `govulncheck`.
 
-## Build WASM frontend (optional)
-
-```bash
-make wasm
-```
-
-This copies `wasm_exec.js` from your Go install into `web/` and builds `web/app.wasm` from `./frontend`. Reload the app in the browser to run the WASM UI.
-
 ## Project layout (PRD 2.2)
 
 | Path | Purpose |
 |------|--------|
-| `cmd/server` | Fiber API + static/WASM serving |
+| `cmd/server` | Fiber API + static asset serving |
 | `cmd/migrate` | Database migration runner |
 | `internal/api` | Route handlers (health, auth, locker, …) |
 | `internal/db` | DB connection, migrations, sqlc-generated queries |
 | `internal/models` | Shared domain types |
-| `internal/static` | Embedded index.html |
-| `frontend` | WASM app (Go → JS/WASM) |
+| `internal/static` | Embedded HTML/CSS/JS for marketing + dashboard |
 | `sql/migrations` | Schema migrations (run in order) |
 | `sql/queries` | sqlc SQL queries |
 | `sql/schema` | sqlc schema (users, etc.) |
-| `web` | Static assets + WASM output |
+| `web` | Static marketing image assets |
 
 ## Environment
 
@@ -127,7 +118,7 @@ See **[docs/TESTING_AND_INTEGRATIONS.md](docs/TESTING_AND_INTEGRATIONS.md)** for
 - Storage fee cron job tests
 - Playwright E2E and offline warehouse tests
 - Load testing (k6)
-- Test file organization and go-app component testing
+- Test file organization for Go packages
 
 Implement tests and CI steps according to that doc as features are added.
 
@@ -186,7 +177,6 @@ The deploy path now uses pinned host keys instead of runtime `ssh-keyscan`, retr
 - `make ci` — lint, test-unit, test-integration, smoke  
 - `make smoke` — smoke test (build, migrate, start, curl health/destinations/auth)  
 - `make stripe-verify` — verify Stripe config (app API + optional Stripe CLI)  
-- `make wasm` — build frontend to `web/app.wasm` and copy `wasm_exec.js`  
 - `make sqlc` — regenerate sqlc code from `sql/`  
 - `./scripts/optimize-images.sh [dir]` — optimize PNG/JPEG assets when `pngquant`/`jpegoptim` are installed  
 
@@ -222,8 +212,8 @@ This phase checklist reflects baseline PRD delivery history. Audit remediation p
 - ✅ Go module, Fiber server, `/api/v1/health`
 - ✅ SQLite + WAL, migrations for all PRD Section 5 tables
 - ✅ sqlc setup and generated code
-- ✅ go-app-style frontend skeleton (stdlib WASM)
+- ✅ Server-rendered HTML frontend (Tailwind CSS)
 - ✅ Shared models (User, LockerPackage, ShipRequest, Booking)
-- ✅ CI (lint, test, build server, build WASM) and Dockerfile
+- ✅ CI (lint, test, build server) and Dockerfile
 
 Next: Phase 1 — Auth + public pages (magic link, suite code, all public routes).

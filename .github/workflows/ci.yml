@@ -74,8 +74,8 @@ jobs:
           node-version: 20
       # Pass 2.5 OPS-01: inline-script regression guard.
       # The CSP dropped 'unsafe-inline' in Pass 2; any new inline <script>
-      # block in internal/static/**/*.html or web/index.html would silently
-      # break that page in browsers. Fail the build if one reappears.
+      # block in internal/static/**/*.html would silently break that page
+      # in browsers. Fail the build if one reappears.
       - name: No inline <script> blocks in static HTML
         shell: bash
         run: |
@@ -83,7 +83,7 @@ jobs:
           violations=$(python3 -c "
           import re, glob, sys
           inline = re.compile(r'<script(?![^>]*\\bsrc=)[^>]*>[\\s\\S]*?</script>')
-          files = sorted(glob.glob('internal/static/**/*.html', recursive=True)) + ['web/index.html']
+          files = sorted(glob.glob('internal/static/**/*.html', recursive=True))
           total = 0
           for f in files:
               try:
@@ -295,13 +295,10 @@ jobs:
           cache: true
       - name: Build release artifacts
         run: |
-          mkdir -p web
           go build -o qcs-server ./cmd/server
           go build -o qcs-migrate ./cmd/migrate
-          GOOS=js GOARCH=wasm go build -o web/app.wasm ./frontend
           test -s qcs-server
           test -s qcs-migrate
-          test -s web/app.wasm
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -309,7 +306,6 @@ jobs:
           path: |
             qcs-server
             qcs-migrate
-            web/app.wasm
           if-no-files-found: error
 
   e2e:

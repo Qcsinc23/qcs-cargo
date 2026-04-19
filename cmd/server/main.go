@@ -120,16 +120,6 @@ func main() {
 	}
 	app.Static("/uploads", uploadDir)
 
-	// Serve WASM and Go runtime (from disk so dev can build frontend separately)
-	app.Get("/wasm_exec.js", func(c *fiber.Ctx) error {
-		setAssetCacheHeaders(c, "wasm_exec.js")
-		return c.SendFile("./web/wasm_exec.js", false)
-	})
-	app.Get("/app.wasm", func(c *fiber.Ctx) error {
-		c.Set("Content-Type", "application/wasm")
-		setAssetCacheHeaders(c, "app.wasm")
-		return c.SendFile("./web/app.wasm", false)
-	})
 	// Serve /web/* (images, etc.) from disk so frontend placeholders at /web/images/... resolve
 	app.Static("/web", "./web")
 	// Prometheus scraping endpoint (public, no auth).
