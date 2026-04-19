@@ -19,13 +19,16 @@
       font-family: 'Plus Jakarta Sans', sans-serif
     }
   </style>
+  <link rel="stylesheet" href="/dashboard/pwa-shell.css" />
   <link rel="stylesheet" href="/dashboard/mobile-nav.css" />
 </head>
 
 <body class="bg-[#F8FAFC] text-[#0F172A] min-h-screen">
   <div id="app">Loading…</div>
+  <script src="/dashboard/pwa-shell.js"></script>
   <script>
     (function () {
+      if (window.QCSPWA && typeof window.QCSPWA.initBase === 'function') { window.QCSPWA.initBase({ registerSW: true, keyboard: true, utilityDock: true }); }
       const token = localStorage.getItem('qcs_access_token');
       const currentSessionID = localStorage.getItem('qcs_session_id');
       if (!token) { window.location.href = '/login?redirect=' + encodeURIComponent('/dashboard/settings/sessions'); return; }
@@ -70,6 +73,7 @@
           { href: '/dashboard/shipments', label: 'Shipments', id: 'shipments' },
           { href: '/dashboard/invoices', label: 'Invoices', id: 'invoices' },
           { href: '/dashboard/templates', label: 'Templates', id: 'templates' },
+          { href: '/dashboard/parcel-plus', label: 'Parcel+', id: 'parcel-plus' },
           { href: '/dashboard/profile', label: 'Profile', id: 'profile' },
           { href: '/dashboard/settings', label: 'Settings', id: 'settings' }
         ];

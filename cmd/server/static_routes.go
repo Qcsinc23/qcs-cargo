@@ -59,6 +59,19 @@ func resolveStaticPath(path string) string {
 		if rest != "" && !strings.Contains(rest, "/") {
 			path = "dashboard/booking-detail.html"
 		}
+	} else if strings.HasPrefix(path, "dashboard/shipments/") && len(path) > len("dashboard/shipments/") {
+		// Dashboard UX review fix: list pages link to /dashboard/shipments/:id
+		// but the static router previously had no rule, so clicks 404'd.
+		rest := path[len("dashboard/shipments/"):]
+		if rest != "" && !strings.Contains(rest, "/") {
+			path = "dashboard/shipment-detail.html"
+		}
+	} else if strings.HasPrefix(path, "dashboard/invoices/") && len(path) > len("dashboard/invoices/") {
+		// Same fix for /dashboard/invoices/:id.
+		rest := path[len("dashboard/invoices/"):]
+		if rest != "" && !strings.Contains(rest, "/") {
+			path = "dashboard/invoice-detail.html"
+		}
 	}
 	if path != "" && !strings.HasSuffix(path, ".html") && !strings.Contains(path, ".") {
 		path = path + ".html"
