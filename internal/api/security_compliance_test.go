@@ -425,33 +425,31 @@ func TestGDPRRequest_RateLimited(t *testing.T) {
 // TestSecurityMFADisable_PasswordStepUp is the Pass 2.5 MED-20
 // regression. A user who lost access to their MFA OTP delivery method
 // must still be able to disable MFA by presenting their password.
+//
+// The 10s timeout on each app.Test call accommodates bcrypt cost=12
+// compares on slow CI runners (the Fiber default 1s is too tight).
 func TestSecurityMFADisable_PasswordStepUp(t *testing.T) {
 	t.Setenv("APP_ENV", "test")
+	const testTimeoutMS = 10000
 	app := setupTestApp(t)
 	aliceToken := issueAccessTokenForUser(t, testdata.CustomerAliceID)
 
-	// Set a known password for Alice directly (the seed user has none).
-	// We use ChangePassword via the services layer to get a real bcrypt
-	// hash inserted, then exercise the disable path with that password.
 	require.NoError(t, services.ChangePassword(context.Background(), testdata.CustomerAliceID, "", "passw0rd-for-test"))
 
-	// Enroll + verify MFA so there is an enabled state to disable.
 	setupReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/setup", bytes.NewReader([]byte(`{"method":"email_otp"}`)))
 	setupReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	setupReq.Header.Set("Content-Type", "application/json")
-	setupResp, err := app.Test(setupReq)
+	setupResp, err := app.Test(setupReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer setupResp.Body.Close()
 	require.Equal(t, http.StatusOK, setupResp.StatusCode)
 
-	// ChangePassword invalidates active sessions, so issue a fresh token
-	// to exercise post-password MFA flows.
 	aliceToken = issueAccessTokenForUser(t, testdata.CustomerAliceID)
 
 	challengeReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/challenge", bytes.NewReader([]byte(`{}`)))
 	challengeReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	challengeReq.Header.Set("Content-Type", "application/json")
-	challengeResp, err := app.Test(challengeReq)
+	challengeResp, err := app.Test(challengeReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer challengeResp.Body.Close()
 	require.Equal(t, http.StatusOK, challengeResp.StatusCode)
@@ -467,35 +465,31 @@ func TestSecurityMFADisable_PasswordStepUp(t *testing.T) {
 	verifyReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/verify", bytes.NewReader([]byte(`{"code":"`+challengeBody.Data.OTPCode+`"}`)))
 	verifyReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	verifyReq.Header.Set("Content-Type", "application/json")
-	verifyResp, err := app.Test(verifyReq)
+	verifyResp, err := app.Test(verifyReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer verifyResp.Body.Close()
 	require.Equal(t, http.StatusOK, verifyResp.StatusCode)
 
-	// Wrong password (and no OTP) must still be rejected.
 	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{"password":"definitely-not-it"}`)))
 	badReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	badReq.Header.Set("Content-Type", "application/json")
-	badResp, err := app.Test(badReq)
+	badResp, err := app.Test(badReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer badResp.Body.Close()
 	require.Equal(t, http.StatusUnauthorized, badResp.StatusCode)
 
-	// Correct password must allow disable without an OTP.
 	disableReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{"password":"passw0rd-for-test"}`)))
 	disableReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	disableReq.Header.Set("Content-Type", "application/json")
-	disableResp, err := app.Test(disableReq)
+	disableResp, err := app.Test(disableReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer disableResp.Body.Close()
 	require.Equal(t, http.StatusOK, disableResp.StatusCode)
 
-	// Idempotent second call returns success even with empty body
-	// because mfa is already disabled.
 	repeatReq := httptest.NewRequest(http.MethodPost, "/api/v1/security/mfa/disable", bytes.NewReader([]byte(`{}`)))
 	repeatReq.Header.Set("Authorization", "Bearer "+aliceToken)
 	repeatReq.Header.Set("Content-Type", "application/json")
-	repeatResp, err := app.Test(repeatReq)
+	repeatResp, err := app.Test(repeatReq, testTimeoutMS)
 	require.NoError(t, err)
 	defer repeatResp.Body.Close()
 	assert.Equal(t, http.StatusOK, repeatResp.StatusCode)
